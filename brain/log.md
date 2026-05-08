@@ -163,3 +163,40 @@ Closed out the brain phase to documented success signals across 14 iterations on
 **Total bench spend across iteration set:** ~$15 across 14 runs. The judge-validation runs (~$5 each) are the dominant cost — recommend running the judge every N cycles, not every cycle.
 
 This closes the brain phase. The next workstream is **architect** — see [`docs/phases/architect.md`](../docs/phases/architect.md).
+
+---
+
+## [2026-05-08] structural | Architect phase wired + bench harness + clean-sweep first run
+
+Closed out the architect phase. Bench passed **8/8 (100%)** on the first live run — no iteration cycles needed (the brain phase took 14). Final state:
+
+**Suites & runners:**
+
+- `benchmarks/architect/score.ts` — fixture suite (8 cases spanning auth, refactor, CI, CLI, perf, ORM migration, tests, docs). Concurrency 4, wall ~2 min, **$1.75/run** (Sonnet 4.6).
+- `benchmarks/architect/scoring.ts` — pure rubric. Gate on `validateManifest()`; weighted average of `specs_concrete (0.4) + scope_right_sized (0.3) + brain_consulted (0.3)`. Pass threshold 0.7 (matches brain bar).
+- `benchmarks/architect/sdk.ts` — DI-friendly SDK shim. Each fixture runs in its own tempdir with read-only symlinks to `brain/`, `skills/`, `docs/`, `orchestrator/`. Architect writes manifest to `<tempdir>/_queue/pending/`; bench reads back. Tool-use telemetry tracks brain reads, writes, bash calls.
+- 34 new unit tests (25 scoring + 9 SDK), 123 total green.
+
+**Result on first run** (`benchmarks/architect/results/2026-05-08T09-13-11-018Z.json`):
+
+- 8/8 fixtures passed at score 1.0 (perfect on every dimension).
+- Criterion pass rates: `manifest_valid 100% · scope 100% · specs 100% · brain 100%`.
+- p95 latency 116s; total cost $1.75.
+- Round-trip validated: an emitted manifest passes `forge enqueue --from-manifest` cleanly.
+
+**Architectural decisions taken:**
+
+- **Deterministic input → manifest bench shape** (vs simulated-user). Each fixture supplies a fully-committed user intent so the bench is reproducible. Plan B (a second LLM playing user) was deferred — not needed.
+- **Skip event-log assertions in scoring.** Council-invoked / brain-query-first as separate criteria require runtime instrumentation we don't have without an event log. Artifact-quality proxies (specs concrete, brain path cited in body) cover the same ground at much lower complexity.
+- **Tempdir-per-fixture isolation with read-only symlinks** (vs running against the live repo). Lets concurrent fixtures emit manifests without colliding; never pollutes `_queue/`.
+- **Roadmap.md v0 schema locked** — see [ADR 014](../docs/decisions/014-roadmap-format.md). Three sections (Current phase / Initiatives table / Backlog) with status keys aligned to `_queue/` directory state. Grounded in brain themes (`markdown-artifact-flow`, `spec-driven-work-items`, `roadmap-simplification-convergence`) plus external research (AGENTS.md emerging standard, solo-dev P-0..P-X conventions, Aider/Cursor agent-readable plans).
+
+**What the bench *didn't* catch** (acknowledged limitations to revisit if quality drifts):
+
+- Doesn't verify the LLM Council subagent actually ran — only that the artifact is council-quality. If the SKILL.md prompt were silently dropping the council step, this bench wouldn't fail. Add event-log instrumentation when cycle.ts gets wired.
+- Doesn't test the *interactive* flow (user iteration on escalations). The council was deliberately not exercised as a chained subagent in the bench; the architect applies the critic checklist inline. Adding an interactive bench mode is a future workstream.
+- 8 fixtures is small — first regression (e.g. switching to Haiku for cost, or restructuring the council critics) may require expanding the fixture set.
+
+**Total bench spend:** $1.75 first run, $0 in iteration (no cycles needed). Compare brain phase: $15 across 14 runs. The pre-built support code (`council.ts` + `manifest.ts` + `brain-index.ts`) made the difference — the architect skill had nothing to debug because the load-bearing pieces were already proven.
+
+**What's next:** the next workstream is **project-manager** — the first unattended phase. PM consumes initiative manifests from `_queue/pending/`, decomposes features into atomic work items, emits work-item specs. Unblocking PM also unblocks `cycle.ts` end-to-end wiring (PM → developer-loop → review-prep). See [`docs/phases/project-manager.md`](../docs/phases/project-manager.md).

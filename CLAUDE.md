@@ -84,10 +84,9 @@ forge/
 ## Status of the scaffold
 
 - ✅ Directory structure + ADRs + phase docs + skill stubs.
-- ✅ Brain seeding **Pass A + Pass B** — 50 forge-level themes + 15 project-level themes (across 5 sub-wikis) + 37 raw sources + 18 benchmark questions; structural lint green. The 4 original "next sessions" from the seeding plan (Pass A → SDK wiring → architect + council → Pass B) are all landed.
+- ✅ **Brain phase** — closed. Pass A+B seeding (50 forge-level themes + 5 project sub-wikis with 15 project themes + 37 raw sources). Bench at 17/18 primary (94.4%), 100% Opus-judge agreement on 17 judged cases. Recall-weighted scoring + layered keyword matcher + case-insensitive existence check. See [`brain/log.md`](./brain/log.md) for the full closure entry.
+- ✅ **Architect phase** — closed. Bench at **8/8 (100%)** on first run with criterion pass rates at 100% across `manifest_valid / scope / specs / brain_consulted`. Roadmap.md v0 schema locked in [ADR 014](./docs/decisions/014-roadmap-format.md). LLM Council support code, manifest writer, and `forge enqueue --from-manifest` CLI integration all production-ready. Round-trip validated.
 - ✅ Ralph runner wired to Claude Agent SDK via [`loops/ralph/claude-agent.ts`](./loops/ralph/claude-agent.ts) (`createClaudeAgent` factory; SDK `query` injectable for tests).
-- ✅ Architect + LLM Council support code — typed manifest module ([`orchestrator/manifest.ts`](./orchestrator/manifest.ts), with depends_on cycle detection, budget validation, `writeManifest`), council critic-chain runner ([`skills/architect-llm-council/council.ts`](./skills/architect-llm-council/council.ts), with structured-output critics and de-duplicated escalations), and `forge enqueue --from-manifest <path>` CLI integration. The SKILL.md prompts are the user-facing interactive layer.
-- ⏳ Per-phase benchmark cases — wired-but-empty harnesses; cases land as each phase is built.
-- ⏳ `cycle.ts` end-to-end integration — orchestrator → PM → developer-loop → review-prep wiring.
-- ⏳ Live `score.ts` for `bench:brain` — currently stub-scored; needs SDK invocation against `brain-query`.
-- ⏳ PM, reviewer, reflector skills past their `SKILL.md` prompt + the support code listed above.
+- ⏳ **Project-manager phase** — next workstream. SKILL.md prompt exists; needs orchestrator invocation, work-item-id scheme, bench fixtures. Unblocks `cycle.ts` end-to-end wiring.
+- ⏳ `cycle.ts` end-to-end integration — orchestrator → PM → developer-loop → review-prep wiring. Architect doesn't need this (it's interactive); PM does.
+- ⏳ Developer-loop, reviewer, reflector skills past their `SKILL.md` prompt + bench fixtures for each.

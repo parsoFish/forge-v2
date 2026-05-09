@@ -23,12 +23,16 @@ benchmarks/*/results-negatives/
 benchmarks/*/results-judged/
 
 # Bench-fixture runtime debris (Python compile cache; Ralph workspace artifacts
-# the agent leaves behind if a run leaks outside its tempdir). Seeds should
-# only contain source files, tests, and the WI spec.
+# the agent leaves behind if a run leaks outside its tempdir; reviewer demo
+# bundles ditto). Seeds should only contain source files, tests, and the WI
+# spec.
 benchmarks/*/fixtures/**/__pycache__/
+benchmarks/*/fixtures/**/.pytest_cache/
 benchmarks/*/fixtures/**/AGENT.md
 benchmarks/*/fixtures/**/fix_plan.md
 benchmarks/*/fixtures/**/PROMPT.md
+benchmarks/*/fixtures/**/.forge/demos/
+benchmarks/*/fixtures/**/.forge/pr-description.md
 
 # Managed projects are auto-discovered, not committed to forge
 projects/*

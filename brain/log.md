@@ -14,6 +14,55 @@ Types: `ingest`, `create-theme`, `update-theme`, `lint`, `structural`, `seed`.
 
 ---
 
+## [2026-05-09] structural | review-loop phase (stage 1) closed — bench 5/5 in two passes
+
+**Outcome:** all five fixtures pass at threshold 0.7 with every weighted criterion at 100% on pass 2. Total spend across the iteration set: **$3.92** ($1.89 pass 1 + $2.03 pass 2). The review-prep stage of the review-loop is now wired end-to-end — bench, shared invocation contract, and live cycle integration. Stage 2 (interactive human review + send-back) is deliberately deferred to a separate closure.
+
+**Suites & runners:**
+- [`benchmarks/review-loop/score.ts`](../benchmarks/review-loop/score.ts) — fixture suite (5 cases). Concurrency 2, session budget $5, wall ~5 min/run, ~$2.0/run on pass 2.
+- [`benchmarks/review-loop/scoring.ts`](../benchmarks/review-loop/scoring.ts) — pure rubric. **Two gates** (`quality_gates_pass`, `pr_only_when_green`) plus seven weighted criteria summing to 1.0: `demo_recording_present` 0.15, `demo_exercises_acceptance_criteria` 0.20, `pr_description_why_not_what` 0.20, `pr_description_length_floor` 0.10, `pr_links_demo` 0.10, `merge_strategy_respected` 0.15, `brain_consulted` 0.10. Pass threshold 0.7. 35 unit tests under `scoring.test.ts` covering each criterion's pass/fail boundary plus the stacked-PR squash-detection unit test.
+- [`benchmarks/review-loop/sdk.ts`](../benchmarks/review-loop/sdk.ts) — DI-friendly SDK shim. Each fixture runs in its own tempdir with read-only symlinks to `brain/`, `skills/`, `docs/`, `orchestrator/`, `loops/`. Bench tempdir's `bin/` carries three PATH stubs: a `gh` stub that exits non-zero (defense against accidental real PRs), a `vhs` stub (node script that produces a 60 KB mp4/webm/gif with valid magic bytes), and an `npx` stub that handles `playwright test` (writes a 60 KB `recording.trace.zip` with PK header). 9 unit tests under `sdk.test.ts`.
+- [`orchestrator/reviewer-invocation.ts`](../orchestrator/reviewer-invocation.ts) — shared contract. `buildReviewerSystemPrompt(brainCwd)` + `renderReviewerUserPrompt(input)` + `tallyToolUse(msg, summary)` + tool whitelists (`Read`, `Grep`, `Glob`, `Write`, `Edit`, `Bash`; `WebFetch`/`WebSearch` blocked). Single source of truth — bench reflects production exactly.
+- [`orchestrator/cycle.ts:runReviewer()`](../orchestrator/cycle.ts) — real implementation (replaced the no-op stub at lines 495-514). Pattern follows `runProjectManager()` (one-shot SDK call, not a Ralph loop). Steps: brain query via system prompt → render user prompt → SDK query → tally tool use → re-run quality gate orchestrator-side → (if green) `gh pr create --body-file`, move manifest to `ready-for-review/`, fire desktop notification per ADR 013. Throws if quality gates red OR `pr-description.md` missing.
+- [`docs/decisions/016-demo-recording-tooling.md`](../docs/decisions/016-demo-recording-tooling.md) — ADR locking the tooling decision: **VHS** for terminal/CLI/lib/REST demos, **Playwright** for browser/canvas. Demo bundle layout (`source.<tape|spec.ts>` + `recording.<mp4|webm|gif|trace.zip>` + `README.md`). The source script is itself the manifest — no separate `.demo.yaml`.
+- [`skills/reviewer/SKILL.md`](../skills/reviewer/SKILL.md) — rewritten from the 80-line stub. Specifies stage 1 only (stage 2 explicitly deferred), the demo bundle layout, the hard rule "do not write `pr-description.md` until quality gates pass", the AC-keyword-presence requirement for demo source.
+- 44 new unit tests across this phase (35 scoring + 9 sdk).
+
+**Result on pass 2** (`benchmarks/review-loop/results/2026-05-09T09-29-50-595Z.json`):
+- 5/5 fixtures passed at score **1.0** (perfect on every dimension).
+- Criterion pass rates: all 9 (2 gates + 7 weighted) at 100%.
+- p95 elapsed ~142s; total cost $2.03; per-fixture cost $0.32–$0.49 (within the $0.6 cap).
+- Per-fixture: env-optimiser-redact-argv (Python, 114s, $0.37, PR 2822 ch / why 1023 ch), trafficGame-distribute-flow (TS, 142s, $0.49), simplarr-dry-run (bash, 129s, $0.43), GitWeave-multipart-stub (TS, 137s, $0.42), healarr-quickstart-readme (REST/doc, 142s, $0.32). Brain reads per fixture 7–9.
+
+**Iteration trajectory** (2 runs total, ~$3.92 across all runs):
+
+| Run | Pass rate | Pass criteria | What changed |
+|---|---|---|---|
+| 1 | 2/5 (40%) | env-optimiser ✅, trafficGame ✅, simplarr ❌, GitWeave ❌, healarr ❌ | First live run with `maxTurns: 30`. Three fixtures hit `error_max_turns` after running brain queries + quality gates + recording but before drafting `pr-description.md`. The two passing fixtures (env-optimiser, trafficGame) finished within turn budget. Cost $1.89 / $5. |
+| 2 | **5/5 (100%)** | all ✅ | Bumped `maxTurns` 30 → 50 in `sdk.ts`; raised healarr's per-fixture cap $0.40 → $0.60 (the rest already at $0.60). Every fixture completed in ≤142s well within the new turn budget. Cost $2.03 / $5. |
+
+**Architectural decisions taken during the iteration set:**
+- **VHS + Playwright + bundle layout locked** — see [ADR 016](../docs/decisions/016-demo-recording-tooling.md). VHS is the default; Playwright is reserved for actual rendered UI. The source script (`source.tape` or `source.spec.ts`) is its own manifest — no separate `.demo.yaml`.
+- **Two gates instead of one.** `quality_gates_pass` is the obvious gate; `pr_only_when_green` is the structural defense against "ship a PR despite red gates" — score = 0 when `pr-description.md` exists but gates failed. The plan agent flagged this as the single most important addition; we kept it.
+- **Bench-vs-live PR creation split.** The agent never calls `gh pr create` — it writes its draft to `<worktree>/.forge/pr-description.md`. The orchestrator (`cycle.ts:runReviewer()`) reads the file post-agent and calls `gh pr create --body-file <path>` against the real remote. The bench reads the same file for scoring without ever calling `gh`. Mirrors the dev-loop pattern where the orchestrator owns "outside the worktree" actions (queue movement, notifications, PR creation).
+- **Bench-tempdir tool isolation via PATH-shims, not env-var gating.** The bench writes `<tempdir>/bin/{gh, vhs, npx}` and prepends to PATH. The `gh` shim exits non-zero to defend against accidental real PRs (with `GH_TOKEN=invalid` as backup). The `vhs` and `npx` shims produce stub recordings with valid magic bytes (60 KB padded mp4/gif/webm/trace.zip). This separates the agent's *workflow* (write tape, invoke recorder, draft PR) from the *fidelity* of the rendered video — the bench tests workflow; production installs real VHS for fidelity.
+- **AC-keyword-presence as a heuristic, not proof.** `demo_exercises_acceptance_criteria` greps the demo source for each WI's `then`-clause keywords (case-insensitive, stopword-stripped, ≥4-char tokens, OR-within-AC, AND-across-WIs). Not a semantic check; the human-review stage handles "demo actually demonstrates the right thing." This is the same shape as PM's `no_hidden_coupling` check.
+- **Demo recording tool selection by project_type.** `cases.json` carries `project_type: 'browser' | 'cli' | 'lib' | 'rest'`; the user prompt picks Playwright for `browser` and VHS for everything else. All five fixtures in this bench use VHS (no real Playwright in the bench tempdir; the npx-playwright shim catches any agent that picks it anyway).
+- **No sixth stacked-PR fixture.** Stacked PRs are an antipattern, not a normal scenario — `merge_strategy_respected` is a guard, not a feature. The criterion is exercised by a unit test in `scoring.test.ts` that constructs a synthetic PR description with `Parents:` + `Merge strategy: squash` and asserts the criterion fires. Live-Claude budget is preserved for genuinely informative cases.
+
+**What the bench didn't catch (acknowledged limitations; the human-review stage covers these):**
+- **Hallucinated demo content** — the agent could write a tape that *looks* like it exercises the WI but doesn't actually demonstrate the observable AC outcome. Keyword presence is a heuristic.
+- **PR description with correct sections but lying about the diff** — "This PR adds X" when the diff doesn't add X. Same shape; same fix.
+- **Demo recorded against a stale build** — VHS captures the script's commands, but the underlying binary may have been built before the agent's last fix. Defensible only by the bench re-running the agent's commands itself, which is expensive.
+
+**Discriminator note.** Pass 2 has every criterion at 100%, which would normally be a flag that the rubric is too lenient. The pass-1 results validate the rubric *does* discriminate: three fixtures hit `error_max_turns`, wrote no PR draft, and the rubric correctly scored them at 0. The criteria pass-rates on pass 1 were 0.4/0.4/0.4/0.4/0.4/0.4/0.4 (every weighted criterion at 40% = exactly the 2/5 fixtures that completed). The two-gate structure (especially `pr_only_when_green`) plus the AC-keyword check have the most discriminating power — both fired correctly when the agent ran out of turns.
+
+**Total bench spend across iteration set:** $3.92 across 2 runs (cf. PM $6.30 / 3 runs, dev-loop $2.67 / 2 runs). Sits between the two prior phases as expected — heavier rubric than dev-loop, but more constrained per-fixture work than PM.
+
+**What's next:** stage 2 of the review-loop (interactive human review + send-back loop dispatching the developer-loop with new acceptance criteria). User has indicated stage 2 lands in the same session as a separate plan after this closure. After that, the **reflector** phase: `SKILL.md` rewrite + bench fixtures + `cycle.ts:runReflector()` real implementation + closure log entry. Same shape as this closure validates the pattern.
+
+---
+
 ## [2026-05-04] seed | Pass A bootstrap — Input #1: forge2.0 architecture (in-repo)
 
 Ingested the v2 self-source: 13 ADRs, 6 phase docs, ARCHITECTURE.md, PRINCIPLES.md.

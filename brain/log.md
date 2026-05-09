@@ -200,3 +200,62 @@ Closed out the architect phase. Bench passed **8/8 (100%)** on the first live ru
 **Total bench spend:** $1.75 first run, $0 in iteration (no cycles needed). Compare brain phase: $15 across 14 runs. The pre-built support code (`council.ts` + `manifest.ts` + `brain-index.ts`) made the difference — the architect skill had nothing to debug because the load-bearing pieces were already proven.
 
 **What's next:** the next workstream is **project-manager** — the first unattended phase. PM consumes initiative manifests from `_queue/pending/`, decomposes features into atomic work items, emits work-item specs. Unblocking PM also unblocks `cycle.ts` end-to-end wiring (PM → developer-loop → review-prep). See [`docs/phases/project-manager.md`](../docs/phases/project-manager.md).
+
+---
+
+## [2026-05-08] structural | Project-manager phase wired + bench harness + 5/5 closure after three iterations
+
+Closed out the project-manager phase — the **first unattended phase** in the pipeline. Bench passed **5/5 (100%)** with every criterion at 100% after three iteration passes. Final state:
+
+**Suites & runners:**
+
+- `benchmarks/project-manager/score.ts` — fixture suite (5 cases, one per managed project: env-optimiser / trafficGame / simplarr / GitWeave / healarr). Concurrency 4, wall ~4 min, **$2.17/run** (Sonnet 4.6).
+- `benchmarks/project-manager/scoring.ts` — pure rubric. Gate on `work_items_present`; weighted average of `every_item_has_gwt (0.25) + no_hidden_coupling (0.20) + work_item_count_in_range (0.15) + every_item_lists_scope (0.15) + parallel_fraction_meets (0.15) + graph_emitted_valid (0.10)`. Pass threshold 0.7 (matches brain + architect bar).
+- `benchmarks/project-manager/sdk.ts` — DI-friendly SDK shim. Each fixture runs in its own tempdir with read-only symlinks to `brain/`, `skills/`, `docs/`, `orchestrator/`; the initiative manifest is seeded into `_queue/in-flight/<id>.md`; the project tree is copied into `projects/<name>/`. PM writes WIs to `<tempdir>/projects/<name>/.forge/work-items/`. Tool-use telemetry tracks brain reads, writes, bash calls. `maxBudgetUsd: 0.75`, `maxTurns: 40` (raised from 0.5 / 30 after run 1 hit the budget cap on graph emission).
+- `orchestrator/work-item.ts` — shared schema (parse / validate / serialize / write / `validateWorkItemSet` / `detectHiddenCoupling`). 25 unit tests. Used by both bench and live cycle.
+- `orchestrator/pm-invocation.ts` — shared system + user prompt builders. **Single source of truth** between `benchmarks/project-manager/sdk.ts` and `orchestrator/cycle.ts:runProjectManager()`, so the bench reflects production behaviour exactly.
+- `orchestrator/cycle.ts:runProjectManager()` — real implementation (replaced the no-op stub). Reads the manifest, invokes the SDK, validates emitted WIs, emits 6 event-log entries (`pm.start`, `pm.brain-query` × N, `pm.work-item-emitted` × N, `pm.feature-decomposed` × manifest.features.length, `pm.graph-emitted`, `pm.end`).
+- 54 new unit tests across this phase (25 work-item + 21 scoring + 8 SDK), 177 total green.
+
+**Result on third run** (`benchmarks/project-manager/results/2026-05-08T11-22-46-969Z.json`):
+
+- 5/5 fixtures passed at score **1.0** (perfect on every dimension).
+- Criterion pass rates: `count 100% · gwt 100% · scope 100% · parallel 100% · no-coupling 100% · graph 100%`.
+- p95 latency 244s; total cost $2.17.
+- Per-fixture: P1 (env-optimiser) 5 WIs, P2 (trafficGame) 5 WIs, P3 (simplarr) 4 WIs, P4 (GitWeave) 7 WIs, P5 (healarr) 2 WIs. Brain reads per fixture 2–6.
+
+**Iteration trajectory** (3 runs total, ~$6.30 across all runs):
+
+| Run | Pass rate | Pass criteria (count/gwt/scope/parallel/coupling/graph) | What changed |
+|---|---|---|---|
+| 1 | 4/5 (80%) | 40 / 80 / 80 / 60 / 80 / 40 | First live run. P2 wrote nothing; P1+P4 hit budget cap before graph; P3+P5 had YAML parse errors on backtick-prefixed `when:` lines (YAML 1.2 reserves `` ` `` as an indicator). |
+| 2 | 4/5 (80%) | 100 / 100 / 100 / 80 / 80 / 100 | Added "MUST write at least one WI" imperative; added YAML quoting rule with worked example; bumped budget 0.5 → 0.75, turns 30 → 40. P2 came alive (1.00); parse errors gone; graphs all emitted. New failure surfaced: P4 collapsed parallel features into a serial chain AND put two impls in the same file (hidden coupling). |
+| 3 | **5/5 (100%)** | 100 / 100 / 100 / 100 / 100 / 100 | Added two new prompt rules: **(1) Inherit feature parallelism** — if two manifest features have no edge, their WIs must not either. **(2) File-scope discipline** — when two WIs would touch the same file, prefer splitting the file (one per impl) over chaining. P4 came back with 7 WIs, parallel_fraction 0.29, no coupling. |
+
+**Architectural decisions taken during the iteration set:**
+
+- **Work-item file format locked** — see [ADR 015](../docs/decisions/015-work-item-format.md). Frontmatter schema (work_item_id / feature_id / initiative_id / status / depends_on / acceptance_criteria with given/when/then / files_in_scope / estimated_iterations); `WI-<n>` per-initiative IDs (vs global ULID — chose locality + greppability + commit-message-friendliness over cross-initiative joinability, which the event log already provides); mermaid `graph TD` for `_graph.md`; files live at `<worktree>/.forge/work-items/`.
+- **Shared invocation contract.** `pm-invocation.ts` is imported by both the bench SDK shim and `cycle.ts`. Single source of truth for the system prompt + user prompt; the bench reflects production exactly.
+- **Hidden-coupling detection is a graph algorithm, not a heuristic.** `detectHiddenCoupling()` walks every pair of WIs sharing a `files_in_scope` entry and checks reachability in both directions across the full `depends_on` graph (DFS). Reachability in either direction satisfies the rule because a `depends_on` edge serialises the two items, eliminating the merge-conflict risk. Drove a clean criterion the bench could score deterministically.
+- **YAML quoting rule (load-bearing).** Models trained on un-quoted YAML examples emit unquoted strings starting with backticks (e.g. `` when:  `cargo build` is run ``). YAML 1.2 reserves `` ` `` as an indicator; this fails to parse. The fix is prompt-level — wrap every `given/when/then` value in double quotes. Defended via worked example in both the user prompt and the SKILL.md skill contract.
+- **Inherit feature parallelism.** The architect's manifest already encodes feature-level parallelism via `features[].depends_on`; PM's job is to refine that graph into WIs without over-serialising. Made this an explicit rule rather than relying on the model to infer it.
+- **File-scope is decomposition, not just declaration.** When two WIs would touch the same file, the right fix is usually to split the file (one impl per file) rather than chain the WIs. Folded this into the prompt as a priority-ordered ladder: split file → merge WIs → add edge.
+
+**Why scoring excludes `brain_consulted`** (in contrast to the architect bench): work-item bodies are specs, not rationale documents — citing the brain in every WI would be unnatural. We surface brain consultation via `tool_use.brainReads` in the result JSON for inspection (every fixture in run 3 had 2–6 brain reads, confirming brain-first discipline). Promote to a scored criterion only if the bench plateaus and we need to disambiguate "PM skipped step 1" from "PM did step 1 badly".
+
+**Outstanding work** (not blocking developer-loop phase):
+
+- The 5 fixtures are deliberately one-per-managed-project, calibrated against project-specific brain themes. As we accumulate cycle data, add fixtures for failure modes the rule-based scorer misses (e.g., subtly vague Given-When-Then where keywords are present but the criterion is unverifiable).
+- LLM-judge layer (matching brain's `score-judged.ts`) deferred until rule-based scoring plateaus.
+- `estimated_iterations` calibration formula — ADR 015 locks the *field*, but per-project tuning from `brain/forge/themes/work-item-completion-by-domain.md` v1 data is a separate calibration pass once we have real cycle data.
+
+**What the bench *didn't* catch** (acknowledged limitations to revisit if quality drifts):
+
+- Doesn't validate that emitted WIs are *implementable* — only that they're well-formed and structurally sound. A vague-but-structurally-clean WI passes today; only the developer loop will surface that.
+- Doesn't test handoff to the developer loop — that's the next bench's job.
+- Doesn't exercise crash-recovery (heartbeat, atomic claim) — the live `cycle.ts` invocation will, when the scheduler is real.
+- The fixtures are scaffolds (~3-7 files each), not real projects. The PM gets less context than it would in production. Expect bench scores to remain a *floor* on production quality, not a ceiling.
+
+**Total bench spend across iteration set:** ~$6.30 across 3 runs. Compare brain (14 runs, $15) and architect (1 run, $1.75). PM was harder than architect because the output structure is richer (multi-file artifact + graph + cross-WI invariants), but the pre-built support code (`work-item.ts` + `pm-invocation.ts` + the architect bench pattern) made each iteration cheap once the fixture/scoring scaffolding was in place.
+
+**What's next:** the next workstream is **developer-loop** — the second unattended phase, the longest-running, and the highest-cost. The Ralph runner is already wired ([`loops/ralph/claude-agent.ts`](../loops/ralph/claude-agent.ts)); what's missing is the developer skill past `SKILL.md`, the bench fixtures, and the `cycle.ts:runDeveloperLoop()` real implementation. See [`docs/phases/developer-loop.md`](../docs/phases/developer-loop.md).

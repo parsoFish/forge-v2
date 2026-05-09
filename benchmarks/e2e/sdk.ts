@@ -203,15 +203,23 @@ try {
       process.stderr.write('[gh shim] current branch is not an initiative branch: ' + branch + '\\n');
       process.exit(1);
     }
-    // Clean the working tree before checkout. The orchestrator's verdict gate
-    // appends to AGENT.md / fix_plan.md after the agent's last commit, leaving
-    // uncommitted scratch that would block 'git checkout main'. Discard it —
-    // bench scratch is per-fixture, not part of the merge.
+    // Commit any pending work before checkout (do NOT reset --hard — that
+    // would wipe the reviewer agent's uncommitted source files written in
+    // its last iteration). Anything Ralph-scratch (AGENT.md / fix_plan.md /
+    // PROMPT.md / node_modules) is in .gitignore so 'git add -A' skips it.
+    // Untracked files outside the gitignore that don't conflict with main
+    // would survive checkout; explicit clean just removes ignored Ralph
+    // scratch so 'git checkout main' has a tidy working tree.
     try {
-      execFileSync('git', ['reset', '--hard', 'HEAD'], { cwd: PROJ, stdio: 'pipe' });
-    } catch { /* best-effort */ }
+      execFileSync('git', ['add', '-A'], { cwd: PROJ, stdio: 'pipe' });
+      execFileSync(
+        'git',
+        ['commit', '--allow-empty', '-q', '-m', 'chore(review): final reviewer iteration'],
+        { cwd: PROJ, stdio: 'pipe' },
+      );
+    } catch { /* nothing to commit is fine */ }
     try {
-      execFileSync('git', ['clean', '-fdx', '--exclude=node_modules'], { cwd: PROJ, stdio: 'pipe' });
+      execFileSync('git', ['clean', '-fdX', '--exclude=node_modules'], { cwd: PROJ, stdio: 'pipe' });
     } catch { /* best-effort */ }
     execFileSync('git', ['checkout', '-q', 'main'], { cwd: PROJ, stdio: 'pipe' });
     execFileSync('git', ['merge', '--ff-only', '-q', branch], { cwd: PROJ, stdio: 'pipe' });
@@ -312,12 +320,13 @@ export async function runE2e(input: RunE2eInput): Promise<RunE2eResult> {
   let cycleThrew: RunE2eResult['cycleThrew'] = null;
   try {
     cycleResult = await runCycle(cycleInput);
-    // Read back the gate state from the orchestrator's invocation. The
-    // orchestrator stores it inside the closure; we surface a copy here for
-    // bench observability by re-reading fix_plan.md / AGENT.md.
+    // Surface gate-state telemetry via the event log (durable across the
+    // gh-shim's post-merge `git clean`). The orchestrator's runReviewer
+    // emits a final 'reviewer.end' event with metadata.gate_invocations
+    // and metadata.verdicts_summary — read those.
     Object.assign(
       reviewerGateState,
-      reconstructGateStateFromArtifacts(projDir),
+      reconstructGateStateFromEventLog(cycleResult.log_path),
     );
   } catch (err) {
     cycleThrew = {
@@ -344,20 +353,45 @@ export async function runE2e(input: RunE2eInput): Promise<RunE2eResult> {
 }
 
 /**
- * Reconstruct review-Ralph round telemetry from worktree artifacts. The
- * orchestrator records verdicts in AGENT.md (one block per round) and
- * send-back feedback in fix_plan.md. Best-effort — used for observability
- * when the orchestrator's in-memory state isn't accessible across the
- * cycle boundary.
+ * Reconstruct review-Ralph round telemetry from the orchestrator's event
+ * log. Durable across the gh-shim's post-merge `git clean` (which removes
+ * AGENT.md / fix_plan.md as gitignored files). Looks for the final
+ * `reviewer.end` event's metadata.gate_invocations and verdicts_summary.
  */
-function reconstructGateStateFromArtifacts(worktreePath: string): Partial<ReviewerGateState> {
-  const agentMd = (() => {
+function reconstructGateStateFromEventLog(logPath: string): Partial<ReviewerGateState> {
+  let text: string;
+  try {
+    text = readFileSync(logPath, 'utf8');
+  } catch {
+    return { invocations: 0, verdicts: [] };
+  }
+  let invocations = 0;
+  let verdictKinds: Array<'approve' | 'send-back'> = [];
+  for (const line of text.split('\n')) {
+    if (!line.trim()) continue;
+    let evt: { phase?: string; skill?: string; event_type?: string; metadata?: Record<string, unknown> };
     try {
-      return readFileSync(join(worktreePath, 'AGENT.md'), 'utf8');
+      evt = JSON.parse(line);
     } catch {
-      return '';
+      continue;
     }
-  })();
-  const verdictBlocks = agentMd.match(/^## Round \d+ verdict /gm) ?? [];
-  return { invocations: verdictBlocks.length };
+    if (evt.phase !== 'review-loop' || evt.skill !== 'reviewer') continue;
+    if (evt.event_type !== 'end' && evt.event_type !== 'error') continue;
+    const md = evt.metadata ?? {};
+    if (typeof md.gate_invocations === 'number') invocations = md.gate_invocations;
+    if (Array.isArray(md.verdicts_summary)) {
+      verdictKinds = (md.verdicts_summary as unknown[]).filter(
+        (v): v is 'approve' | 'send-back' => v === 'approve' || v === 'send-back',
+      );
+    }
+  }
+  // We only have the verdict KINDS in the event log (not the full Verdict
+  // objects with rationale/feedback). Synthesise minimal Verdict shells so
+  // downstream code (caseScore) sees the right round count.
+  const verdicts = verdictKinds.map((kind) =>
+    kind === 'approve'
+      ? { kind: 'approve' as const, rationale: '' }
+      : { kind: 'send-back' as const, rationale: '', feedback: [] },
+  );
+  return { invocations, verdicts };
 }

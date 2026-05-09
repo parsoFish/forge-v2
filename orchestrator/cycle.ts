@@ -120,6 +120,14 @@ export async function runCycle(input: CycleInput): Promise<CycleResult> {
     if (!input.dryRun) {
       await runProjectManager(input, logger);
       await runDeveloperLoop(input, logger);
+      // Safety net: commit any uncommitted dev-loop work before the reviewer
+      // starts. The dev-loop's prompt tells the agent to commit per
+      // iteration, but if it skips, the reviewer's gh-shim does
+      // `git reset --hard HEAD` and the source files vanish. This
+      // boundary commit catches any drift. Files matching .gitignore
+      // (Ralph scratch: PROMPT.md / AGENT.md / fix_plan.md, node_modules)
+      // are excluded by `git add` automatically.
+      commitDevLoopBoundary(input.worktreePath, logger, input.initiativeId);
       reviewerOutcome = await runReviewer(input, logger);
     }
 
@@ -510,9 +518,15 @@ async function runDeveloperLoop(input: CycleInput, logger: EventLogger): Promise
     },
   });
 
-  if (completeCount < items.length) {
+  // Partial dev-loop completion is NOT fatal to the cycle. The reviewer's
+  // send-back loop is the gap-filler — once gates flip green from any WI
+  // and src/ is non-empty, the reviewer can run, the simulator/human can
+  // identify what's missing, and feedback rounds can complete the work.
+  // Only throw when ZERO WIs succeeded (total dev-loop failure); otherwise
+  // emit the partial outcome and hand off to the reviewer.
+  if (completeCount === 0 && items.length > 0) {
     throw new Error(
-      `developer-loop: ${items.length - completeCount}/${items.length} work items did not complete`,
+      `developer-loop: 0/${items.length} work items completed — total failure`,
     );
   }
 }
@@ -928,4 +942,42 @@ async function runReviewer(input: CycleInput, logger: EventLogger): Promise<Revi
 function newCycleId(initiativeId: string): string {
   const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
   return `${ts}_${initiativeId}`;
+}
+
+/**
+ * Boundary commit between dev-loop and reviewer phases. Catches any
+ * uncommitted work from the dev-loop (the agent's per-iteration commit is
+ * prompt-only, not enforced; this is the safety net). Best-effort —
+ * `--allow-empty` so a no-op cycle doesn't error, and `|| true`-style
+ * try/catch so non-git worktrees (e.g. early dry-runs) don't fail the cycle.
+ */
+function commitDevLoopBoundary(
+  worktreePath: string,
+  logger: EventLogger,
+  initiativeId: string,
+): void {
+  try {
+    execFileSync('git', ['add', '-A'], { cwd: worktreePath, stdio: 'pipe' });
+    execFileSync(
+      'git',
+      [
+        'commit',
+        '--allow-empty',
+        '-m',
+        'chore(developer-loop): pre-review boundary snapshot',
+      ],
+      { cwd: worktreePath, stdio: 'pipe' },
+    );
+    logger.emit({
+      initiative_id: initiativeId,
+      phase: 'orchestrator',
+      skill: 'cycle',
+      event_type: 'log',
+      input_refs: [worktreePath],
+      output_refs: [],
+      message: 'cycle.dev-boundary-commit',
+    });
+  } catch {
+    // Not a git repo, or no changes to commit, or git failed — non-fatal.
+  }
 }

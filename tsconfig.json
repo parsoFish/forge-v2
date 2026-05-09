@@ -31,6 +31,8 @@
     "_logs",
     "_queue",
     "benchmarks/*/fixtures/projects",
-    "benchmarks/developer-loop/fixtures"
+    "benchmarks/developer-loop/fixtures",
+    "benchmarks/review-loop/fixtures",
+    "benchmarks/e2e/fixtures"
   ]
 }

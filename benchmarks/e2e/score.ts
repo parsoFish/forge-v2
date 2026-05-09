@@ -124,7 +124,7 @@ const results = await mapConcurrent(cases, CONCURRENCY, async (c): Promise<CaseR
       manifestPath,
       projectName: c.project,
       spec: c.spec,
-      reviewIterationCap: c.expected.max_rounds + 1,
+      reviewIterationCap: c.expected.max_rounds,
     });
   } catch (err) {
     outerError = {
@@ -160,10 +160,16 @@ const results = await mapConcurrent(cases, CONCURRENCY, async (c): Promise<CaseR
     regressionPassed = runRegressionCmd(runOut.worktreePath, c.expected.pre_existing_tests_cmd);
   }
 
+  // Round count = actual simulator verdicts (not gate-invocations, which
+  // include bailouts when project gates were red or artifacts were missing).
+  // Falls back to invocations if the verdict list wasn't surfaced.
+  const verdictCount = runOut.reviewerGateState.verdicts.length;
+  const rounds = verdictCount > 0 ? verdictCount : runOut.reviewerGateState.invocations;
+
   const score = caseScore({
     cycleResult: runOut.cycleResult,
     cycleThrew: runOut.cycleThrew !== null,
-    rounds: runOut.reviewerGateState.invocations,
+    rounds,
     costUsd: cycleCost,
     merged: runOut.merged,
     postMergeSpecResults: runOut.postMergeSpecResults,

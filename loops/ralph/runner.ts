@@ -56,7 +56,28 @@ export type LoopInput = {
     iteration: number,
     info: AgentIterationInfo,
   ) => void | Promise<void>;
+  /**
+   * F-32: paths the WI says the agent should touch (`files_in_scope` from
+   * the WI spec). Threaded into LoopState so the noop-completion stop
+   * condition can decide whether the agent actually engaged. Empty / absent
+   * disables the noop guard (legitimate verification-only WIs are exempt).
+   */
+  filesInScope?: string[];
 };
+
+/**
+ * F-32: scratch paths the noop-completion guard ignores when counting useful
+ * writes. These are runner-managed files that don't represent agent
+ * engagement on the WI itself — touching them isn't progress. Exported so
+ * cycle.ts can reuse this list when authoring per-WI stop conditions.
+ */
+export const RALPH_SCRATCH_PATHS = [
+  'AGENT.md',
+  'PROMPT.md',
+  'fix_plan.md',
+  '.forge/work-items/',
+  '.forge/pr-description.md',
+];
 
 /**
  * F-23: per-iteration agent observability payload. All rich fields are
@@ -128,7 +149,12 @@ export async function run(input: LoopInput, agent: AgentInvocation = stubAgent):
   const startedAt = Date.now();
   const { promptPath, agentMdPath, fixPlanPath } = prepareWorkspace(input);
 
+  // F-32: ordering matters. `noop-completion` runs BEFORE `quality-gates-pass`
+  // so a gate that trivially passes after a no-op iteration cannot exit the
+  // loop with a misleading "complete" status. Disabled when filesInScope is
+  // empty (legitimate no-output WIs).
   const conditions: StopCondition[] = [
+    { kind: 'noop-completion', minIterations: 1, scratchPaths: RALPH_SCRATCH_PATHS },
     { kind: 'quality-gates-pass' },
     { kind: 'iteration-budget', max: input.initiativeBudget.iterations },
     { kind: 'cost-budget', maxUsd: input.initiativeBudget.usd },
@@ -143,6 +169,7 @@ export async function run(input: LoopInput, agent: AgentInvocation = stubAgent):
     costUsdSoFar: 0,
     fixPlanItemsHistory: [countOpenFixPlanItems(input.worktreePath)],
     filesChangedHistory: [],
+    filesInScope: input.filesInScope,
   };
 
   for (;;) {

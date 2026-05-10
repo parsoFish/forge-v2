@@ -636,6 +636,11 @@ async function runDeveloperLoop(input: CycleInput, logger: EventLogger): Promise
           brainQueryResults: '',
           cycleId: logger.cycleId,
           initiativeId: input.initiativeId,
+          // F-32: WI's expected file outputs flow into the runner so the
+          // noop-completion guard knows whether the agent's writes count as
+          // engagement. Empty array (e.g., a verification-only WI) disables
+          // the guard.
+          filesInScope: wi.files_in_scope,
           // F-04: thread the per-project quality-gate command into the
           // runner. When absent, runner falls back to its default
           // (`npm test --silent`); when present (resolveQualityGateCmd

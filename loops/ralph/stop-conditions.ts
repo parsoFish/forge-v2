@@ -14,7 +14,27 @@ export type StopCondition =
   | { kind: 'quality-gates-pass' }
   | { kind: 'iteration-budget'; max: number }
   | { kind: 'cost-budget'; maxUsd: number }
-  | { kind: 'wedged'; noProgressIterations: number };
+  | { kind: 'wedged'; noProgressIterations: number }
+  /**
+   * F-32: noop-completion guard. Fires when the agent has run ≥ `minIterations`
+   * iterations on a WI that declared files_in_scope, but has produced zero
+   * "useful writes" (every file in `filesChangedHistory` is a scratch path —
+   * AGENT.md, PROMPT.md, fix_plan.md, or anywhere under .forge/). Catches the
+   * failure mode where quality-gates-pass fires after a no-op iteration
+   * (build is unbroken because the agent didn't touch anything) and the WI
+   * gets marked complete despite zero engagement.
+   *
+   * Ordered BEFORE `quality-gates-pass` in the runner so it shorts the loop
+   * out before the trivial-pass exit can fire.
+   *
+   * - `minIterations`: how many full iterations to allow before declaring noop
+   *   (default 1: if iter 1 runs and writes nothing, fail; some WIs that
+   *   genuinely need a planning iteration would set this to 2).
+   * - `scratchPaths`: substrings; any filesChanged path containing one of
+   *   these is ignored when counting useful writes. Defaults applied by the
+   *   runner cover the well-known scratch files.
+   */
+  | { kind: 'noop-completion'; minIterations: number; scratchPaths: string[] };
 
 export type LoopState = {
   worktreePath: string;
@@ -22,6 +42,13 @@ export type LoopState = {
   costUsdSoFar: number;
   fixPlanItemsHistory: number[]; // length-of-fix_plan checklist per iteration
   filesChangedHistory: string[][]; // files changed per iteration
+  /**
+   * F-32: WI's declared `files_in_scope` (relative paths). Empty / undefined
+   * means the WI has no expected file outputs (e.g., a verification-only WI),
+   * which disables the noop-completion check. The runner threads this through
+   * from the WI manifest at iteration 0.
+   */
+  filesInScope?: string[];
 };
 
 export type StopResult =
@@ -83,6 +110,27 @@ async function checkOne(
           stop: true,
           reason: `wedged: no progress for ${condition.noProgressIterations} iterations`,
           condition: 'wedged',
+        };
+      }
+      return { stop: false };
+    }
+
+    case 'noop-completion': {
+      // Only meaningful for WIs that declared expected file outputs.
+      if (!state.filesInScope || state.filesInScope.length === 0) return { stop: false };
+      // Wait until the agent has had at least `minIterations` full passes.
+      if (state.iteration < condition.minIterations) return { stop: false };
+      // "Useful writes" = filesChanged paths that aren't in scratchPaths.
+      const allChanged = state.filesChangedHistory.flat();
+      const scratch = condition.scratchPaths;
+      const useful = allChanged.filter(
+        (p) => !scratch.some((s) => p.includes(s)),
+      );
+      if (useful.length === 0) {
+        return {
+          stop: true,
+          reason: `noop-completion: ${condition.minIterations} iteration(s) produced 0 useful writes (only scratch files touched)`,
+          condition: 'noop-completion',
         };
       }
       return { stop: false };

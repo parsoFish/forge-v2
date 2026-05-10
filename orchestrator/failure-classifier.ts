@@ -21,6 +21,7 @@ import type { EventLogEntry } from './logging.ts';
 
 export type FailureMode =
   | 'trivial-pass'           // Ralph completed with iterations=0 — gate was passing before any work
+  | 'noop-completion'        // F-32: agent ran but made 0 useful writes; gate trivially passed
   | 'brain-skipped'          // agent never read brain/ — F-13 gate fired
   | 'pm-stale-context'       // PM emitted WIs with the wrong initiative_id (legacy bug, gitignore-fixed)
   | 'pm-budget-exhausted'    // PM phase hit its USD cap
@@ -49,6 +50,7 @@ export type FailureClassification = {
  */
 const RECOVERABLE_MODES = new Set<FailureMode>([
   'trivial-pass',
+  'noop-completion',
   'brain-skipped',
   'agent-rate-limited',
 ]);
@@ -56,6 +58,8 @@ const RECOVERABLE_MODES = new Set<FailureMode>([
 const RECOMMENDATIONS: Record<FailureMode, string> = {
   'trivial-pass':
     'Gate passed before any agent work. After F-26 the runner forces ≥1 iteration; auto-retry is safe.',
+  'noop-completion':
+    'Agent ran ≥1 iteration but made zero useful writes (only scratch files touched). The gate passed because the build was unchanged. Auto-retry with a fresh prompt; if the same WI no-ops twice in a row the anti-thrash guard will surface it for human attention.',
   'brain-skipped':
     'Agent skipped brain/ reads. Often a one-off; auto-retry once. Persistent skips suggest a system-prompt regression — escalate after retry exhausts.',
   'pm-stale-context':
@@ -96,6 +100,7 @@ export function classifyCycleFailure(events: readonly EventLogEntry[]): FailureC
   // the classifier O(n) over event count and makes the order-dependence
   // explicit at the bottom (the if/else chain that picks a winner).
   let trivialPass = false;
+  let noopCompletion = false;
   let brainSkipped = false;
   let pmStaleContext = false;
   let pmBudgetExhausted = false;
@@ -118,6 +123,12 @@ export function classifyCycleFailure(events: readonly EventLogEntry[]): FailureC
       md.stop_reason === 'quality-gates-pass'
     ) {
       trivialPass = true;
+      pushEvidence(e);
+    }
+
+    // F-32: noop-completion stop_reason from the new Ralph guard.
+    if (msg === 'ralph.end' && md.stop_reason === 'noop-completion') {
+      noopCompletion = true;
       pushEvidence(e);
     }
 
@@ -195,6 +206,7 @@ export function classifyCycleFailure(events: readonly EventLogEntry[]): FailureC
   else if (pmStaleContext) mode = 'pm-stale-context';
   else if (pmBudgetExhausted) mode = 'pm-budget-exhausted';
   else if (trivialPass) mode = 'trivial-pass';
+  else if (noopCompletion) mode = 'noop-completion';
   else if (brainSkipped) mode = 'brain-skipped';
   else if (rateLimited) mode = 'agent-rate-limited';
   else if (agentThrew) mode = 'agent-threw';

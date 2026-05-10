@@ -30,6 +30,14 @@ import { writeCycleReport } from './cycle-report.ts';
 const args = process.argv.slice(2);
 const cmd = args[0];
 
+// F-33: resolve all queue/log paths relative to the forge install root, NOT
+// the user's CWD. Without this, `forge status` / `forge review` from inside
+// `projects/<name>/` would look for `_queue/` under the project repo and
+// silently miss the real one. The forge root is the parent of `orchestrator/`
+// where this file sits.
+const FORGE_ROOT = resolve(import.meta.dirname, '..');
+process.chdir(FORGE_ROOT);
+
 (async () => {
   // F-10: surface env-setup issues at every CLI invocation (warn-only;
   // some setups — e.g., Claude Code — provide auth via credentials file).

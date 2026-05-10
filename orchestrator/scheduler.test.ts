@@ -25,7 +25,9 @@ import { join } from 'node:path';
 
 import {
   checkInitiativeDeps,
+  decideAutoRetry,
   dispatchTerminalStatus,
+  MAX_AUTO_RETRIES,
   type DispatchInput,
 } from './scheduler.ts';
 import { getPaths } from './queue.ts';
@@ -254,4 +256,207 @@ test('checkInitiativeDeps: missing manifest file → empty (best-effort)', () =>
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
+});
+
+// ---- F-27: bounded auto-retry decision ----
+
+function writeManifestWithRetry(
+  inFlightDir: string,
+  id: string,
+  retryCount: number,
+  priorModes: string[] = [],
+): string {
+  const path = join(inFlightDir, `${id}.md`);
+  const priorBlock =
+    priorModes.length > 0
+      ? `previous_failure_modes:\n${priorModes.map((m) => `  - ${m}`).join('\n')}\n`
+      : '';
+  const retryLine = retryCount > 0 ? `retry_count: ${retryCount}\n` : '';
+  writeFileSync(
+    path,
+    `---
+initiative_id: ${id}
+project: trafficGame
+project_repo_path: projects/trafficGame
+created_at: 2026-05-10T18:00:00Z
+iteration_budget: 1
+cost_budget_usd: 1.0
+phase: in-flight
+${retryLine}${priorBlock}---
+
+# ${id}
+`,
+  );
+  return path;
+}
+
+function writeFailureLog(logDir: string, mode: string, recoverable: boolean): string {
+  const logPath = join(logDir, 'events.jsonl');
+  const entry = {
+    event_id: 'EV_test_fc',
+    cycle_id: 'cycle-test',
+    initiative_id: 'INIT-2026-05-10-x',
+    started_at: new Date().toISOString(),
+    phase: 'orchestrator',
+    skill: 'cycle',
+    event_type: 'log',
+    input_refs: [],
+    output_refs: [],
+    message: 'failure_classification',
+    metadata: {
+      cycle_id: 'cycle-test',
+      failure_mode: mode,
+      recoverable,
+    },
+  };
+  writeFileSync(logPath, JSON.stringify(entry) + '\n');
+  return logPath;
+}
+
+test('decideAutoRetry: recoverable mode + retry_count=0 → retry with count=1', () => {
+  const { dir, paths } = setupQueue();
+  try {
+    writeManifestWithRetry(paths.inFlight, 'INIT-2026-05-10-r1', 0);
+    const logDir = mkdtempSync(join(tmpdir(), 'forge-log-'));
+    const logPath = writeFailureLog(logDir, 'trivial-pass', true);
+    try {
+      const decision = decideAutoRetry('INIT-2026-05-10-r1.md', paths, logPath);
+      assert.equal(decision.retry, true);
+      if (decision.retry) {
+        assert.equal(decision.mode, 'trivial-pass');
+        assert.equal(decision.nextRetryCount, 1);
+      }
+    } finally {
+      rmSync(logDir, { recursive: true, force: true });
+    }
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('decideAutoRetry: non-recoverable mode → no retry', () => {
+  const { dir, paths } = setupQueue();
+  try {
+    writeManifestWithRetry(paths.inFlight, 'INIT-2026-05-10-r2', 0);
+    const logDir = mkdtempSync(join(tmpdir(), 'forge-log-'));
+    const logPath = writeFailureLog(logDir, 'gate-missing-script', false);
+    try {
+      const decision = decideAutoRetry('INIT-2026-05-10-r2.md', paths, logPath);
+      assert.equal(decision.retry, false);
+      if (!decision.retry) {
+        assert.match(decision.reason, /not recoverable/);
+      }
+    } finally {
+      rmSync(logDir, { recursive: true, force: true });
+    }
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test(`decideAutoRetry: retry_count >= ${MAX_AUTO_RETRIES} → no retry (cap reached)`, () => {
+  const { dir, paths } = setupQueue();
+  try {
+    writeManifestWithRetry(paths.inFlight, 'INIT-2026-05-10-r3', MAX_AUTO_RETRIES);
+    const logDir = mkdtempSync(join(tmpdir(), 'forge-log-'));
+    const logPath = writeFailureLog(logDir, 'trivial-pass', true);
+    try {
+      const decision = decideAutoRetry('INIT-2026-05-10-r3.md', paths, logPath);
+      assert.equal(decision.retry, false);
+      if (!decision.retry) assert.match(decision.reason, /retry cap/);
+    } finally {
+      rmSync(logDir, { recursive: true, force: true });
+    }
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('decideAutoRetry: same recoverable mode repeated → no retry (anti-thrash)', () => {
+  const { dir, paths } = setupQueue();
+  try {
+    // Already retried once for trivial-pass; the same mode shows up again.
+    writeManifestWithRetry(paths.inFlight, 'INIT-2026-05-10-r4', 1, ['trivial-pass']);
+    const logDir = mkdtempSync(join(tmpdir(), 'forge-log-'));
+    const logPath = writeFailureLog(logDir, 'trivial-pass', true);
+    try {
+      const decision = decideAutoRetry('INIT-2026-05-10-r4.md', paths, logPath);
+      assert.equal(decision.retry, false);
+      if (!decision.retry) assert.match(decision.reason, /repeated despite prior retry/);
+    } finally {
+      rmSync(logDir, { recursive: true, force: true });
+    }
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('decideAutoRetry: log without classification event → no retry', () => {
+  const { dir, paths } = setupQueue();
+  try {
+    writeManifestWithRetry(paths.inFlight, 'INIT-2026-05-10-r5', 0);
+    const logDir = mkdtempSync(join(tmpdir(), 'forge-log-'));
+    const logPath = join(logDir, 'events.jsonl');
+    writeFileSync(logPath, '{"event_id":"e1","message":"something else"}\n');
+    try {
+      const decision = decideAutoRetry('INIT-2026-05-10-r5.md', paths, logPath);
+      assert.equal(decision.retry, false);
+      if (!decision.retry) assert.match(decision.reason, /no failure_classification/);
+    } finally {
+      rmSync(logDir, { recursive: true, force: true });
+    }
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('decideAutoRetry: different recoverable mode after prior retry → retry (modes are distinct)', () => {
+  const { dir, paths } = setupQueue();
+  try {
+    // Prior: brain-skipped. Current: trivial-pass. Different modes — give it another shot.
+    writeManifestWithRetry(paths.inFlight, 'INIT-2026-05-10-r6', 1, ['brain-skipped']);
+    const logDir = mkdtempSync(join(tmpdir(), 'forge-log-'));
+    const logPath = writeFailureLog(logDir, 'trivial-pass', true);
+    try {
+      const decision = decideAutoRetry('INIT-2026-05-10-r6.md', paths, logPath);
+      assert.equal(decision.retry, true);
+      if (decision.retry) assert.equal(decision.nextRetryCount, 2);
+    } finally {
+      rmSync(logDir, { recursive: true, force: true });
+    }
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+// ---- F-27: failure classifier ----
+
+test('classifyCycleFailure: trivial-pass detected from ralph.end with iterations=0', async () => {
+  const { classifyCycleFailure } = await import('./failure-classifier.ts');
+  const events = [
+    { event_id: 'e1', cycle_id: 'c', initiative_id: 'i', started_at: '', phase: 'developer-loop', skill: 'developer-ralph', event_type: 'end', input_refs: [], output_refs: [], message: 'ralph.end', metadata: { work_item_id: 'WI-1', status: 'failed', stop_reason: 'quality-gates-pass', iterations: 0 } },
+  ];
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const cls = classifyCycleFailure(events as any);
+  assert.equal(cls.mode, 'trivial-pass');
+  assert.equal(cls.recoverable, true);
+});
+
+test('classifyCycleFailure: gate-missing-script detected from gate.fail stderr', async () => {
+  const { classifyCycleFailure } = await import('./failure-classifier.ts');
+  const events = [
+    { event_id: 'e1', cycle_id: 'c', initiative_id: 'i', started_at: '', phase: 'developer-loop', skill: 'developer-ralph', event_type: 'error', input_refs: [], output_refs: [], message: 'gate.fail', metadata: { gate_stderr_tail: 'npm error: missing script: test:visual:fast' } },
+  ];
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const cls = classifyCycleFailure(events as any);
+  assert.equal(cls.mode, 'gate-missing-script');
+  assert.equal(cls.recoverable, false);
+});
+
+test('classifyCycleFailure: unknown when no signature matches', async () => {
+  const { classifyCycleFailure } = await import('./failure-classifier.ts');
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const cls = classifyCycleFailure([] as any);
+  assert.equal(cls.mode, 'unknown');
+  assert.equal(cls.recoverable, false);
 });

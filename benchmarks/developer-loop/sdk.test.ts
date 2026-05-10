@@ -131,9 +131,13 @@ test('runDevLoop: completes when quality gate passes, returns parsed WI', async 
   try {
     assert.equal(out.runnerError, undefined);
     assert.ok(out.result, 'result returned');
-    // Quality gate passes immediately, so the loop exits before any iteration runs.
+    // F-26: the runner now requires ≥1 agent invocation before checking the
+    // `quality-gates-pass` condition — a gate that passes before any work
+    // means either the WI is a no-op (agent should still verify) or the
+    // gate isn't capturing the WI's acceptance criteria. After running once,
+    // the gate passes on iteration 1's check and the loop exits cleanly.
     assert.equal(out.result?.status, 'complete');
-    assert.equal(out.result?.iterations, 0);
+    assert.equal(out.result?.iterations, 1);
     assert.equal(out.result?.stop_reason, 'quality-gates-pass');
     assert.equal(out.workItem?.work_item_id, 'WI-1');
     assert.equal(out.regressionPassed, true);

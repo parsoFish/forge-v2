@@ -146,7 +146,19 @@ export async function run(input: LoopInput, agent: AgentInvocation = stubAgent):
   };
 
   for (;;) {
-    const stop = await checkStopConditions(state, conditions, qualityGate);
+    // F-26: skip the `quality-gates-pass` check on iteration 0. A gate that
+    // passes before any work means either (a) the WI is a no-op (the agent
+    // should still verify and write a brain-cite for the trace) or (b) the
+    // gate isn't actually capturing the WI's acceptance criteria (file moves,
+    // structural refactors, deletions — all common shapes that don't break a
+    // build/test gate). Either way, force at least one agent invocation.
+    // Other stop conditions (iteration-budget, cost-budget, wedged) can't fire
+    // before iteration 1 anyway, so leaving them in is safe.
+    const conditionsForThisCheck =
+      state.iteration === 0
+        ? conditions.filter((c) => c.kind !== 'quality-gates-pass')
+        : conditions;
+    const stop = await checkStopConditions(state, conditionsForThisCheck, qualityGate);
     if (stop.stop) {
       return finalize(state, startedAt, stop.condition, agentMdPath, fixPlanPath);
     }

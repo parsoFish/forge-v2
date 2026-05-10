@@ -36,6 +36,21 @@ export type InitiativeManifest = {
    * which orders work-items WITHIN this initiative.
    */
   depends_on_initiatives?: string[];
+  /**
+   * F-27: number of times this manifest has been auto-retried by the
+   * scheduler after a recoverable failure. Used as a cap (`MAX_AUTO_RETRIES`)
+   * to prevent infinite retry loops. Annotated by the scheduler on each
+   * recovery; humans can also reset it manually if they amend the manifest
+   * and want to give it another shot.
+   */
+  retry_count?: number;
+  /**
+   * F-27: list of failure modes that have previously caused this manifest
+   * to be auto-retried. If the same mode shows up retry_count + 1 times,
+   * that's strong evidence the issue isn't transient — the next failure
+   * stops in `failed/` regardless of the mode's nominal `recoverable: true`.
+   */
+  previous_failure_modes?: string[];
   body: string;                // markdown initiative spec
   /**
    * Optional per-project quality-gate command. Used by both the dev-loop
@@ -97,6 +112,11 @@ export function parseManifest(content: string): InitiativeManifest {
     const deps = (data.depends_on_initiatives as unknown[]).filter((s): s is string => typeof s === 'string');
     if (deps.length > 0) manifest.depends_on_initiatives = deps;
   }
+  if (typeof data.retry_count === 'number') manifest.retry_count = data.retry_count;
+  if (Array.isArray(data.previous_failure_modes)) {
+    const modes = (data.previous_failure_modes as unknown[]).filter((s): s is string => typeof s === 'string');
+    if (modes.length > 0) manifest.previous_failure_modes = modes;
+  }
   return manifest;
 }
 
@@ -118,6 +138,12 @@ export function serializeManifest(m: InitiativeManifest): string {
   }
   if (m.depends_on_initiatives && m.depends_on_initiatives.length > 0) {
     data.depends_on_initiatives = m.depends_on_initiatives;
+  }
+  if (typeof m.retry_count === 'number' && m.retry_count > 0) {
+    data.retry_count = m.retry_count;
+  }
+  if (m.previous_failure_modes && m.previous_failure_modes.length > 0) {
+    data.previous_failure_modes = m.previous_failure_modes;
   }
   if (m.features.length > 0) {
     data.features = m.features.map((f) => ({

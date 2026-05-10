@@ -74,6 +74,7 @@ import {
 import { createClaudeAgent, type QueryFn } from '../loops/ralph/claude-agent.ts';
 import { run as runRalph, type LoopResult } from '../loops/ralph/runner.ts';
 import { makeQualityGateFromCmd, type GateRunInfo } from '../loops/ralph/stop-conditions.ts';
+import { classifyCycleFailure } from './failure-classifier.ts';
 import { writeCycleReport } from './cycle-report.ts';
 
 export type CycleInput = {
@@ -192,6 +193,12 @@ export async function runCycle(input: CycleInput): Promise<CycleResult> {
       message: err instanceof Error ? err.message : String(err),
     });
     reviewerOutcome = 'ready-for-review'; // sentinel; overridden below to 'failed'
+    // F-27: classify the failure mode from the event log so the scheduler
+    // (and humans reading the cycle report) can see a concrete diagnosis
+    // instead of grepping events.jsonl. The classifier reads the log we
+    // just finished writing — including the orchestrator-level error event
+    // emitted above.
+    emitFailureClassification(logger, input.initiativeId, cycleId);
     const result: CycleResult = {
       cycle_id: cycleId,
       initiative_id: input.initiativeId,
@@ -1446,6 +1453,49 @@ async function runReflector(
 function newCycleId(initiativeId: string): string {
   const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
   return `${ts}_${initiativeId}`;
+}
+
+/**
+ * F-27: read the cycle's event log, classify the failure mode, and emit a
+ * `failure_classification` event. Best-effort — never throws (a malformed
+ * log shouldn't break the failure-path return).
+ */
+function emitFailureClassification(
+  logger: EventLogger,
+  initiativeId: string,
+  cycleId: string,
+): void {
+  try {
+    const events: import('./logging.ts').EventLogEntry[] = [];
+    const raw = readFileSync(logger.logFilePath, 'utf8');
+    for (const line of raw.split('\n')) {
+      if (!line.trim()) continue;
+      try {
+        events.push(JSON.parse(line));
+      } catch {
+        /* skip malformed line */
+      }
+    }
+    const cls = classifyCycleFailure(events);
+    logger.emit({
+      initiative_id: initiativeId,
+      phase: 'orchestrator',
+      skill: 'cycle',
+      event_type: 'log',
+      input_refs: [logger.logFilePath],
+      output_refs: [],
+      message: 'failure_classification',
+      metadata: {
+        cycle_id: cycleId,
+        failure_mode: cls.mode,
+        recoverable: cls.recoverable,
+        recommendation: cls.recommendation,
+        evidence_event_ids: cls.evidence_event_ids,
+      },
+    });
+  } catch {
+    /* best-effort */
+  }
 }
 
 /**

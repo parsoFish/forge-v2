@@ -91,9 +91,17 @@ export function claim(filename: string, paths = getPaths()): string | null {
   return to;
 }
 
+/**
+ * Move a manifest from `_queue/in-flight/` to another terminal directory.
+ * F-27 widened the target set to include `pending` so the scheduler can
+ * auto-retry recoverable failures by sending them back to the front of the
+ * queue. `pending` is unique in that it's also the *initial* state — the
+ * caller (scheduler) is responsible for incrementing retry_count first so
+ * the same manifest doesn't oscillate between in-flight ↔ pending forever.
+ */
 export function moveTo(
   filename: string,
-  toState: Exclude<QueueState, 'pending'>,
+  toState: Exclude<QueueState, 'in-flight'>,
   paths = getPaths(),
 ): string {
   const from = join(paths.inFlight, filename);
@@ -105,10 +113,10 @@ export function moveTo(
   return to;
 }
 
-function toStateKey(state: Exclude<QueueState, 'pending'>): keyof QueuePaths {
+function toStateKey(state: Exclude<QueueState, 'in-flight'>): keyof QueuePaths {
   switch (state) {
-    case 'in-flight':
-      return 'inFlight';
+    case 'pending':
+      return 'pending';
     case 'ready-for-review':
       return 'readyForReview';
     case 'done':

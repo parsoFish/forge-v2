@@ -20,16 +20,17 @@
 import type { EventLogEntry } from './logging.ts';
 
 export type FailureMode =
-  | 'trivial-pass'           // Ralph completed with iterations=0 — gate was passing before any work
-  | 'brain-skipped'          // agent never read brain/ — F-13 gate (architect / PM only post-F-34)
-  | 'pm-stale-context'       // PM emitted WIs with the wrong initiative_id (legacy bug, gitignore-fixed)
-  | 'pm-budget-exhausted'    // PM phase hit its USD cap
-  | 'gate-missing-script'    // npm run X failed with "missing script: X"
-  | 'worktree-no-deps'       // gate stderr matched "Cannot find module" / module-resolution
-  | 'agent-rate-limited'     // SDK threw rate_limit_error
-  | 'agent-threw'            // generic agent throw caught by runRalph
-  | 'dev-loop-total-failure' // 0/N work items completed
-  | 'review-failed'          // reviewer-Ralph failed
+  | 'trivial-pass'              // Ralph completed with iterations=0 — gate was passing before any work
+  | 'brain-skipped'             // agent never read brain/ — F-13 gate (architect / PM only post-F-34)
+  | 'pm-stale-context'          // PM emitted WIs with the wrong initiative_id (legacy bug, gitignore-fixed)
+  | 'pm-budget-exhausted'       // PM phase hit its USD cap
+  | 'pm-hallucinated-paths'     // F-36: PM emitted files_in_scope paths that don't exist + aren't being created
+  | 'gate-missing-script'       // npm run X failed with "missing script: X"
+  | 'worktree-no-deps'          // gate stderr matched "Cannot find module" / module-resolution
+  | 'agent-rate-limited'        // SDK threw rate_limit_error
+  | 'agent-threw'               // generic agent throw caught by runRalph
+  | 'dev-loop-total-failure'    // 0/N work items completed
+  | 'review-failed'             // reviewer-Ralph failed
   | 'unknown';
 
 export type FailureClassification = {
@@ -51,6 +52,7 @@ const RECOVERABLE_MODES = new Set<FailureMode>([
   'trivial-pass',
   'brain-skipped',
   'agent-rate-limited',
+  'pm-hallucinated-paths',
 ]);
 
 const RECOMMENDATIONS: Record<FailureMode, string> = {
@@ -62,6 +64,8 @@ const RECOMMENDATIONS: Record<FailureMode, string> = {
     'PM emitted WIs with wrong initiative_id (legacy bug). Gitignore + rmSync should prevent recurrence; if seen again, investigate worktree pollution.',
   'pm-budget-exhausted':
     'PM phase hit its USD cap before producing valid WIs. Increase iteration_budget / cost_budget_usd in the manifest.',
+  'pm-hallucinated-paths':
+    'PM emitted files_in_scope paths that don\'t exist in the worktree and aren\'t being created by any acceptance criterion. Auto-retry with the F-35 mandatory Glob enumeration; the second attempt should anchor on real paths. Persistent fabrication after retry signals a deeper prompt issue — surface for human review.',
   'gate-missing-script':
     'quality_gate_cmd referenced an npm script that does not exist in the project. Manifest bug — fix the script name; auto-retry will not help.',
   'worktree-no-deps':
@@ -99,6 +103,7 @@ export function classifyCycleFailure(events: readonly EventLogEntry[]): FailureC
   let brainSkipped = false;
   let pmStaleContext = false;
   let pmBudgetExhausted = false;
+  let pmHallucinatedPaths = false;
   let gateMissingScript = false;
   let worktreeNoDeps = false;
   let rateLimited = false;
@@ -142,6 +147,17 @@ export function classifyCycleFailure(events: readonly EventLogEntry[]): FailureC
     // pm-budget-exhausted: PM result_subtype.
     if (e.phase === 'project-manager' && md.result_subtype === 'error_max_budget_usd') {
       pmBudgetExhausted = true;
+      pushEvidence(e);
+    }
+
+    // F-36 pm-hallucinated-paths: PM end event carries non-empty fabricated_paths.
+    if (
+      e.phase === 'project-manager' &&
+      e.event_type === 'error' &&
+      Array.isArray(md.fabricated_paths) &&
+      md.fabricated_paths.length > 0
+    ) {
+      pmHallucinatedPaths = true;
       pushEvidence(e);
     }
 
@@ -193,6 +209,7 @@ export function classifyCycleFailure(events: readonly EventLogEntry[]): FailureC
   if (gateMissingScript) mode = 'gate-missing-script';
   else if (worktreeNoDeps) mode = 'worktree-no-deps';
   else if (pmStaleContext) mode = 'pm-stale-context';
+  else if (pmHallucinatedPaths) mode = 'pm-hallucinated-paths';
   else if (pmBudgetExhausted) mode = 'pm-budget-exhausted';
   else if (trivialPass) mode = 'trivial-pass';
   else if (brainSkipped) mode = 'brain-skipped';

@@ -67,6 +67,7 @@ import {
   detectHiddenCoupling,
   readWorkItemsFromDir,
   topologicalOrder,
+  validateFilesInScopeAgainstWorktree,
   validateWorkItemSet,
   writeWorkItemStatus,
   type WorkItem,
@@ -459,12 +460,24 @@ async function runProjectManager(input: CycleInput, logger: EventLogger): Promis
   // sees the structural cause rather than a generic "PM phase failed".
   const couplingViolations = items.length > 0 ? detectHiddenCoupling(items) : [];
 
+  // F-36: catch PM hallucination at the cheapest point. If a WI references
+  // a `files_in_scope` path that doesn't exist in the worktree AND its ACs
+  // don't describe creating the file, the PM almost certainly fabricated
+  // the path from generic project priors. Surface as a typed error so the
+  // operator (or auto-retry layer) sees "pm-hallucinated-paths" rather
+  // than a downstream dev-loop wedge that's expensive to diagnose.
+  const fabricatedPaths =
+    items.length > 0
+      ? validateFilesInScopeAgainstWorktree(items, input.worktreePath, existsSync)
+      : [];
+
   const failed =
     items.length === 0 ||
     Object.keys(parseErrors).length > 0 ||
     setErrors.length > 0 ||
     itemErrorCount > 0 ||
-    couplingViolations.length > 0;
+    couplingViolations.length > 0 ||
+    fabricatedPaths.length > 0;
 
   logger.emit({
     initiative_id: input.initiativeId,
@@ -495,6 +508,7 @@ async function runProjectManager(input: CycleInput, logger: EventLogger): Promis
       set_errors: setErrors,
       per_item_error_count: itemErrorCount,
       hidden_coupling_violations: couplingViolations,
+      fabricated_paths: fabricatedPaths,
     },
   });
 

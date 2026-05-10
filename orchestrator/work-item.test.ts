@@ -12,6 +12,7 @@ import { join } from 'node:path';
 import {
   parseWorkItem,
   serializeWorkItem,
+  validateFilesInScopeAgainstWorktree,
   validateWorkItem,
   validateWorkItemSet,
   writeWorkItem,
@@ -220,4 +221,90 @@ test('readWorkItemsFromDir: parses all .md files except _graph.md', () => {
 test('parseWorkItem: throws on missing required field', () => {
   const md = `---\nfeature_id: FEAT-1\n---\n\nbody`;
   assert.throws(() => parseWorkItem(md), /work_item_id/);
+});
+
+// ---- F-36: files_in_scope path validation against the worktree ----
+
+test('validateFilesInScopeAgainstWorktree: real path → no error', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'forge-fis-'));
+  try {
+    writeFileSync(join(dir, 'real.ts'), 'export {}\n');
+    const item = fixture({
+      files_in_scope: ['real.ts'],
+      acceptance_criteria: [{ given: 'real.ts exists', when: 'edited', then: 'still compiles' }],
+    });
+    const errs = validateFilesInScopeAgainstWorktree([item], dir, existsSync);
+    assert.deepEqual(errs, []);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('validateFilesInScopeAgainstWorktree: hallucinated path → error', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'forge-fis-'));
+  try {
+    const item = fixture({
+      files_in_scope: ['src/engine/physics.test.ts'],
+      // ACs reference the file as a precondition (Given), not as something being created.
+      acceptance_criteria: [
+        {
+          given: 'the file src/engine/physics.test.ts exists in the worktree',
+          when: 'WI runs',
+          then: 'it is moved to tests/_legacy/',
+        },
+      ],
+    });
+    const errs = validateFilesInScopeAgainstWorktree([item], dir, existsSync);
+    assert.equal(errs.length, 1);
+    assert.match(errs[0], /Likely PM hallucination/);
+    assert.match(errs[0], /physics\.test\.ts/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('validateFilesInScopeAgainstWorktree: non-existent BUT explicitly created → no error', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'forge-fis-'));
+  try {
+    const item = fixture({
+      files_in_scope: ['tests/scoring/unified.test.ts'],
+      acceptance_criteria: [
+        {
+          given: 'no behaviour-layer scoring tests exist',
+          when: 'unified.test.ts is written under tests/scoring/',
+          then: 'a new file unified.test.ts exists with at least 5 tests covering UnifiedScore',
+        },
+      ],
+    });
+    const errs = validateFilesInScopeAgainstWorktree([item], dir, existsSync);
+    assert.deepEqual(errs, []);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('validateFilesInScopeAgainstWorktree: leading slash in path is normalised', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'forge-fis-'));
+  try {
+    writeFileSync(join(dir, 'real.ts'), '');
+    const item = fixture({ files_in_scope: ['/real.ts'] });
+    const errs = validateFilesInScopeAgainstWorktree([item], dir, existsSync);
+    assert.deepEqual(errs, []);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('validateFilesInScopeAgainstWorktree: multiple WIs, mixed real + fabricated', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'forge-fis-'));
+  try {
+    writeFileSync(join(dir, 'a.ts'), '');
+    const a = fixture({ work_item_id: 'WI-1', files_in_scope: ['a.ts'] });
+    const b = fixture({ work_item_id: 'WI-2', files_in_scope: ['fictional.ts'] });
+    const errs = validateFilesInScopeAgainstWorktree([a, b], dir, existsSync);
+    assert.equal(errs.length, 1);
+    assert.match(errs[0], /^WI-2:/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });

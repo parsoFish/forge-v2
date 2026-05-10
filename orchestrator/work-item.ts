@@ -199,6 +199,54 @@ export function validateWorkItemSet(items: WorkItem[], opts: Omit<ValidateOption
   return { perItem, setErrors };
 }
 
+/**
+ * F-36: post-emission validation that every `files_in_scope` path either
+ * (a) exists in the worktree, or
+ * (b) is "being created" — its basename appears in any acceptance criterion's
+ *     `then` clause, suggesting the WI authors a new file.
+ *
+ * Catches PM hallucination at the cheapest possible point: before any dev
+ * agent burns budget trying to find files that don't exist. The 13:01:59
+ * simplification-tests cycle hit this — PM emitted WIs referencing
+ * `src/engine/{physics,spawner,state}.test.ts` which trafficGame doesn't
+ * have; the dev agent then tried `mkdir -p src/engine` to satisfy the
+ * fictional spec.
+ *
+ * Returns one error string per offending path. Empty result = all paths
+ * are either real or legitimately new.
+ */
+export function validateFilesInScopeAgainstWorktree(
+  items: WorkItem[],
+  worktreePath: string,
+  fsExists: (p: string) => boolean,
+): string[] {
+  const errors: string[] = [];
+  const CREATION_HINT_RE = /\b(creates?|created|adds?|added|new|writes?|wrote|written|authored?|stamps?|stamped)\b/i;
+  for (const item of items) {
+    for (const rel of item.files_in_scope) {
+      // Resolve path relative to the worktree.
+      const cleaned = rel.replace(/^\/+/, '');
+      const abs = `${worktreePath}/${cleaned}`;
+      if (fsExists(abs)) continue;
+
+      // Path doesn't exist. Check if any AC's `then` clause mentions
+      // this basename alongside creation-language. If yes, it's a new file.
+      const lastSlash = cleaned.lastIndexOf('/');
+      const basename = lastSlash >= 0 ? cleaned.slice(lastSlash + 1) : cleaned;
+      const isCreated = item.acceptance_criteria.some((ac) => {
+        const text = `${ac.given} ${ac.when} ${ac.then}`;
+        return text.includes(basename) && CREATION_HINT_RE.test(text);
+      });
+      if (isCreated) continue;
+
+      errors.push(
+        `${item.work_item_id}: files_in_scope path \`${rel}\` does not exist in the worktree, and no acceptance criterion describes creating it. Likely PM hallucination — re-run PM with the actual project tree enumerated, or amend the WI to explicitly state that this file is being authored.`,
+      );
+    }
+  }
+  return errors;
+}
+
 export function readWorkItemsFromDir(dir: string): {
   items: WorkItem[];
   parseErrors: Record<string, string>;

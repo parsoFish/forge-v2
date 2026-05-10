@@ -926,7 +926,13 @@ async function runReviewer(input: CycleInput, logger: EventLogger): Promise<Revi
   const qualityGateCmd =
     input.qualityGateCmd ??
     (existsSync(resolve(input.worktreePath, 'package.json')) ? ['npm', 'test'] : ['true']);
-  const iterationCap = input.reviewIterationCap ?? REVIEWER_LIVE_DEFAULT_ITERATIONS;
+  // F-30: adaptive reviewer iteration cap. The default of 3 (1 prep + 2
+  // send-back rounds) is right for small diffs, but for large structural
+  // refactors (100+ files renamed/deleted) the reviewer needs more rounds
+  // just to summarise and demo. Scale by the count of changed files between
+  // the merge-base and HEAD, capped to avoid runaway budgets.
+  const adaptiveCap = computeAdaptiveReviewIterationCap(input.worktreePath);
+  const iterationCap = input.reviewIterationCap ?? adaptiveCap;
   const usdBudget =
     input.reviewIterationBudgetUsd ?? REVIEWER_LIVE_DEFAULT_USD_PER_ITERATION;
 
@@ -1203,6 +1209,18 @@ async function runReviewer(input: CycleInput, logger: EventLogger): Promise<Revi
     // before reaching an approved verdict). Return outcome cleanly — the
     // dispatch helper notifies as 'failed' to surface the cap exhaustion.
     outcome = 'send-back-cap-exhausted';
+    // F-29: fall-through PR description. The reviewer-Ralph may have run out
+    // of iterations before writing pr-description.md (or written a stub);
+    // either way, the human picking this up via `forge review <id>` should
+    // see a usable description even if the agent didn't produce one. Write
+    // a deterministic version from git log + diff stat — no LLM call, no
+    // chance of fabrication. If the file already exists with real content,
+    // leave it alone.
+    try {
+      ensureMinimalPrDescription(input.worktreePath, input.initiativeId);
+    } catch {
+      /* best-effort — never break the cycle for a description fallback */
+    }
     logger.emit({
       initiative_id: input.initiativeId,
       parent_event_id: start.event_id,
@@ -1453,6 +1471,118 @@ async function runReflector(
 function newCycleId(initiativeId: string): string {
   const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
   return `${ts}_${initiativeId}`;
+}
+
+/**
+ * F-30: scale the reviewer iteration cap to the size of the diff. The
+ * baseline (3 rounds = 1 prep + 2 send-back) is fine for typical 5-20 file
+ * diffs; larger refactors need proportionally more rounds for the reviewer
+ * to read, summarise, gate, demo, and write the PR description. Without
+ * scaling, a 107-file diff (e.g., trafficGame's test-suite quarantine)
+ * exhausts the cap before the reviewer can produce anything usable.
+ *
+ * Mapping (changed-file count → iteration cap):
+ *   ≤   20 files  →  3   (default)
+ *   ≤   50 files  →  4
+ *   ≤  100 files  →  5
+ *   ≤  200 files  →  6
+ *   >  200 files  →  8   (hard cap; no runaway budgets)
+ *
+ * Errors during diff inspection (no merge-base, git failure, etc.) fall back
+ * to the baseline 3 — same as today.
+ */
+export function computeAdaptiveReviewIterationCap(worktreePath: string): number {
+  let changed = 0;
+  try {
+    // `--name-only` between merge-base and HEAD; line count = changed-file count.
+    const out = execFileSync(
+      'git',
+      ['-C', worktreePath, 'diff', '--name-only', 'main...HEAD'],
+      { stdio: 'pipe' },
+    ).toString('utf8');
+    changed = out.split('\n').filter((l) => l.trim().length > 0).length;
+  } catch {
+    return REVIEWER_LIVE_DEFAULT_ITERATIONS;
+  }
+  if (changed <= 20) return 3;
+  if (changed <= 50) return 4;
+  if (changed <= 100) return 5;
+  if (changed <= 200) return 6;
+  return 8;
+}
+
+/**
+ * F-29: ensure `<worktree>/.forge/pr-description.md` exists with a usable
+ * draft, generated deterministically from git log + diff stat. Called when
+ * the reviewer-Ralph runs out of iterations and the human is about to pick
+ * up the cycle via `forge review <id>` — without this, they may inherit an
+ * empty / fabricated description.
+ *
+ * Idempotent: leaves an existing description untouched if it has real content
+ * (≥ 300 chars, the same threshold the reviewer mandate uses). Only stamps a
+ * fallback when the existing description is missing or too thin to be useful.
+ *
+ * No LLM call; no risk of hallucinated content. Worst-case the human edits it.
+ */
+function ensureMinimalPrDescription(worktreePath: string, initiativeId: string): void {
+  const prPath = resolve(worktreePath, '.forge', 'pr-description.md');
+  if (existsSync(prPath)) {
+    const existing = readFileSync(prPath, 'utf8');
+    if (existing.length >= 300) return;
+  }
+  // Pull a deterministic summary from git: last 20 commits + diff stat.
+  let commits = '';
+  let diffStat = '';
+  try {
+    commits = execFileSync(
+      'git',
+      ['-C', worktreePath, 'log', '--no-color', '--format=- %s', '-n', '20'],
+      { stdio: 'pipe' },
+    ).toString('utf8').trim();
+  } catch {
+    commits = '_(no commits captured)_';
+  }
+  try {
+    diffStat = execFileSync(
+      'git',
+      ['-C', worktreePath, 'diff', '--stat', 'HEAD~1', 'HEAD'],
+      { stdio: 'pipe' },
+    ).toString('utf8').trim();
+  } catch {
+    diffStat = '_(no diff stat available)_';
+  }
+  if (!existsSync(resolve(worktreePath, '.forge'))) {
+    mkdirSync(resolve(worktreePath, '.forge'), { recursive: true });
+  }
+  const body = [
+    `# ${initiativeId} (auto-drafted)`,
+    '',
+    '> ⚠️ **Reviewer-Ralph ran out of iterations before producing a hand-crafted PR description.** This draft was generated deterministically from `git log` + `git diff --stat`. Please review and edit before merging.',
+    '',
+    '## Why',
+    '',
+    `Initiative ${initiativeId} reached the review phase but the agent could not converge within the iteration cap. The work below was committed during the dev-loop; verify each commit lands what its message claims, and either approve via \`forge review ${initiativeId} --approve\` or send back via the verdict prompt at \`_queue/ready-for-review/${initiativeId}.md.verdict-prompt\`.`,
+    '',
+    '## What',
+    '',
+    'Recent commits on this branch:',
+    '',
+    commits,
+    '',
+    '## How',
+    '',
+    'Diff stat (HEAD~1..HEAD):',
+    '',
+    '```',
+    diffStat,
+    '```',
+    '',
+    '## Demo',
+    '',
+    '_(automated demo not produced — reviewer-Ralph exhausted iterations before generating one. Run the project locally and verify the changes manually before merging, or send-back to request a re-attempt.)_',
+    '',
+  ].join('\n');
+  writeFileSync(prPath, body);
 }
 
 /**

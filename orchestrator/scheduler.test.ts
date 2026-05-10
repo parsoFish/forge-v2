@@ -460,3 +460,25 @@ test('classifyCycleFailure: unknown when no signature matches', async () => {
   assert.equal(cls.mode, 'unknown');
   assert.equal(cls.recoverable, false);
 });
+
+// ---- F-28: dispatchTerminalStatus must NOT signal cleanup for ready-for-review ----
+
+test('dispatchTerminalStatus: send-back-cap-exhausted → no manifest move (cycle.ts owns it)', async () => {
+  const { dir, paths } = setupQueue();
+  const calls: NotifyEvent[] = [];
+  try {
+    // Reviewer (cycle.ts) already moved the manifest to ready-for-review/.
+    writeFileSync(join(paths.readyForReview, 'INIT-test.md'), 'ready');
+    const out = await dispatchTerminalStatus(makeInput('send-back-cap-exhausted'), {
+      paths,
+      notifyFn: async (e) => { calls.push(e); },
+    });
+    assert.equal(out.moved, null);
+    assert.equal(out.notified, 'review-ready');
+    assert.equal(calls.length, 1);
+    // Manifest should still be in ready-for-review/ (not moved by dispatch).
+    assert.equal(existsSync(join(paths.readyForReview, 'INIT-test.md')), true);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});

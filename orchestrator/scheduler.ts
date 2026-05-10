@@ -445,6 +445,11 @@ async function runOne(
   // Hold the handle outside the try so the finally block can clean it up
   // regardless of which path produced the result (success, failed, threw).
   let wtHandle: worktree.WorktreeHandle | null = null;
+  // F-28: track whether the cycle landed in a "human-resolves-this" state so
+  // the finally block can preserve the worktree + branch instead of deleting
+  // the only surviving copy of the work. Set inside the try after runCycle
+  // returns; defaults to false (clean up like before for thrown errors).
+  let preserveWorktree = false;
   try {
     const manifest = parseManifest(manifestPath);
     if (tee) console.log(`[serve] claimed: ${manifest.initiativeId} (${manifest.project})`);
@@ -480,6 +485,13 @@ async function runOne(
     });
 
     if (tee) console.log(`[serve] ${manifest.initiativeId} · cycle ${result.status}`);
+    // F-28: any cycle outcome that ends with the manifest in `ready-for-review/`
+    // means a human will look at the work next. Deleting the worktree + branch
+    // here would erase the only copy of the changes (the report has the diff
+    // text but not a working tree). Preserve in those states; cleanup happens
+    // when the human resolves via `forge review --approve / --abandon`.
+    preserveWorktree =
+      result.status === 'ready-for-review' || result.status === 'send-back-cap-exhausted';
     await dispatchTerminalStatus(
       {
         filename,
@@ -509,16 +521,23 @@ async function runOne(
     );
   } finally {
     clearInterval(heartbeat);
-    // F-09: always clean up the worktree + scratch branch. The trial showed
-    // that a failed cycle leaks both indefinitely otherwise. Idempotent —
-    // safe to call when the worktree was never created (wtHandle null) or
-    // when gh pr merge --delete-branch already deleted the branch.
-    if (wtHandle) {
+    // F-09 + F-28: clean up the worktree + scratch branch on terminal states
+    // only. `merged` (cycle.ts already deleted the branch via gh pr merge),
+    // `failed`, or thrown errors all clean up. `ready-for-review` /
+    // `send-back-cap-exhausted` preserve the worktree so the human can
+    // inspect via `forge review <id>` and `forge review --approve` /
+    // `--abandon` triggers cleanup at that point.
+    if (wtHandle && !preserveWorktree) {
       try {
         worktree.cleanup(wtHandle);
       } catch {
         /* best-effort — the cleanup helper itself swallows; this catches any unexpected throw */
       }
+    }
+    if (wtHandle && preserveWorktree && tee) {
+      console.log(
+        `[serve] preserved worktree: ${wtHandle.path} (branch ${wtHandle.branch}) — resolve via 'forge review <id>'`,
+      );
     }
   }
 }

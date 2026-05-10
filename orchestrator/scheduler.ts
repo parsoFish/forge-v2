@@ -25,6 +25,7 @@ import {
 } from './queue.ts';
 import * as worktree from './worktree.ts';
 import { runCycle } from './cycle.ts';
+import { parseManifest as parseFullManifest } from './manifest.ts';
 import type { EventLogEntry } from './logging.ts';
 import { notify, type NotifyConfig, type NotifyEvent } from './notify.ts';
 import { makeFileVerdict } from './file-verdict.ts';
@@ -118,17 +119,47 @@ export async function serve(opts: { mode: RunMode } & SchedulerConfig = { mode: 
   // Enabled in both modes — once-mode is the typical validation entry point.
   const tee = makeProgressTee();
 
+  // F-25: track which initiative IDs we've already announced as "blocked" so
+  // the idle stdout doesn't repeat the same line every poll cycle (5s).
+  const announcedBlocked = new Set<string>();
+
   const tick = async (): Promise<boolean> => {
     while (inFlight.size < cfg.maxConcurrentInitiatives) {
       const pending = listPending(getPaths(cfg.queueRoot));
       if (pending.length === 0) return false;
-      const filename = pending[0];
-      const claimed = claim(filename, getPaths(cfg.queueRoot));
-      if (!claimed) continue;
-      const promise = runOne(claimed, filename, cfg, tee).finally(() => {
-        inFlight.delete(filename);
+      // F-25: walk pending files in order, picking the first whose
+      // initiative-level dependencies are all in `_queue/done/`. A blocked
+      // initiative stays in pending; we just skip past it.
+      let claimed: string | null = null;
+      let claimedFilename: string | null = null;
+      for (const filename of pending) {
+        const initiativeId = filename.replace(/\.md$/, '');
+        const blockedBy = checkInitiativeDeps(filename, getPaths(cfg.queueRoot));
+        if (blockedBy.length > 0) {
+          if (!announcedBlocked.has(initiativeId)) {
+            console.log(
+              `[serve] skipping ${initiativeId} — blocked by ${blockedBy.join(', ')}`,
+            );
+            announcedBlocked.add(initiativeId);
+          }
+          continue;
+        }
+        announcedBlocked.delete(initiativeId);
+        const c = claim(filename, getPaths(cfg.queueRoot));
+        if (c) {
+          claimed = c;
+          claimedFilename = filename;
+          break;
+        }
+      }
+      if (!claimed || !claimedFilename) return inFlight.size > 0;
+      // Capture the filename for the closure so a later loop iteration's
+      // reassignment of `claimedFilename` can't shadow this entry's cleanup.
+      const fn: string = claimedFilename;
+      const promise = runOne(claimed, fn, cfg, tee).finally(() => {
+        inFlight.delete(fn);
       });
-      inFlight.set(filename, promise);
+      inFlight.set(fn, promise);
       if (cfg.mode === 'once') break;
     }
     return inFlight.size > 0;
@@ -300,6 +331,31 @@ function makeProgressTee(): (entry: EventLogEntry) => void {
       return;
     }
   };
+}
+
+/**
+ * F-25: read a pending manifest's `depends_on_initiatives` and return the
+ * subset that are NOT yet in `_queue/done/`. An empty result means all deps
+ * are satisfied (or there were no deps) and the scheduler may claim. Best-
+ * effort: a malformed manifest returns no blocking deps (the existing
+ * validate-on-claim path will reject it for other reasons). Exported for
+ * unit-test access — the scheduler is the only production caller.
+ */
+export function checkInitiativeDeps(filename: string, paths: QueuePaths): string[] {
+  const pendingPath = join(paths.pending, filename);
+  if (!existsSync(pendingPath)) return [];
+  let deps: string[];
+  try {
+    const full = parseFullManifest(readFileSync(pendingPath, 'utf8'));
+    deps = full.depends_on_initiatives ?? [];
+  } catch {
+    return [];
+  }
+  if (deps.length === 0) return [];
+  return deps.filter((depId) => {
+    const donePath = join(paths.done, `${depId}.md`);
+    return !existsSync(donePath);
+  });
 }
 
 /**

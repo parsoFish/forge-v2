@@ -24,6 +24,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import {
+  checkInitiativeDeps,
   dispatchTerminalStatus,
   type DispatchInput,
 } from './scheduler.ts';
@@ -152,6 +153,104 @@ test('dispatchTerminalStatus: failed but manifest not in in-flight → no move, 
     assert.equal(out.moved, null, 'dispatch did not double-move');
     assert.equal(out.notified, 'failed');
     assert.equal(calls.length, 1);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+// ---- F-25: initiative-level dependency enforcement ----
+
+function manifestWithDeps(id: string, deps: string[]): string {
+  const depsBlock =
+    deps.length > 0
+      ? `depends_on_initiatives:\n${deps.map((d) => `  - ${d}`).join('\n')}\n`
+      : '';
+  return `---
+initiative_id: ${id}
+project: trafficGame
+project_repo_path: projects/trafficGame
+created_at: 2026-05-10T18:00:00Z
+iteration_budget: 1
+cost_budget_usd: 1.0
+phase: pending
+${depsBlock}---
+
+# ${id}
+`;
+}
+
+test('checkInitiativeDeps: no deps declared → empty (always claimable)', () => {
+  const { dir, paths } = setupQueue();
+  try {
+    writeFileSync(join(paths.pending, 'INIT-2026-05-10-a.md'), manifestWithDeps('INIT-2026-05-10-a', []));
+    assert.deepEqual(checkInitiativeDeps('INIT-2026-05-10-a.md', paths), []);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('checkInitiativeDeps: dep in done/ → unblocked (empty result)', () => {
+  const { dir, paths } = setupQueue();
+  try {
+    writeFileSync(
+      join(paths.pending, 'INIT-2026-05-10-b.md'),
+      manifestWithDeps('INIT-2026-05-10-b', ['INIT-2026-05-10-a']),
+    );
+    writeFileSync(join(paths.done, 'INIT-2026-05-10-a.md'), manifestWithDeps('INIT-2026-05-10-a', []));
+    assert.deepEqual(checkInitiativeDeps('INIT-2026-05-10-b.md', paths), []);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('checkInitiativeDeps: dep missing from done/ → returned as blocker', () => {
+  const { dir, paths } = setupQueue();
+  try {
+    writeFileSync(
+      join(paths.pending, 'INIT-2026-05-10-b.md'),
+      manifestWithDeps('INIT-2026-05-10-b', ['INIT-2026-05-10-a']),
+    );
+    // INIT-a not in done/ — it's nowhere, or it's still pending/in-flight/etc.
+    assert.deepEqual(checkInitiativeDeps('INIT-2026-05-10-b.md', paths), ['INIT-2026-05-10-a']);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('checkInitiativeDeps: dep in pending/ (not yet run) → returned as blocker', () => {
+  const { dir, paths } = setupQueue();
+  try {
+    writeFileSync(
+      join(paths.pending, 'INIT-2026-05-10-b.md'),
+      manifestWithDeps('INIT-2026-05-10-b', ['INIT-2026-05-10-a']),
+    );
+    writeFileSync(join(paths.pending, 'INIT-2026-05-10-a.md'), manifestWithDeps('INIT-2026-05-10-a', []));
+    assert.deepEqual(checkInitiativeDeps('INIT-2026-05-10-b.md', paths), ['INIT-2026-05-10-a']);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('checkInitiativeDeps: multiple deps, partial completion → only missing ones returned', () => {
+  const { dir, paths } = setupQueue();
+  try {
+    writeFileSync(
+      join(paths.pending, 'INIT-2026-05-10-c.md'),
+      manifestWithDeps('INIT-2026-05-10-c', ['INIT-2026-05-10-a', 'INIT-2026-05-10-b']),
+    );
+    writeFileSync(join(paths.done, 'INIT-2026-05-10-a.md'), manifestWithDeps('INIT-2026-05-10-a', []));
+    // INIT-b never created in done/
+    assert.deepEqual(checkInitiativeDeps('INIT-2026-05-10-c.md', paths), ['INIT-2026-05-10-b']);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('checkInitiativeDeps: missing manifest file → empty (best-effort)', () => {
+  const { dir, paths } = setupQueue();
+  try {
+    // No manifest written. Nothing to do.
+    assert.deepEqual(checkInitiativeDeps('INIT-2026-05-10-nonexistent.md', paths), []);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

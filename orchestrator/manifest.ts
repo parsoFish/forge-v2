@@ -29,6 +29,13 @@ export type InitiativeManifest = {
   cost_budget_usd: number;     // > 0
   phase: ManifestPhase;
   features: Feature[];
+  /**
+   * F-25: initiative-level dependencies. Each entry is another initiative_id
+   * that must be in `_queue/done/` before the scheduler may claim this one.
+   * Empty / absent = no prerequisites. Distinct from `features[].depends_on`,
+   * which orders work-items WITHIN this initiative.
+   */
+  depends_on_initiatives?: string[];
   body: string;                // markdown initiative spec
   /**
    * Optional per-project quality-gate command. Used by both the dev-loop
@@ -86,6 +93,10 @@ export function parseManifest(content: string): InitiativeManifest {
     const cmd = (data.quality_gate_cmd as unknown[]).filter((s): s is string => typeof s === 'string');
     if (cmd.length > 0) manifest.quality_gate_cmd = cmd;
   }
+  if (Array.isArray(data.depends_on_initiatives)) {
+    const deps = (data.depends_on_initiatives as unknown[]).filter((s): s is string => typeof s === 'string');
+    if (deps.length > 0) manifest.depends_on_initiatives = deps;
+  }
   return manifest;
 }
 
@@ -104,6 +115,9 @@ export function serializeManifest(m: InitiativeManifest): string {
   if (m.worktree_path) data.worktree_path = m.worktree_path;
   if (m.quality_gate_cmd && m.quality_gate_cmd.length > 0) {
     data.quality_gate_cmd = m.quality_gate_cmd;
+  }
+  if (m.depends_on_initiatives && m.depends_on_initiatives.length > 0) {
+    data.depends_on_initiatives = m.depends_on_initiatives;
   }
   if (m.features.length > 0) {
     data.features = m.features.map((f) => ({
@@ -132,6 +146,20 @@ export function validateManifest(m: InitiativeManifest): string[] {
       errors.push('quality_gate_cmd must be a non-empty array of strings when set');
     } else if (!m.quality_gate_cmd.every((s) => typeof s === 'string' && s.length > 0)) {
       errors.push('quality_gate_cmd entries must be non-empty strings');
+    }
+  }
+  if (m.depends_on_initiatives !== undefined) {
+    if (!Array.isArray(m.depends_on_initiatives)) {
+      errors.push('depends_on_initiatives must be an array of initiative_id strings when set');
+    } else {
+      for (const dep of m.depends_on_initiatives) {
+        if (typeof dep !== 'string' || !INITIATIVE_ID_PATTERN.test(dep)) {
+          errors.push(`depends_on_initiatives entry must match INIT-YYYY-MM-DD-<slug>: got ${dep}`);
+        }
+        if (dep === m.initiative_id) {
+          errors.push(`depends_on_initiatives cannot contain self (${dep})`);
+        }
+      }
     }
   }
 

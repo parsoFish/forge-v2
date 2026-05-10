@@ -93,7 +93,7 @@ const results = await mapConcurrent(cases, CONCURRENCY, async (c): Promise<CaseR
       out_of_scope_files: [],
       status: 'aborted',
       stop_reason: 'aborted',
-      tool_use: { reads: 0, writes: 0, bashCalls: 0, testRuns: 0 },
+      tool_use: { reads: 0, brainReads: 0, writes: 0, bashCalls: 0, testRuns: 0 },
       elapsed_ms: 0,
       runner_error: { kind: 'session_budget_exhausted', message: `>= ${SESSION_BUDGET_USD} USD` },
     };
@@ -128,7 +128,7 @@ const results = await mapConcurrent(cases, CONCURRENCY, async (c): Promise<CaseR
       out_of_scope_files: [],
       status: 'crashed',
       stop_reason: 'crashed',
-      tool_use: { reads: 0, writes: 0, bashCalls: 0, testRuns: 0 },
+      tool_use: { reads: 0, brainReads: 0, writes: 0, bashCalls: 0, testRuns: 0 },
       elapsed_ms: 0,
       runner_error: outerError,
     };

@@ -6,7 +6,7 @@
  * report a boolean.
  */
 
-import { execSync } from 'node:child_process';
+import { execSync, execFileSync } from 'node:child_process';
 import { readFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 
@@ -98,6 +98,32 @@ export function defaultQualityGates(worktreePath: string): boolean {
   } catch {
     return false;
   }
+}
+
+/**
+ * Build a quality-gate closure from an explicit command vector. Used by
+ * cycle.ts:runDeveloperLoop to thread the manifest's per-project
+ * `quality_gate_cmd` (Python pytest, bash bats, Rust cargo, etc.) into the
+ * Ralph runner — eliminating the F-04 hardcoded `npm test` problem.
+ *
+ * Returns a sync closure suitable for `LoopInput.qualityGate`. Returns true
+ * iff the command exits 0 in the worktree.
+ */
+export function makeQualityGateFromCmd(
+  worktreePath: string,
+  cmd: readonly string[],
+): () => boolean {
+  return () => {
+    if (cmd.length === 0) return false;
+    try {
+      const [head, ...rest] = cmd;
+      if (!head) return false;
+      execFileSync(head, rest, { cwd: worktreePath, stdio: 'pipe' });
+      return true;
+    } catch {
+      return false;
+    }
+  };
 }
 
 /** Read the fix_plan checklist count (number of unchecked items). */

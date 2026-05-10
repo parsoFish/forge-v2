@@ -2,9 +2,14 @@
  * Thin wrappers over `git worktree`. Per ADR 006, we use git worktrees natively
  * for filesystem isolation per parallel work unit; this module exists only to
  * track lockfiles, heartbeat path, and the `gh`-friendly conventions.
+ *
+ * All git invocations use `execFileSync` with arg arrays (not `execSync` with
+ * a string template). This eliminates a class of shell-injection risk where
+ * `projectRepoPath` (operator-supplied via the manifest, no format check) or
+ * a custom `branch` name could embed a shell metacharacter.
  */
 
-import { execSync } from 'node:child_process';
+import { execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 
@@ -27,7 +32,7 @@ export function add(opts: {
   // -b creates the branch; if it already exists, we just point at it.
   const branchExists = (() => {
     try {
-      execSync(`git -C "${opts.projectRepoPath}" rev-parse --verify ${opts.branch}`, {
+      execFileSync('git', ['-C', opts.projectRepoPath, 'rev-parse', '--verify', opts.branch], {
         stdio: 'pipe',
       });
       return true;
@@ -36,22 +41,58 @@ export function add(opts: {
     }
   })();
 
-  const cmd = branchExists
-    ? `git -C "${opts.projectRepoPath}" worktree add "${path}" ${opts.branch}`
-    : `git -C "${opts.projectRepoPath}" worktree add -b ${opts.branch} "${path}"`;
-  execSync(cmd, { stdio: 'pipe' });
+  const args = branchExists
+    ? ['-C', opts.projectRepoPath, 'worktree', 'add', path, opts.branch]
+    : ['-C', opts.projectRepoPath, 'worktree', 'add', '-b', opts.branch, path];
+  execFileSync('git', args, { stdio: 'pipe' });
 
   return { path, branch: opts.branch, projectRepoPath: opts.projectRepoPath };
 }
 
 export function remove(handle: WorktreeHandle, opts: { force?: boolean } = {}): void {
-  const force = opts.force ? '--force' : '';
+  const args = ['-C', handle.projectRepoPath, 'worktree', 'remove'];
+  if (opts.force) args.push('--force');
+  args.push(handle.path);
   try {
-    execSync(`git -C "${handle.projectRepoPath}" worktree remove ${force} "${handle.path}"`, {
+    execFileSync('git', args, { stdio: 'pipe' });
+  } catch {
+    // Best-effort: a worktree that's already gone is fine.
+  }
+}
+
+/**
+ * F-09: full cleanup of a worktree's filesystem footprint AND the branch it
+ * was attached to. Idempotent — repeated calls are safe; missing artefacts
+ * are not errors. Used by the scheduler at the end of every cycle (success
+ * or failure) so worktrees + scratch branches don't accumulate.
+ *
+ * Sequence: `worktree remove --force` (handles the worktree dir + git's
+ * internal `worktrees/` metadata) → `worktree prune` (cleans dangling
+ * metadata if remove half-failed) → `branch -D` (deletes the scratch
+ * branch; for merged initiatives `gh pr merge --delete-branch` already did
+ * this and the call is a no-op).
+ */
+export function cleanup(handle: WorktreeHandle): void {
+  try {
+    execFileSync(
+      'git',
+      ['-C', handle.projectRepoPath, 'worktree', 'remove', '--force', handle.path],
+      { stdio: 'pipe' },
+    );
+  } catch {
+    /* worktree already gone, or never existed; non-fatal */
+  }
+  try {
+    execFileSync('git', ['-C', handle.projectRepoPath, 'worktree', 'prune'], { stdio: 'pipe' });
+  } catch {
+    /* non-fatal */
+  }
+  try {
+    execFileSync('git', ['-C', handle.projectRepoPath, 'branch', '-D', handle.branch], {
       stdio: 'pipe',
     });
   } catch {
-    // Best-effort: a worktree that's already gone is fine.
+    /* branch already deleted (e.g., gh pr merge --delete-branch) */
   }
 }
 
@@ -61,9 +102,11 @@ export function exists(path: string): boolean {
 
 export function list(projectRepoPath: string): Array<{ path: string; branch: string }> {
   try {
-    const output = execSync(`git -C "${projectRepoPath}" worktree list --porcelain`, {
-      encoding: 'utf8',
-    });
+    const output = execFileSync(
+      'git',
+      ['-C', projectRepoPath, 'worktree', 'list', '--porcelain'],
+      { encoding: 'utf8' },
+    );
     const entries: Array<{ path: string; branch: string }> = [];
     let current: { path?: string; branch?: string } = {};
     for (const line of output.split('\n')) {

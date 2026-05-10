@@ -14,7 +14,7 @@
  * review + send-back loop) is implemented separately.
  */
 
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 
 import { loadBrainIndex } from './brain-index.ts';
@@ -110,7 +110,7 @@ export function buildReviewerSystemPrompt(brainCwd: string): string {
     '- **Demo source must reference each WI\'s acceptance-criterion `then`-clause keywords textually**, plus any send-back ACs from `fix_plan.md`.',
     '- **PR description sections (in this order, all required):** `## Why` (≥ 50 chars), `## What`, `## How`, `## Demo`. Total body ≥ 300 chars.',
     '- **Squash-merge stacked PRs is forbidden** (brain theme `squash-merge-stacked-prs`). Include a `Parents:` block if stacked.',
-    '- **Brain-first.** Query the brain before researching elsewhere.',
+    '- **Brain-first (REQUIRED, mandatory).** Your first tool calls in iteration 1 MUST be `Read`/`Grep`/`Glob` against `brain/...` paths (PR/demo conventions, project taste signals, past review gotchas). The orchestrator records `tool_use.brainReads` and **fails the review phase if zero brain reads are recorded**. This is unconditional — not "when unsure".',
     '- **No `gh pr create`, no `gh pr merge`.** The orchestrator owns those. You write the artifacts; the orchestrator opens and merges the PR after the verdict.',
     '- **No queue mutation.** `_queue/` is read-only for you. The orchestrator moves the manifest after approval.',
     '- **No web tools.** `WebFetch` and `WebSearch` are disabled.',
@@ -166,8 +166,9 @@ export function renderReviewerUserPrompt(input: ReviewerUserPromptInput): string
     '',
     '## What to do this iteration',
     '',
-    '1. **Read AGENT.md and fix_plan.md first.** This tells you whether you\'re prepping (iter 1) or refining (iter 2+).',
-    '2. **Brain query** if you haven\'t already (results recorded in AGENT.md). Always-relevant themes: `squash-merge-stacked-prs`, `layered-merge-order`, `markdown-artifact-flow`.',
+    '0. **Brain queries (REQUIRED, before any other tool call on iteration 1).** `Read` at least one `brain/forge/themes/*.md` (always-relevant: `squash-merge-stacked-prs`, `layered-merge-order`, `markdown-artifact-flow`) AND at least one `brain/projects/<project>/themes/*.md` (or `profile.md`) for project taste. The orchestrator gates on this — zero `brain/...` reads = phase failure. Unconditional, not "when unsure".',
+    '1. **Read AGENT.md and fix_plan.md.** This tells you whether you\'re prepping (iter 1) or refining (iter 2+).',
+    '2. (Brain query already done in step 0; record the cited theme paths in AGENT.md.)',
     '3. **If fix_plan.md has unchecked send-back items** (iteration 2+): edit the project code to satisfy each item. Tests for the new ACs go alongside existing ones. After fixing, tick the items in fix_plan.md.',
     `4. **Run the quality gate**: \`${input.qualityGateCmd}\`. If it fails, fix the project code until green. Do NOT skip this — the orchestrator re-runs it between iterations and won\'t ask for a verdict if it\'s red.`,
     '5. **Record / re-record the demo.**',
@@ -218,6 +219,29 @@ export type PreparedReviewerWorkspace = {
   agentMdPath: string;
   fixPlanPath: string;
 };
+
+/**
+ * F-15: wipe the dev-loop's leftover Ralph scratch files (PROMPT.md /
+ * AGENT.md / fix_plan.md) from the worktree before the reviewer-Ralph stamps
+ * its own. Without this, `prepareReviewerWorkspace`'s idempotency would leave
+ * the reviewer agent reading stale dev-loop content and hallucinating its
+ * role. Idempotent — files that are already absent are skipped.
+ *
+ * Exported so the cycle can call it AND so a regression test can verify the
+ * behaviour directly.
+ */
+export function wipeRalphScratch(worktreePath: string): void {
+  for (const f of ['PROMPT.md', 'AGENT.md', 'fix_plan.md']) {
+    const p = join(worktreePath, f);
+    if (existsSync(p)) {
+      try {
+        unlinkSync(p);
+      } catch {
+        /* best-effort */
+      }
+    }
+  }
+}
 
 /**
  * Stamp PROMPT.md, AGENT.md, and fix_plan.md into the worktree from the

@@ -28,7 +28,14 @@ The scheduler exposes:
 ## Consequences
 
 **Positive:**
-- Total scheduler code: scheduler.ts + queue.ts + worktree.ts + notify.ts ≈ 300 LOC vs v1's ~6,000 LOC equivalent.
+- Total scheduler code: scheduler.ts + queue.ts + worktree.ts + notify.ts + file-verdict.ts + config.ts ≈ **1,200 LOC** vs v1's ~6,000 LOC equivalent — still ~5× smaller. The scaffold's "≈ 300 LOC" target reflected a pure happy-path scheduler; pass-1 closure added load-bearing pieces that drove the total up:
+  - `scheduler.ts` (~470) — the original ~150 plus the recovery + dispatch + cleanup paths.
+  - `queue.ts` (~185) — file-state machine + recovery sweep.
+  - `worktree.ts` (~120) — `add` / `remove` / `cleanup` / `list`.
+  - `notify.ts` (~75) — desktop + webhook providers.
+  - `file-verdict.ts` (~310) — F-02 file-based verdict provider (production human-in-the-loop transport for review verdicts).
+  - `config.ts` (~85) — F-10 / F-18 `forge.config.json` loader + env assertion.
+  Each addition closes a specific operational gap surfaced in the [pass-1 review](../../_review/00-summary.md). Net surface still much smaller than v1.
 - No DB, no IPC, no daemon protocol — the filesystem is the protocol.
 - Inspectable: `ls _queue/` is the entire system state.
 - Trivially recoverable from crash (see ADR 012).

@@ -98,7 +98,7 @@ export function buildDevSystemPrompt(brainCwd: string): string {
     '**The orchestrator decides when to stop, not you.** It runs the project\'s quality gates between your iterations. Your job is to make incremental progress every iteration; the orchestrator exits the loop when gates pass, when the iteration / cost budget is exhausted, or when no progress is detected for several iterations (wedged).',
     '',
     'Hard rules:',
-    '- **Brain-first.** When unsure, query the brain (read theme files) before researching elsewhere.',
+    '- **Brain-first (REQUIRED, mandatory).** Your first tool calls in iteration 1 of any work item MUST be one or more `Read`/`Grep`/`Glob` against `brain/...` paths. The orchestrator records `tool_use.brainReads` and **fails the WI if zero brain reads are recorded**. The brain navigation index is in this system prompt — pick the most relevant `brain/forge/themes/*.md` and `brain/projects/<project>/themes/*.md` files and Read them in full before drafting code. This is not "when unsure" — it is unconditional. Skipping is a hard fail.',
     '- **Files-in-scope.** The work item lists `files_in_scope`. Edit those files (and the test files explicitly listed). Do not modify unrelated files; flag scope-creep candidates in `AGENT.md` for the reflector to capture.',
     '- **No shortcuts.** Don\'t skip tests, don\'t `--no-verify`, don\'t disable lint rules to pass.',
     '- **No hallucinated test passes.** If you claim tests pass, prove it by running them via `Bash`. The orchestrator re-runs them anyway and will exit `failed` if your claim was wrong.',
@@ -153,6 +153,7 @@ export function renderDevUserPrompt(input: DevUserPromptInput): string {
     '',
     '## Your task this iteration',
     '',
+    '0. **Brain queries (REQUIRED, before any other tool call on iteration 1).** `Read` at least one `brain/forge/themes/*.md` (relevant patterns / antipatterns) AND at least one `brain/projects/<project>/themes/*.md` (or `profile.md`) for project taste. The orchestrator gates on this — zero `brain/...` reads = WI failure regardless of test status. Unconditional, not "when unsure". Cite the paths you read in `AGENT.md`\'s "Brain context" section.',
     '1. Read `AGENT.md` and `fix_plan.md`.',
     '2. Make progress on the highest-priority unchecked item in `fix_plan.md`.',
     '3. Run the project\'s quality gates with `Bash`. Don\'t claim a pass without running them.',
@@ -276,6 +277,13 @@ export function prepareDevWorkspace(input: PrepareDevWorkspaceInput): PreparedDe
 /** Tool-use telemetry surfaced by both the bench and the live cycle. */
 export type DevToolUseSummary = {
   reads: number;
+  /**
+   * Subset of `reads` whose tool input pointed at a `brain/...` path. Used by
+   * the orchestrator's brain-first runtime gate (cycle.ts:assertBrainConsulted)
+   * to enforce the SKILL.md mandate that every dev-loop WI consults the brain
+   * before iterating.
+   */
+  brainReads: number;
   writes: number;
   bashCalls: number;
   testRuns: number;
@@ -312,6 +320,8 @@ export function tallyToolUse(
     const name = block.name ?? '';
     if (name === 'Read' || name === 'Grep' || name === 'Glob') {
       summary.reads += 1;
+      const blob = JSON.stringify(block.input ?? {});
+      if (blob.includes('brain/') || blob.includes('"brain"')) summary.brainReads += 1;
     } else if (name === 'Write' || name === 'Edit' || name === 'MultiEdit') {
       summary.writes += 1;
     } else if (name === 'Bash') {

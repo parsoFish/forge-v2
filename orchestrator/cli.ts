@@ -23,11 +23,21 @@ import { summariseCycle, summariseAll } from './metrics.ts';
 import { getPaths } from './queue.ts';
 import { parseManifest, validateManifest, writeManifest } from './manifest.ts';
 import { loadBrainIndex } from './brain-index.ts';
+import { fileVerdictPaths } from './file-verdict.ts';
+import { assertEnv } from './config.ts';
+import { writeCycleReport } from './cycle-report.ts';
 
 const args = process.argv.slice(2);
 const cmd = args[0];
 
 (async () => {
+  // F-10: surface env-setup issues at every CLI invocation (warn-only;
+  // some setups — e.g., Claude Code — provide auth via credentials file).
+  // Verbs that don't talk to the SDK (status, metrics, brain index, --help)
+  // skip the warning to keep their output clean.
+  const sdkVerbs = new Set(['serve', 'cycle']);
+  if (cmd && sdkVerbs.has(cmd)) assertEnv('warn');
+
   switch (cmd) {
     case 'serve':
       return await cmdServe(args.slice(1));
@@ -39,6 +49,10 @@ const cmd = args[0];
       return cmdStatus(args.slice(1));
     case 'metrics':
       return cmdMetrics(args.slice(1));
+    case 'review':
+      return cmdReview(args.slice(1));
+    case 'report':
+      return cmdReport(args.slice(1));
     case 'bench':
       return cmdBench(args.slice(1));
     case 'brain':
@@ -69,6 +83,8 @@ Usage:
   forge enqueue --fixture                 Drop a smoke-test fixture into _queue/pending/
   forge status [--watch]                  Print queue + in-flight snapshot
   forge metrics [<cycle-id>]              Per-cycle aggregates (or all cycles)
+  forge review <initiative-id>            Print the open verdict prompt and the response file's path
+  forge report <cycle-id> [--regenerate]  Print (or regenerate) the human-facing cycle report
   forge bench <phase>                     Run a phase's benchmark suite (alias for npm run bench:<phase>)
   forge brain query "<question>"          Query the brain (skeleton)
   forge brain index [--scope <project>]   Emit the brain navigation indexes as a single blob (cache-friendly prefix for prompts)
@@ -205,6 +221,55 @@ function cmdStatus(rest: string[]): void {
   };
   print();
   if (watch) setInterval(print, 2000);
+}
+
+function cmdReview(rest: string[]): void {
+  const initiativeId = rest[0];
+  if (!initiativeId) {
+    console.error('forge review: missing <initiative-id>');
+    console.error('Usage: forge review <initiative-id>');
+    process.exit(2);
+  }
+  const paths = fileVerdictPaths(initiativeId);
+  if (!existsSync(paths.promptPath)) {
+    console.error(`forge review: no open verdict prompt at ${paths.promptPath}`);
+    console.error('No initiative is currently waiting for review under that ID.');
+    console.error('Run `forge status` to see what\'s in flight.');
+    process.exit(2);
+  }
+  process.stdout.write(readFileSync(paths.promptPath, 'utf8'));
+  console.log('---');
+  console.log(`Write your verdict to: ${paths.responsePath}`);
+  if (existsSync(paths.responsePath)) {
+    console.log('(a response file already exists; the scheduler will pick it up shortly)');
+  } else {
+    console.log('(use the templates above as a starting point)');
+  }
+}
+
+function cmdReport(rest: string[]): void {
+  const cycleId = rest[0];
+  if (!cycleId) {
+    console.error('forge report: missing <cycle-id>');
+    console.error('Usage: forge report <cycle-id> [--regenerate]');
+    console.error('Run `forge metrics` to list cycle IDs.');
+    process.exit(2);
+  }
+  const reportPath = join('_logs', cycleId, 'report.md');
+  const regenerate = rest.includes('--regenerate') || !existsSync(reportPath);
+  if (regenerate) {
+    try {
+      writeCycleReport({ cycleId });
+    } catch (err) {
+      console.error(`forge report: failed to generate: ${err instanceof Error ? err.message : String(err)}`);
+      process.exit(1);
+    }
+  }
+  if (!existsSync(reportPath)) {
+    console.error(`forge report: no report at ${reportPath}`);
+    process.exit(1);
+  }
+  process.stdout.write(readFileSync(reportPath, 'utf8'));
 }
 
 function cmdMetrics(rest: string[]): void {

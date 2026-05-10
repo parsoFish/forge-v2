@@ -7,7 +7,7 @@
 import { execSync } from 'node:child_process';
 
 export type NotifyEvent = {
-  type: 'review-ready' | 'failed' | 'recovered';
+  type: 'review-ready' | 'merged' | 'failed' | 'recovered';
   title: string;
   body: string;
   url?: string;

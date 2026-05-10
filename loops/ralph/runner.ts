@@ -38,6 +38,18 @@ export type LoopInput = {
    * / etc.).
    */
   qualityGate?: () => boolean | Promise<boolean>;
+  /**
+   * F-14: optional per-iteration callback. Called immediately after each
+   * agent invocation completes (before the next stop-condition check), with
+   * the iteration counter and the agent's per-iteration outputs. The cycle
+   * orchestrator uses this to emit `event_type: 'iteration'` events so
+   * downstream metrics aggregation has per-iteration cost + file-change
+   * data, not just the LoopResult totals.
+   */
+  onIteration?: (
+    iteration: number,
+    info: { filesChanged: string[]; costUsd: number },
+  ) => void | Promise<void>;
 };
 
 export type LoopResult = {
@@ -123,6 +135,12 @@ export async function run(input: LoopInput, agent: AgentInvocation = stubAgent):
     state.costUsdSoFar += result.costUsd;
     state.filesChangedHistory.push(result.filesChanged);
     state.fixPlanItemsHistory.push(countOpenFixPlanItems(input.worktreePath));
+    if (input.onIteration) {
+      await input.onIteration(state.iteration, {
+        filesChanged: result.filesChanged,
+        costUsd: result.costUsd,
+      });
+    }
   }
 }
 

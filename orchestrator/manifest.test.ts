@@ -149,3 +149,44 @@ test('parseManifest: throws on missing required fields', () => {
   const md = `---\nproject: demo\n---\n\nbody`;
   assert.throws(() => parseManifest(md), /initiative_id/);
 });
+
+// ---- F-04 quality_gate_cmd round trip ----
+
+test('parseManifest: extracts quality_gate_cmd from frontmatter', () => {
+  const md = `---\ninitiative_id: INIT-2026-05-10-qgate\nproject: demo\ncreated_at: 2026-05-10T00:00:00Z\niteration_budget: 5\ncost_budget_usd: 1\nphase: pending\nquality_gate_cmd:\n  - pytest\n  - -q\n  - tests/\n---\n\n# body\n`;
+  const parsed = parseManifest(md);
+  assert.deepEqual(parsed.quality_gate_cmd, ['pytest', '-q', 'tests/']);
+});
+
+test('serializeManifest → parseManifest: quality_gate_cmd round-trips', () => {
+  const m: InitiativeManifest = {
+    ...fixture(),
+    quality_gate_cmd: ['cargo', 'test', '--all'],
+  };
+  const round = parseManifest(serializeManifest(m));
+  assert.deepEqual(round.quality_gate_cmd, ['cargo', 'test', '--all']);
+});
+
+test('parseManifest: missing quality_gate_cmd is undefined (allowed)', () => {
+  const md = `---\ninitiative_id: INIT-2026-05-10-qgate\nproject: demo\ncreated_at: 2026-05-10T00:00:00Z\niteration_budget: 5\ncost_budget_usd: 1\nphase: pending\n---\nbody`;
+  const parsed = parseManifest(md);
+  assert.equal(parsed.quality_gate_cmd, undefined);
+});
+
+test('validateManifest: rejects empty quality_gate_cmd array', () => {
+  const m = { ...fixture(), quality_gate_cmd: [] as string[] };
+  const errors = validateManifest(m);
+  assert.ok(errors.some((e) => /quality_gate_cmd/i.test(e)));
+});
+
+test('validateManifest: rejects quality_gate_cmd with empty-string entries', () => {
+  const m = { ...fixture(), quality_gate_cmd: ['', 'test'] };
+  const errors = validateManifest(m);
+  assert.ok(errors.some((e) => /quality_gate_cmd/i.test(e)));
+});
+
+test('validateManifest: accepts a well-formed quality_gate_cmd', () => {
+  const m = { ...fixture(), quality_gate_cmd: ['npm', 'test'] };
+  const errors = validateManifest(m);
+  assert.equal(errors.length, 0, `unexpected errors: ${errors.join('; ')}`);
+});

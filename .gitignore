@@ -42,6 +42,9 @@ projects/*
 # Worktrees the scheduler creates
 _worktrees/
 
+# Review/audit output — runtime artefact, not source
+_review/
+
 # Forge's own runtime config (per-machine)
 forge.config.json
 
@@ -49,6 +52,7 @@ forge.config.json
 .DS_Store
 .vscode/
 .idea/
+.claude/
 *.swp
 *.swo
 *~

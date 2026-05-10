@@ -102,12 +102,15 @@ Key properties:
 
 Responsibility: closeout of an initiative back to main.
 
-Two stages:
+**Unified Ralph runner** (post-pass-1 design — earlier drafts had this split into two phases; the implementation collapsed them after the e2e bench surfaced redundant state shuffling). One Ralph loop on the initiative branch, parameterised by a reviewer system prompt + a verdict-aware quality gate. Iteration 1 prepares the demo + PR draft from scratch; iterations 2+ react to send-back feedback the verdict gate appends to `fix_plan.md`.
 
-1. **Review-prep (unattended)** — an agent evaluates the post-developer-loop state. Resolves any outstanding errors. The project must be functionally working before the human is asked to look at it. Prepares a **demo script** the human can run.
-2. **Human review** — user is presented a PR with confirmed-working code + demo. They either:
-   - **Approve** → PR merges into main, initiative marked complete.
-   - **Send back** → triggers further agentic loops; cycle of agentic-loop + human-review until approved.
+The verdict gate (`orchestrator/reviewer-stage2.ts`) runs between iterations and:
+
+1. **Re-runs the project quality gate** (orchestrator-verified — never trusts the agent's claim).
+2. **Asks the verdict provider** — production: file-based handoff (`_queue/in-flight/<id>.verdict-prompt.md` written by the orchestrator; `_queue/in-flight/<id>.verdict-response.md` written by the operator via `forge review <id>`). Bench: simulator agent.
+3. **On approve** → loop stops, orchestrator merges + moves manifest to `_queue/done/`. **On send-back** → feedback is appended to `fix_plan.md` as Given/When/Then ACs; loop continues.
+
+Cap: 3 iterations (1 prep + ≤2 send-back rounds). Cap-exhausted leaves the manifest in `_queue/ready-for-review/` for manual operator pickup; never a hard cycle failure.
 
 Like the architect, the review loop is best implemented as **Claude Code skills the user invokes**, so it benefits directly from agentic-wrapper improvements.
 

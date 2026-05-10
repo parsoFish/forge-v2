@@ -156,7 +156,7 @@ export async function runDevLoop(input: RunDevInput): Promise<RunDevResult> {
   const worktreePath = resolve(tempdir, 'projects', input.projectName);
   const workItemSpecPath = resolve(worktreePath, input.workItemSpecRelPath);
 
-  const toolUseSummary: DevToolUseSummary = { reads: 0, writes: 0, bashCalls: 0, testRuns: 0 };
+  const toolUseSummary: DevToolUseSummary = { reads: 0, brainReads: 0, writes: 0, bashCalls: 0, testRuns: 0 };
 
   if (!existsSync(workItemSpecPath)) {
     return {

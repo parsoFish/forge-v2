@@ -30,6 +30,20 @@ export type InitiativeManifest = {
   phase: ManifestPhase;
   features: Feature[];
   body: string;                // markdown initiative spec
+  /**
+   * Optional per-project quality-gate command. Used by both the dev-loop
+   * (Ralph stop condition) and the reviewer (orchestrator-side gate). When
+   * absent, falls back to `npm test` if `package.json` exists in the
+   * worktree, else `true` (no-op gate). Single source of truth — both phases
+   * use the same command, eliminating drift (F-04 / F-06).
+   *
+   * Examples:
+   *   ['npm', 'test']
+   *   ['pytest', '-q']
+   *   ['cargo', 'test', '--all']
+   *   ['bats', 'tests/']
+   */
+  quality_gate_cmd?: string[];
   // Optional runtime fields written by the scheduler
   claimed_at?: string;
   claimed_by?: string;
@@ -68,6 +82,10 @@ export function parseManifest(content: string): InitiativeManifest {
   if (typeof data.claimed_at === 'string') manifest.claimed_at = data.claimed_at;
   if (typeof data.claimed_by === 'string') manifest.claimed_by = data.claimed_by;
   if (typeof data.worktree_path === 'string') manifest.worktree_path = data.worktree_path;
+  if (Array.isArray(data.quality_gate_cmd)) {
+    const cmd = (data.quality_gate_cmd as unknown[]).filter((s): s is string => typeof s === 'string');
+    if (cmd.length > 0) manifest.quality_gate_cmd = cmd;
+  }
   return manifest;
 }
 
@@ -84,6 +102,9 @@ export function serializeManifest(m: InitiativeManifest): string {
   if (m.claimed_at) data.claimed_at = m.claimed_at;
   if (m.claimed_by) data.claimed_by = m.claimed_by;
   if (m.worktree_path) data.worktree_path = m.worktree_path;
+  if (m.quality_gate_cmd && m.quality_gate_cmd.length > 0) {
+    data.quality_gate_cmd = m.quality_gate_cmd;
+  }
   if (m.features.length > 0) {
     data.features = m.features.map((f) => ({
       feature_id: f.feature_id,
@@ -106,6 +127,13 @@ export function validateManifest(m: InitiativeManifest): string[] {
   if (!m.created_at) errors.push('created_at is required');
   if (!(m.iteration_budget > 0)) errors.push(`iteration_budget must be > 0: got ${m.iteration_budget}`);
   if (!(m.cost_budget_usd > 0)) errors.push(`cost_budget_usd must be > 0: got ${m.cost_budget_usd}`);
+  if (m.quality_gate_cmd !== undefined) {
+    if (!Array.isArray(m.quality_gate_cmd) || m.quality_gate_cmd.length === 0) {
+      errors.push('quality_gate_cmd must be a non-empty array of strings when set');
+    } else if (!m.quality_gate_cmd.every((s) => typeof s === 'string' && s.length > 0)) {
+      errors.push('quality_gate_cmd entries must be non-empty strings');
+    }
+  }
 
   // Feature shape + dependency graph
   const ids = new Set<string>();

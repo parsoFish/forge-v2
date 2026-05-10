@@ -1,0 +1,23 @@
+{
+  "_comment": "Per-machine forge config (ADR 009). Copy to forge.config.json (gitignored) and edit. All fields optional — defaults apply when absent.",
+
+  "projectsDir": "./projects",
+
+  "models": {
+    "_comment": "Per-skill model overrides. Default model is claude-sonnet-4-6.",
+    "default": "claude-sonnet-4-6",
+    "architect": "claude-opus-4-7",
+    "brain-query": "claude-haiku-4-5"
+  },
+
+  "scheduler": {
+    "_comment": "Concurrency cap for `forge serve`. 1-2 typical; higher = more parallel cycles but more API spend.",
+    "maxConcurrentInitiatives": 2
+  },
+
+  "notify": {
+    "_comment": "Desktop notifications via notify-send (Linux) / osascript (macOS) / BurntToast (Windows). webhook_url POSTs JSON to a URL (e.g. Slack, Discord); null disables.",
+    "desktop": true,
+    "webhook_url": null
+  }
+}

@@ -12,7 +12,7 @@
  */
 
 import { execFileSync } from 'node:child_process';
-import { existsSync, readFileSync, unlinkSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { basename, resolve } from 'node:path';
 import { query as sdkQuery } from '@anthropic-ai/claude-agent-sdk';
 
@@ -44,6 +44,7 @@ import {
   buildReviewerSystemPrompt,
   prepareReviewerWorkspace,
   tallyToolUse as tallyReviewerToolUse,
+  wipeRalphScratch,
   type ReviewerToolUseSummary,
 } from './reviewer-invocation.ts';
 import {
@@ -63,6 +64,7 @@ import {
 import { moveTo as moveQueueItem } from './queue.ts';
 import { notify } from './notify.ts';
 import {
+  detectHiddenCoupling,
   readWorkItemsFromDir,
   topologicalOrder,
   validateWorkItemSet,
@@ -71,6 +73,8 @@ import {
 } from './work-item.ts';
 import { createClaudeAgent, type QueryFn } from '../loops/ralph/claude-agent.ts';
 import { run as runRalph, type LoopResult } from '../loops/ralph/runner.ts';
+import { makeQualityGateFromCmd } from '../loops/ralph/stop-conditions.ts';
+import { writeCycleReport } from './cycle-report.ts';
 
 export type CycleInput = {
   initiativeId: string;
@@ -136,12 +140,23 @@ export async function runCycle(input: CycleInput): Promise<CycleResult> {
     message: input.dryRun ? 'cycle.start (dry run)' : 'cycle.start',
   });
 
+  // F-04 / F-06: derive the effective quality-gate command once per cycle so
+  // the dev-loop and reviewer use exactly the same gate. Precedence:
+  //   1. CycleInput.qualityGateCmd (explicit override — bench harnesses use this)
+  //   2. manifest.quality_gate_cmd (per-project config in initiative manifest)
+  //   3. ['npm', 'test'] if the worktree has package.json
+  //   4. ['true'] (no-op, tests bypassed) — only happens for non-Node repos
+  //      that didn't declare a quality_gate_cmd; the dispatch will surface
+  //      the absence via a metadata field.
+  const effectiveQualityGateCmd = resolveQualityGateCmd(input);
+  const inputWithGate: CycleInput = { ...input, qualityGateCmd: effectiveQualityGateCmd };
+
   let reviewerOutcome: ReviewerOutcome = 'ready-for-review';
   let reflectionStatus: ReflectionStatus = 'skipped';
   try {
     if (!input.dryRun) {
-      await runProjectManager(input, logger);
-      await runDeveloperLoop(input, logger);
+      await runProjectManager(inputWithGate, logger);
+      await runDeveloperLoop(inputWithGate, logger);
       // Safety net: commit any uncommitted dev-loop work before the reviewer
       // starts. The dev-loop's prompt tells the agent to commit per
       // iteration, but if it skips, the reviewer's gh-shim does
@@ -149,40 +164,17 @@ export async function runCycle(input: CycleInput): Promise<CycleResult> {
       // boundary commit catches any drift. Files matching .gitignore
       // (Ralph scratch: PROMPT.md / AGENT.md / fix_plan.md, node_modules)
       // are excluded by `git add` automatically.
-      commitDevLoopBoundary(input.worktreePath, logger, input.initiativeId);
-      reviewerOutcome = await runReviewer(input, logger);
+      commitDevLoopBoundary(inputWithGate.worktreePath, logger, inputWithGate.initiativeId);
+      reviewerOutcome = await runReviewer(inputWithGate, logger);
 
       // Reflection: only fires after a successful merge. Log-and-continue —
       // a thrown reflector does not change the cycle's `status` (the merge
       // already happened; reflection cannot un-merge). Surface as separate
       // `reflection_status` telemetry instead.
       if (reviewerOutcome === 'merged') {
-        reflectionStatus = await runReflector(input, logger);
+        reflectionStatus = await runReflector(inputWithGate, logger);
       }
     }
-
-    const result: CycleResult = {
-      cycle_id: cycleId,
-      initiative_id: input.initiativeId,
-      status: reviewerOutcome,
-      reflection_status: reflectionStatus,
-      duration_ms: Date.now() - started,
-      log_path: logger.logFilePath,
-    };
-
-    logger.emit({
-      initiative_id: input.initiativeId,
-      phase: 'orchestrator',
-      skill: 'cycle',
-      event_type: 'end',
-      input_refs: [input.manifestPath],
-      output_refs: [logger.logFilePath],
-      duration_ms: result.duration_ms,
-      message: 'cycle.end',
-      metadata: { status: result.status, reflection_status: result.reflection_status },
-    });
-
-    return result;
   } catch (err) {
     logger.emit({
       initiative_id: input.initiativeId,
@@ -193,7 +185,8 @@ export async function runCycle(input: CycleInput): Promise<CycleResult> {
       output_refs: [],
       message: err instanceof Error ? err.message : String(err),
     });
-    return {
+    reviewerOutcome = 'ready-for-review'; // sentinel; overridden below to 'failed'
+    const result: CycleResult = {
       cycle_id: cycleId,
       initiative_id: input.initiativeId,
       status: 'failed',
@@ -201,6 +194,102 @@ export async function runCycle(input: CycleInput): Promise<CycleResult> {
       duration_ms: Date.now() - started,
       log_path: logger.logFilePath,
     };
+    // Snapshot artefacts + write report even on failure — failed cycles
+    // still produce useful evidence for diagnosis. AWAIT the snapshot so
+    // the report's "decomposition" / "verification" sections find the
+    // copied work-items + demo dirs (otherwise the report runs before the
+    // copy completes and silently shows the no-snapshot fallback).
+    await snapshotCycleArtefacts(input, cycleId).catch(() => { /* best-effort */ });
+    writeCycleReportSafely(cycleId);
+    return result;
+  }
+
+  // Success path (no throw). Snapshot before cycle.end so the report can
+  // include the cycle.end metadata and reference durable artefacts.
+  await snapshotCycleArtefacts(input, cycleId).catch(() => { /* best-effort */ });
+
+  const result: CycleResult = {
+    cycle_id: cycleId,
+    initiative_id: input.initiativeId,
+    status: reviewerOutcome,
+    reflection_status: reflectionStatus,
+    duration_ms: Date.now() - started,
+    log_path: logger.logFilePath,
+  };
+
+  logger.emit({
+    initiative_id: input.initiativeId,
+    phase: 'orchestrator',
+    skill: 'cycle',
+    event_type: 'end',
+    input_refs: [input.manifestPath],
+    output_refs: [logger.logFilePath],
+    duration_ms: result.duration_ms,
+    message: 'cycle.end',
+    metadata: { status: result.status, reflection_status: result.reflection_status },
+  });
+
+  // Generate the human-facing report as the final cycle step. Best-effort —
+  // a failed report write does not fail the cycle (the merge already
+  // happened; the report is meta).
+  writeCycleReportSafely(cycleId);
+
+  return result;
+}
+
+/**
+ * Snapshot ephemeral cycle artefacts from the worktree to durable
+ * `_logs/<cycleId>/` paths so they survive `worktree.cleanup()` and are
+ * available for the cycle report (and re-generation later).
+ *
+ * Best-effort: missing dirs are skipped silently, copy failures are
+ * surfaced via the returned promise rejection so the caller can decide
+ * whether to log them.
+ */
+async function snapshotCycleArtefacts(
+  input: CycleInput,
+  cycleId: string,
+): Promise<void> {
+  const forgeRoot = resolve(import.meta.dirname, '..');
+  const cycleLogDir = resolve(forgeRoot, '_logs', cycleId);
+  if (!existsSync(cycleLogDir)) mkdirSync(cycleLogDir, { recursive: true });
+
+  // Work-item specs: the PM's output, valuable evidence for the report's
+  // "How the system decomposed it" section.
+  const wiSrc = resolve(input.worktreePath, '.forge', 'work-items');
+  if (existsSync(wiSrc)) {
+    const wiDst = resolve(cycleLogDir, 'work-items-snapshot');
+    cpSync(wiSrc, wiDst, { recursive: true, force: true });
+  }
+
+  // Demo bundle: the reviewer's recording + source script + README. Real
+  // showcase content for the report's "Verification" section.
+  const demoSrc = resolve(input.worktreePath, '.forge', 'demos', input.initiativeId);
+  if (existsSync(demoSrc)) {
+    const demoDst = resolve(cycleLogDir, 'demo');
+    cpSync(demoSrc, demoDst, { recursive: true, force: true });
+  }
+
+  // PR description draft: useful for the report's "What landed" section.
+  const prSrc = resolve(input.worktreePath, '.forge', 'pr-description.md');
+  if (existsSync(prSrc)) {
+    cpSync(prSrc, resolve(cycleLogDir, 'pr-description.md'), { force: true });
+  }
+}
+
+/**
+ * Best-effort report write at end of cycle. Catches all errors so a failure
+ * to render the report (missing data, malformed event log, etc.) cannot
+ * fail the cycle itself — the merge has already happened by the time we
+ * reach this point.
+ */
+function writeCycleReportSafely(cycleId: string): void {
+  try {
+    writeCycleReport({ cycleId });
+  } catch (err) {
+    process.stderr.write(
+      `[cycle-report] failed to write report for ${cycleId}: ${err instanceof Error ? err.message : String(err)}\n`,
+    );
   }
 }
 
@@ -281,6 +370,23 @@ async function runProjectManager(input: CycleInput, logger: EventLogger): Promis
     });
   }
 
+  // F-13 / F-19: enforce the brain-first mandate at the orchestrator. If the
+  // PM agent skipped brain-query entirely, fail fast with a distinct error
+  // (rather than continuing into validateWorkItemSet, where the
+  // brain-skip's downstream effect — incomplete frontmatter — surfaces
+  // instead, masking the real cause).
+  if (
+    !recordBrainGateResult('project-manager', 'project-manager', toolUseSummary.brainReads, {
+      initiativeId: input.initiativeId,
+      logger,
+      parentEventId: start.event_id,
+    })
+  ) {
+    throw new Error(
+      'project-manager phase failed: brain-first mandate not honoured (0 brain-query calls). The system prompt requires reading from `brain/...` (forge themes + project themes) before producing work items.',
+    );
+  }
+
   const workItemsDir = resolve(input.worktreePath, '.forge', 'work-items');
   const { items, parseErrors } = readWorkItemsFromDir(workItemsDir);
 
@@ -320,11 +426,20 @@ async function runProjectManager(input: CycleInput, logger: EventLogger): Promis
     knownFeatureIds,
   });
   const itemErrorCount = Object.values(perItem).reduce((acc, errs) => acc + errs.length, 0);
+
+  // F-05: hidden-coupling check. Two WIs whose `files_in_scope` overlap
+  // without a `depends_on` edge between them will conflict at merge time.
+  // The bench has scored this since pass-1; production didn't enforce it
+  // until now. Failures here surface as a distinct error so the operator
+  // sees the structural cause rather than a generic "PM phase failed".
+  const couplingViolations = items.length > 0 ? detectHiddenCoupling(items) : [];
+
   const failed =
     items.length === 0 ||
     Object.keys(parseErrors).length > 0 ||
     setErrors.length > 0 ||
-    itemErrorCount > 0;
+    itemErrorCount > 0 ||
+    couplingViolations.length > 0;
 
   logger.emit({
     initiative_id: input.initiativeId,
@@ -354,6 +469,7 @@ async function runProjectManager(input: CycleInput, logger: EventLogger): Promis
       parse_errors: parseErrors,
       set_errors: setErrors,
       per_item_error_count: itemErrorCount,
+      hidden_coupling_violations: couplingViolations,
     },
   });
 
@@ -363,6 +479,9 @@ async function runProjectManager(input: CycleInput, logger: EventLogger): Promis
       Object.keys(parseErrors).length > 0 ? `parse errors: ${Object.keys(parseErrors).join(', ')}` : null,
       setErrors.length > 0 ? `set errors: ${setErrors.join('; ')}` : null,
       itemErrorCount > 0 ? `${itemErrorCount} per-item validation errors` : null,
+      couplingViolations.length > 0
+        ? `${couplingViolations.length} hidden-coupling pair(s): ${couplingViolations.map((p) => `${p.a}↔${p.b} share ${p.sharedFiles.join(',')}`).join('; ')}`
+        : null,
     ]
       .filter((s): s is string => s !== null)
       .join('; ');
@@ -443,7 +562,7 @@ async function runDeveloperLoop(input: CycleInput, logger: EventLogger): Promise
     }
 
     const specPath = resolve(workItemsDir, `${wi.work_item_id}.md`);
-    const wiToolUse: DevToolUseSummary = { reads: 0, writes: 0, bashCalls: 0, testRuns: 0 };
+    const wiToolUse: DevToolUseSummary = { reads: 0, brainReads: 0, writes: 0, bashCalls: 0, testRuns: 0 };
 
     prepareDevWorkspace({
       initiativeId: input.initiativeId,
@@ -492,6 +611,32 @@ async function runDeveloperLoop(input: CycleInput, logger: EventLogger): Promise
           brainQueryResults: '',
           cycleId: logger.cycleId,
           initiativeId: input.initiativeId,
+          // F-04: thread the per-project quality-gate command into the
+          // runner. When absent, runner falls back to its default
+          // (`npm test --silent`); when present (resolveQualityGateCmd
+          // populated it from manifest or a Node-repo default), the runner
+          // uses the exact same command the reviewer will use.
+          qualityGate: input.qualityGateCmd && input.qualityGateCmd.length > 0
+            ? makeQualityGateFromCmd(input.worktreePath, input.qualityGateCmd)
+            : undefined,
+          // F-14: emit per-iteration events so metrics (cycle.ts:metrics.ts)
+          // can aggregate iteration counts. Without this, `iterations_total`
+          // was structurally always 0 even though the schema declared the
+          // event_type.
+          onIteration: (iteration, info) => {
+            logger.emit({
+              initiative_id: input.initiativeId,
+              parent_event_id: wiStart.event_id,
+              phase: 'developer-loop',
+              skill: 'developer-ralph',
+              event_type: 'iteration',
+              iteration,
+              input_refs: [specPath],
+              output_refs: info.filesChanged,
+              cost_usd: info.costUsd,
+              metadata: { work_item_id: wi.work_item_id },
+            });
+          },
         },
         agent,
       );
@@ -502,9 +647,31 @@ async function runDeveloperLoop(input: CycleInput, logger: EventLogger): Promise
       };
     }
 
-    const finalStatus: WorkItem['status'] = result?.status === 'complete'
-      ? 'complete'
-      : 'failed';
+    // F-13: brain-first gate per WI. The dev-loop's per-WI try/catch above
+    // already produces partial-failure semantics; mirror that here — record
+    // the gate violation, mark the WI failed, let the cycle continue (other
+    // independent WIs may still succeed; total dev-loop failure is checked
+    // at the bottom of the loop).
+    if (
+      !runnerError &&
+      !recordBrainGateResult('developer-loop', 'developer-ralph', wiToolUse.brainReads, {
+        initiativeId: input.initiativeId,
+        logger,
+        parentEventId: wiStart.event_id,
+        subject: wi.work_item_id,
+      })
+    ) {
+      runnerError = {
+        kind: 'brain-skipped',
+        message: 'brain-first mandate not honoured for this WI (0 brain-query calls)',
+      };
+    }
+
+    const finalStatus: WorkItem['status'] = runnerError
+      ? 'failed'
+      : result?.status === 'complete'
+        ? 'complete'
+        : 'failed';
     writeWorkItemStatus(specPath, finalStatus);
 
     logger.emit({
@@ -619,17 +786,48 @@ function inferProjectType(worktreePath: string): 'browser' | 'cli' | 'lib' | 're
  * Best-effort PR creation via `gh pr create`. Returns the PR URL on success,
  * or null on failure. The reviewer's PR-description draft lives at
  * `<worktree>/.forge/pr-description.md` and is passed via `--body-file`.
+ *
+ * Pushes the local branch to the remote first; `gh pr create` requires the
+ * branch to exist on origin. W4 trial caught this — pre-fix, openPullRequest
+ * called `gh pr create` without a push, which fails with "no pull requests
+ * found" since the branch wasn't published.
  */
-function openPullRequest(worktreePath: string, prDescriptionPath: string): string | null {
+function openPullRequest(
+  worktreePath: string,
+  prDescriptionPath: string,
+  title: string,
+): string | null {
   try {
+    // Determine the current branch in the worktree.
+    const branch = execFileSync('git', ['rev-parse', '--abbrev-ref', 'HEAD'], {
+      cwd: worktreePath,
+      stdio: 'pipe',
+      encoding: 'utf8',
+    }).trim();
+    if (!branch || branch === 'HEAD') return null;
+
+    // Push to origin (set-upstream so gh pr create knows the head ref).
+    // Failures here propagate to the catch — a non-pushable branch is a
+    // genuine merge blocker, not a soft warning.
+    execFileSync('git', ['push', '--set-upstream', 'origin', branch], {
+      cwd: worktreePath,
+      stdio: 'pipe',
+    });
+
     const out = execFileSync(
       'gh',
-      ['pr', 'create', '--body-file', prDescriptionPath, '--title', basename(worktreePath)],
+      ['pr', 'create', '--body-file', prDescriptionPath, '--title', title],
       { cwd: worktreePath, stdio: 'pipe', encoding: 'utf8' },
     );
     const match = out.match(/https:\S+/);
     return match ? match[0] : out.trim() || null;
-  } catch {
+  } catch (err) {
+    // Surface the failure on stderr so the operator sees what went wrong;
+    // openPullRequest's nullable return is otherwise opaque.
+    const e = err as { stderr?: Buffer | string; message?: string };
+    const stderr = typeof e.stderr === 'string' ? e.stderr : e.stderr?.toString() ?? '';
+    if (stderr) process.stderr.write(`[openPullRequest] ${stderr}\n`);
+    else if (e.message) process.stderr.write(`[openPullRequest] ${e.message}\n`);
     return null;
   }
 }
@@ -638,10 +836,18 @@ function openPullRequest(worktreePath: string, prDescriptionPath: string): strin
  * Best-effort `gh pr merge` for the approved PR. Returns true on success.
  * The PR-create + PR-merge split lets bench-mode use a `gh` shim that
  * records the operations locally without touching real GitHub.
+ *
+ * Notably does NOT pass `--delete-branch`: that flag makes `gh` switch the
+ * project repo's HEAD to main and `git branch -D` the merged branch, which
+ * fails when the project repo already has main checked out at
+ * `projects/<name>/` (a forge worktree was added off the same repo). Branch
+ * cleanup is owned by `worktree.cleanup()` in the scheduler's finally
+ * block (F-09) — local branch deleted there, remote branch lingers
+ * unless the GitHub repo has "auto-delete head branches" enabled.
  */
 function mergePullRequest(worktreePath: string): boolean {
   try {
-    execFileSync('gh', ['pr', 'merge', '--merge', '--delete-branch'], {
+    execFileSync('gh', ['pr', 'merge', '--merge'], {
       cwd: worktreePath,
       stdio: 'pipe',
     });
@@ -692,22 +898,14 @@ async function runReviewer(input: CycleInput, logger: EventLogger): Promise<Revi
   const workItemsDir = resolve(input.worktreePath, '.forge', 'work-items');
   const { items: workItems } = readWorkItemsFromDir(workItemsDir);
 
-  // Wipe the dev-loop's leftover PROMPT.md / AGENT.md / fix_plan.md before
-  // stamping the reviewer's. The dev-loop's stamps are per-WI scratch state
-  // for THAT phase; the review-Ralph is a different mission with a different
-  // iteration prompt. Without this, prepareReviewerWorkspace's idempotency
-  // would leave the agent reading stale dev-loop content and hallucinating
-  // its role.
-  for (const f of ['PROMPT.md', 'AGENT.md', 'fix_plan.md']) {
-    const p = resolve(input.worktreePath, f);
-    if (existsSync(p)) {
-      try {
-        unlinkSync(p);
-      } catch {
-        /* best-effort */
-      }
-    }
-  }
+  // F-15: wipe the dev-loop's leftover PROMPT.md / AGENT.md / fix_plan.md
+  // before stamping the reviewer's. The dev-loop's stamps are per-WI scratch
+  // state for THAT phase; the review-Ralph is a different mission with a
+  // different iteration prompt. Without this, prepareReviewerWorkspace's
+  // idempotency would leave the agent reading stale dev-loop content and
+  // hallucinating its role. Logic extracted to `wipeRalphScratch` in
+  // reviewer-invocation.ts for direct unit testing.
+  wipeRalphScratch(input.worktreePath);
 
   // Stamp PROMPT.md / AGENT.md / fix_plan.md into the worktree.
   const { promptPath, agentMdPath, fixPlanPath } = prepareReviewerWorkspace({
@@ -794,6 +992,20 @@ async function runReviewer(input: CycleInput, logger: EventLogger): Promise<Revi
         cycleId: 'live',
         initiativeId: input.initiativeId,
         qualityGate,
+        // F-14: emit per-iteration events for the reviewer-Ralph as well.
+        onIteration: (iteration, info) => {
+          logger.emit({
+            initiative_id: input.initiativeId,
+            parent_event_id: start.event_id,
+            phase: 'review-loop',
+            skill: 'reviewer',
+            event_type: 'iteration',
+            iteration,
+            input_refs: [input.worktreePath],
+            output_refs: info.filesChanged,
+            cost_usd: info.costUsd,
+          });
+        },
       },
       agent,
     );
@@ -810,6 +1022,24 @@ async function runReviewer(input: CycleInput, logger: EventLogger): Promise<Revi
       metadata: { error: err instanceof Error ? err.message : String(err) },
     });
     throw err;
+  }
+
+  // F-13: brain-first gate. The reviewer is supposed to consult brain themes
+  // for PR/demo conventions and project review gotchas before drafting.
+  // A skipped consultation is a hard fail UNLESS the loop also exhausted
+  // its iteration budget — in that case the agent ran out of rounds while
+  // working (a PR draft and demo do exist), so the F-11 cap-exhausted path
+  // should still move the manifest to `ready-for-review/` for operator
+  // pickup. The brain-skipped event is recorded for visibility either way.
+  const brainOk = recordBrainGateResult('review-loop', 'reviewer', toolUseSummary.brainReads, {
+    initiativeId: input.initiativeId,
+    logger,
+    parentEventId: start.event_id,
+  });
+  if (!brainOk && loopResult.stop_reason !== 'iteration-budget') {
+    throw new Error(
+      'review-loop phase failed: brain-first mandate not honoured (0 brain-query calls). The reviewer must read project themes before drafting the demo + PR.',
+    );
   }
 
   // Emit per-verdict events post-loop.
@@ -839,7 +1069,12 @@ async function runReviewer(input: CycleInput, logger: EventLogger): Promise<Revi
   if (approved) {
     // Open the PR (best-effort) and immediately merge.
     const prDescriptionPath = resolve(input.worktreePath, '.forge', 'pr-description.md');
-    prUrl = openPullRequest(input.worktreePath, prDescriptionPath);
+    // Prefer a human-readable PR title pulled from the PR description's
+    // first heading. Falls back to the initiative ID when the description
+    // is absent or malformed (machine-readable but at least scoped to the
+    // initiative — better than the worktree's basename).
+    const prTitle = extractPrTitle(prDescriptionPath, input.initiativeId);
+    prUrl = openPullRequest(input.worktreePath, prDescriptionPath, prTitle);
     const merged = mergePullRequest(input.worktreePath);
     logger.emit({
       initiative_id: input.initiativeId,
@@ -918,6 +1153,11 @@ async function runReviewer(input: CycleInput, logger: EventLogger): Promise<Revi
     }
     outcome = 'merged';
   } else if (loopResult.stop_reason === 'iteration-budget') {
+    // F-11: send-back cap exhausted is NOT a phantom value any more. Move the
+    // manifest to `ready-for-review/` so the operator can pick up via
+    // `forge review` (PR draft exists; the agent ran out of send-back rounds
+    // before reaching an approved verdict). Return outcome cleanly — the
+    // dispatch helper notifies as 'failed' to surface the cap exhaustion.
     outcome = 'send-back-cap-exhausted';
     logger.emit({
       initiative_id: input.initiativeId,
@@ -930,6 +1170,11 @@ async function runReviewer(input: CycleInput, logger: EventLogger): Promise<Revi
       message: 'reviewer.send-back-cap-exhausted',
       metadata: { rounds: gateState.invocations },
     });
+    try {
+      moveQueueItem(basename(input.manifestPath), 'ready-for-review');
+    } catch {
+      /* best-effort — manifest may already have been moved */
+    }
   } else {
     // Loop ended without approval AND not via iteration budget — wedged or
     // another stop condition. Treat as ready-for-review (PR draft exists but
@@ -963,11 +1208,11 @@ async function runReviewer(input: CycleInput, logger: EventLogger): Promise<Revi
     },
   });
 
-  if (outcome === 'send-back-cap-exhausted') {
-    throw new Error(
-      `reviewer phase failed: send-back cap exhausted after ${gateState.invocations} rounds`,
-    );
-  }
+  // F-11: removed the throw on `send-back-cap-exhausted` — manifest is already
+  // moved to `ready-for-review/` above and the cycle returns the status
+  // cleanly. The scheduler dispatch handles the 'send-back-cap-exhausted'
+  // status as a failed-with-PR-draft case (operator picks up via
+  // `forge review <id>`).
   return outcome;
 }
 
@@ -1009,9 +1254,16 @@ async function runReflector(
   const cycleId = logger.cycleId;
   const cycleLogDir = resolve(forgeRoot, '_logs', cycleId);
 
+  // Reflection runs after the reviewer merged the initiative, which moves the
+  // manifest from `_queue/in-flight/` to `_queue/done/`. The cycle was kicked
+  // off with the in-flight path, so we look up the current location before
+  // reading. Fall back to the original path so this stays compatible with
+  // bench harnesses that point directly at a stable manifest.
+  const manifestPath = resolveCurrentManifestPath(input.manifestPath, forgeRoot);
+
   let projectName: string;
   try {
-    const manifest = parseManifest(readFileSync(input.manifestPath, 'utf8'));
+    const manifest = parseManifest(readFileSync(manifestPath, 'utf8'));
     projectName = manifest.project;
   } catch (err) {
     logger.emit({
@@ -1020,7 +1272,7 @@ async function runReflector(
       phase: 'reflection',
       skill: 'reflector',
       event_type: 'error',
-      input_refs: [input.manifestPath],
+      input_refs: [manifestPath],
       output_refs: [],
       message: 'reflector.manifest-unreadable',
       metadata: { error: err instanceof Error ? err.message : String(err) },
@@ -1029,10 +1281,30 @@ async function runReflector(
   }
 
   const systemPrompt = buildReflectorSystemPrompt(forgeRoot);
+  const cycleArchivePath = resolve(forgeRoot, 'brain', '_raw', 'cycles', `${cycleId}.md`);
+  const themesDir = resolve(forgeRoot, 'brain', 'projects', projectName, 'themes');
+  // F-07: ensure brain destination dirs exist before invoking the SDK; the
+  // reflector writes here directly. A first-time project (no themes/ yet) or
+  // a fresh forge install (no brain/_raw/cycles/) would otherwise see ENOENT
+  // inside the agent and silently log-and-continue-fail.
+  mkdirSync(resolve(forgeRoot, 'brain', '_raw', 'cycles'), { recursive: true });
+  mkdirSync(themesDir, { recursive: true });
+  // F-12: touch brain-gaps.jsonl if absent. The reflector's user prompt
+  // points it at this file; the bench fixtures pre-populate it. In live
+  // cycles, gaps are agent-driven (brain-query SKILL writes to it). For the
+  // production path, an empty file is a valid signal of "no gaps recorded
+  // this cycle" — better than ENOENT bouncing the agent's Read attempt.
+  // A real orchestrator-side gap producer is deferred to pass-3 (would
+  // require post-cycle event-log scanning).
+  const brainGapsPath = resolve(cycleLogDir, 'brain-gaps.jsonl');
+  if (!existsSync(brainGapsPath)) {
+    mkdirSync(cycleLogDir, { recursive: true });
+    writeFileSync(brainGapsPath, '');
+  }
   const prompt = renderReflectorUserPrompt({
     initiativeId: input.initiativeId,
     cycleId,
-    manifestRelPath: input.manifestPath,
+    manifestRelPath: manifestPath,
     eventLogRelPath: logger.logFilePath,
     brainGapsRelPath: resolve(cycleLogDir, 'brain-gaps.jsonl'),
     mergedTreeRelPath: input.projectRepoPath,
@@ -1040,8 +1312,8 @@ async function runReflector(
     userQuestionsRelPath: resolve(cycleLogDir, 'user-questions.md'),
     userFeedbackRelPath: resolve(cycleLogDir, 'user-feedback.md'),
     retroRelPath: resolve(cycleLogDir, 'retro.md'),
-    cycleArchiveRelPath: resolve(forgeRoot, 'brain', '_raw', 'cycles', `${cycleId}.md`),
-    themesDirRelPath: resolve(forgeRoot, 'brain', 'projects', projectName, 'themes'),
+    cycleArchiveRelPath: cycleArchivePath,
+    themesDirRelPath: themesDir,
   });
 
   const options: Record<string, unknown> = {
@@ -1100,13 +1372,26 @@ async function runReflector(
     return 'failed';
   }
 
+  // F-13: brain-first gate for reflector. Log-and-continue style — reflector
+  // failures don't propagate (the merge already happened). The
+  // reflection_status field surfaces the failure to telemetry.
+  if (
+    !recordBrainGateResult('reflection', 'reflector', toolUseSummary.brainReads, {
+      initiativeId: input.initiativeId,
+      logger,
+      parentEventId: start.event_id,
+    })
+  ) {
+    return 'failed';
+  }
+
   logger.emit({
     initiative_id: input.initiativeId,
     parent_event_id: start.event_id,
     phase: 'reflection',
     skill: 'reflector',
     event_type: 'end',
-    input_refs: [logger.logFilePath, input.manifestPath],
+    input_refs: [logger.logFilePath, manifestPath],
     output_refs: [resolve(cycleLogDir, 'retro.md')],
     cost_usd: costUsd,
     duration_ms: durationMs,
@@ -1124,6 +1409,108 @@ async function runReflector(
 function newCycleId(initiativeId: string): string {
   const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
   return `${ts}_${initiativeId}`;
+}
+
+/**
+ * Extract a human-readable PR title from the reviewer's pr-description.md.
+ * The reviewer convention is `# <title>` as the first line; we pluck that.
+ * Falls back to the initiativeId if the file is missing/malformed/empty.
+ */
+function extractPrTitle(prDescriptionPath: string, initiativeId: string): string {
+  try {
+    const content = readFileSync(prDescriptionPath, 'utf8');
+    const match = content.match(/^#\s+(.+)$/m);
+    if (match && match[1].trim().length > 0) return match[1].trim();
+  } catch {
+    /* fall through */
+  }
+  return initiativeId;
+}
+
+/**
+ * Resolve the quality-gate command the dev-loop runner and reviewer will use.
+ * Single source of truth — both phases call this and use the same vector.
+ *
+ * Precedence: explicit CycleInput → manifest field → npm test (if Node repo)
+ * → ['true'] (no-op for non-Node repos that didn't declare a command).
+ */
+function resolveQualityGateCmd(input: CycleInput): string[] {
+  if (input.qualityGateCmd && input.qualityGateCmd.length > 0) {
+    return [...input.qualityGateCmd];
+  }
+  try {
+    const m = parseManifest(readFileSync(input.manifestPath, 'utf8'));
+    if (m.quality_gate_cmd && m.quality_gate_cmd.length > 0) {
+      return [...m.quality_gate_cmd];
+    }
+  } catch {
+    /* manifest may not exist in dry-run / test fixtures; fall through */
+  }
+  if (existsSync(resolve(input.worktreePath, 'package.json'))) {
+    return ['npm', 'test'];
+  }
+  return ['true'];
+}
+
+/**
+ * Brain-first runtime gate. CLAUDE.md and every SKILL.md require each phase's
+ * agent to consult the brain (via `Read`/`Grep`/`Glob` against `brain/...`)
+ * before producing output. Bench harnesses gate on this; production didn't —
+ * which surfaced in W4 as a PM run that fabricated a "Brain themes consulted"
+ * footer while the tool-use summary recorded `brainReads: 0`.
+ *
+ * Returns true iff the agent consulted the brain at least once. On false,
+ * emits a `<skill>.brain-skipped` error event so the failure is observable;
+ * the caller decides whether to throw (PM/review) or log-and-continue
+ * (dev-loop per-WI / reflector — both have established graceful paths).
+ */
+export function recordBrainGateResult(
+  phase: 'project-manager' | 'developer-loop' | 'review-loop' | 'reflection',
+  skill: string,
+  brainReads: number,
+  context: {
+    initiativeId: string;
+    logger: EventLogger;
+    parentEventId?: string;
+    subject?: string;
+  },
+): boolean {
+  if (brainReads > 0) return true;
+  context.logger.emit({
+    initiative_id: context.initiativeId,
+    parent_event_id: context.parentEventId,
+    phase,
+    skill,
+    event_type: 'error',
+    input_refs: [],
+    output_refs: [],
+    message: `${skill}.brain-skipped`,
+    metadata: context.subject ? { subject: context.subject } : undefined,
+  });
+  return false;
+}
+
+/**
+ * Resolve the current location of an initiative's manifest. The reviewer
+ * moves the manifest from `_queue/in-flight/` to `_queue/done/` (or
+ * `_queue/ready-for-review/`) on completion. Reflection runs *after* the
+ * move, so reading the original `input.manifestPath` ENOENTs every real
+ * cycle. We look at the queue's terminal states first, then fall back to
+ * the original path so bench harnesses (which pass a stable, non-queue path)
+ * still work.
+ */
+function resolveCurrentManifestPath(originalPath: string, forgeRoot: string): string {
+  if (existsSync(originalPath)) return originalPath;
+  const filename = basename(originalPath);
+  const candidates = [
+    resolve(forgeRoot, '_queue', 'done', filename),
+    resolve(forgeRoot, '_queue', 'ready-for-review', filename),
+    resolve(forgeRoot, '_queue', 'failed', filename),
+  ];
+  for (const p of candidates) {
+    if (existsSync(p)) return p;
+  }
+  return originalPath;
 }
 
 /**

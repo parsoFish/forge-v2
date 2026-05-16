@@ -26,7 +26,7 @@
 | G3-g | no brain-gate threat in templates | grep-absent | `brain-first gate :: loops/ralph` | fast |
 | G12-a | no bespoke e2e rubric | file-absent | `benchmarks/e2e/scoring.ts` | fast |
 | G4 | single coupling authority (detectHiddenCoupling only) | grep-present | `detectHiddenCoupling( :: orchestrator/phases/project-manager.ts` | fast |
-| G9 | no auto-merge reachable unattended | pending | phase-6 | full |
+| G9 | no auto-merge: no mergePullRequest() call reachable from scheduler/cycle/reviewer | grep-absent | `mergePullRequest( :: orchestrator/cycle.ts orchestrator/scheduler.ts orchestrator/scheduler-dispatch.ts orchestrator/phases` | fast |
 | SIMPL-LOC | no source file > 800 LOC | loc-max | `800 :: orchestrator loops` | fast |
 | CLI-1 | brain-query stub verb removed | grep-absent | `(skeleton) brain-query :: orchestrator/cli.ts` | fast |
 | CLI-2 | bench stub verb removed | grep-absent | `Run via: npm run bench :: orchestrator/cli.ts` | fast |
@@ -36,9 +36,11 @@
 | US-1.3-pr | PR/merge extracted to orchestrator/pr.ts | file-present | `orchestrator/pr.ts` | fast |
 | G11 | per-phase benches, no false-colour | pending | phase-4 | full |
 | G12-b | chained bench owns no rubric (scores via existing per-phase caseScore only) | file-absent | `benchmarks/chained/scoring.ts` | full |
-| G1 | done/ ⇒ PR MERGED | pending | phase-6 | full |
-| G8 | dev-loop close: origin==local, main==merge-base | pending | phase-6 | full |
-| G10 | reflection only on confirmed merge | pending | phase-6 | full |
+| G1 | done/ ⇒ MERGED: reviewer never moves a manifest to done/ (only closure, gated on a confirmed merge, does) | grep-absent | `, 'done') :: orchestrator/phases/reviewer.ts` | fast |
+| G1-rt | closure moves to done/ ONLY on a confirmed merge; pr-open + unmerged stays ready-for-review | cmd | `npx tsx --test orchestrator/phases/closure.test.ts` | full |
+| G8 | dev-loop close: local↔remote invariant asserted (origin==local HEAD, main==merge-base) | grep-present | `assertLocalRemoteSynced( :: orchestrator/cycle.ts` | fast |
+| G8-rt | local↔remote invariant catches divergence at runtime (push + assert primitives) | cmd | `npx tsx --test orchestrator/pr.test.ts` | full |
+| G10 | reflection gated on a gh-pr-view==MERGED confirmation (runReflector nested under closure.merged ⟸ confirmPrMerged ⟸ gh pr view --json state ⟸ MERGED) | cmd | `perl -0777 -ne 'exit(($_ =~ /if \(closure\.merged\) \{\s*reflectionStatus = await runReflector\(/) ? 0 : 1)' orchestrator/cycle.ts && grep -q "gh pr view --json state" orchestrator/pr.ts && grep -q confirmPrMerged orchestrator/phases/closure.ts && grep -q MERGED orchestrator/pr.ts` | fast |
 | US-3.1 | three slash commands exist | pending | phase-7 | fast |
 | US-4.1 | C1–C6 preflight implemented | pending | phase-8 | fast |
 | G6 | manifest origin tag + cohort split | pending | phase-8 | fast |

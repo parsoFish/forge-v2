@@ -42,7 +42,6 @@ import {
   type GetVerdict,
   type ReviewerGateState,
 } from '../reviewer-stage2.ts';
-import { moveTo as moveQueueItem } from '../queue.ts';
 import { notify } from '../notify.ts';
 import { readWorkItemsFromDir, type WorkItem } from '../work-item.ts';
 import { createClaudeAgent, type QueryFn } from '../../loops/ralph/claude-agent.ts';
@@ -335,16 +334,13 @@ export async function runReviewer(input: CycleInput, logger: EventLogger): Promi
       metadata: { url: prUrl, pr_created: prUrl !== null },
     });
 
-    // Whether or not `gh pr create` succeeded, the review phase is done:
-    // the manifest moves to `ready-for-review/` (the operator surface —
-    // the PR awaits their merge; closure promotes to `done/` on a
-    // confirmed merge). If the PR was created → `pr-open`; if PR creation
+    // The reviewer does NOT move the manifest — it stays in `in-flight/`
+    // through review (it IS in flight). The CLOSURE step is the single
+    // terminal-move authority: `in-flight → done` on a confirmed merge
+    // (G1), `in-flight → ready-for-review` otherwise. Keeping one mover
+    // matches queue.ts:moveTo's `from = in-flight` contract and avoids the
+    // double-move defect. If `gh pr create` succeeded → `pr-open`; if it
     // failed → `ready-for-review` (operator opens it manually / re-runs).
-    try {
-      moveQueueItem(basename(input.manifestPath), 'ready-for-review');
-    } catch {
-      /* best-effort — manifest may already have been moved */
-    }
     outcome = prUrl ? 'pr-open' : 'ready-for-review';
 
     try {
@@ -393,21 +389,13 @@ export async function runReviewer(input: CycleInput, logger: EventLogger): Promi
       message: 'reviewer.send-back-cap-exhausted',
       metadata: { rounds: gateState.invocations },
     });
-    try {
-      moveQueueItem(basename(input.manifestPath), 'ready-for-review');
-    } catch {
-      /* best-effort — manifest may already have been moved */
-    }
+    // Manifest stays in-flight; closure moves it to ready-for-review/.
   } else {
     // Loop ended without approval AND not via iteration budget — wedged or
     // another stop condition. Treat as ready-for-review (PR draft exists but
-    // not approved); operator can pick up manually.
+    // not approved); operator can pick up manually. Manifest stays
+    // in-flight; closure performs the single terminal move.
     outcome = 'ready-for-review';
-    try {
-      moveQueueItem(basename(input.manifestPath), 'ready-for-review');
-    } catch {
-      /* best-effort */
-    }
   }
 
   logger.emit({

@@ -37,6 +37,12 @@ import { runClosure } from './closure.ts';
 import { createLogger, type EventLogEntry } from '../logging.ts';
 import type { CycleInput, ReviewerOutcome } from '../cycle-context.ts';
 
+// Captured ONCE at module load — the stable cwd to restore to after each
+// test's chdir. Using a per-setup snapshot would race: sequential async
+// subtests can have a prior test's (deleted) tempdir as cwd if its
+// cleanup hasn't run yet.
+const MODULE_CWD = process.cwd();
+
 function sh(cwd: string, args: string[]): void {
   execFileSync('git', args, { cwd, stdio: 'pipe' });
 }
@@ -85,14 +91,20 @@ function setup(): Harness {
   for (const p of [inFlight, done, readyForReview, join(queue, 'pending'), join(queue, 'failed')]) {
     mkdirSync(p, { recursive: true });
   }
-  const manifestPath = join(readyForReview, 'INIT-x.md');
+  // Phase 6 contract: the reviewer does NOT move the manifest — it stays
+  // in `in-flight/` through review. Closure is the single terminal-move
+  // authority (moveTo's `from` is always in-flight).
+  const manifestPath = join(inFlight, 'INIT-x.md');
   writeFileSync(manifestPath, '---\ninitiative_id: INIT-x\n---\n');
 
   const logsDir = join(dir, '_logs');
   mkdirSync(logsDir, { recursive: true });
   const logger = createLogger('TEST-closure', logsDir);
 
-  const originalCwd = process.cwd();
+  // closure.ts:moveQueueItem → queue.ts:moveTo defaults to a cwd-relative
+  // `_queue`. chdir into the tempdir for the duration of the test; restore
+  // to the stable MODULE-level cwd (NOT a per-setup snapshot — that races
+  // across sequential async subtests if a prior cleanup hasn't run yet).
   process.chdir(dir);
 
   return {
@@ -106,7 +118,7 @@ function setup(): Harness {
     },
     paths: { inFlight, done, readyForReview },
     cleanup: () => {
-      process.chdir(originalCwd);
+      process.chdir(MODULE_CWD);
       rmSync(dir, { recursive: true, force: true });
     },
   };

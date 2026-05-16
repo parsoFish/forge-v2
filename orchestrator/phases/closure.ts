@@ -14,18 +14,24 @@
  *      every product path.
  *   2. On a CONFIRMED merge: aligns local↔remote — fast-forwards local
  *      `main`, prunes the initiative branch (`alignLocalToRemote`) — and
- *      moves the manifest `ready-for-review/` → `done/`. Reflection then
- *      fires (cycle.ts) on this confirmed-merge signal only (G10), so
+ *      moves the manifest `in-flight/ → done/`. Reflection then fires
+ *      (cycle.ts) on this confirmed-merge signal only (G10), so
  *      `_queue/done/` ⇒ the PR is MERGED (G1).
  *   3. On an UNconfirmed merge (open PR — the expected unattended state
- *      until the operator merges, or a partial/failed state): the manifest
- *      stays in `ready-for-review/`, flagged, and reflection is skipped.
+ *      until the operator merges, or a partial/failed state): moves the
+ *      manifest `in-flight/ → ready-for-review/`, flagged; reflection is
+ *      skipped.
+ *
+ * Closure is the SINGLE terminal-move authority. The reviewer no longer
+ * moves the manifest — it stays in `in-flight/` through review (it is in
+ * flight). Keeping one mover matches queue.ts:moveTo's `from = in-flight`
+ * contract and removes the double-move defect.
  *
  * No SDK calls — closure is pure orchestration over git + gh + the queue.
  */
 
 import { execFileSync } from 'node:child_process';
-import { basename, resolve } from 'node:path';
+import { basename } from 'node:path';
 
 import type { EventLogger } from '../logging.ts';
 import { moveTo as moveQueueItem } from '../queue.ts';
@@ -57,6 +63,47 @@ function initiativeBranch(input: CycleInput): string | null {
 }
 
 /**
+ * The single terminal queue move (from `in-flight/`). Best-effort + logged
+ * — the manifest may already be at the destination on an idempotent
+ * re-trigger, and a failed move must not fail the cycle (on the merged
+ * path the merge already happened on the remote; on the pr-open path the
+ * scheduler still preserves the worktree).
+ */
+function terminalMove(
+  input: CycleInput,
+  logger: EventLogger,
+  parentEventId: string,
+  to: 'done' | 'ready-for-review',
+): void {
+  try {
+    const dest = moveQueueItem(basename(input.manifestPath), to);
+    logger.emit({
+      initiative_id: input.initiativeId,
+      parent_event_id: parentEventId,
+      phase: 'closure',
+      skill: 'cycle',
+      event_type: 'log',
+      input_refs: [input.manifestPath],
+      output_refs: [dest],
+      message: to === 'done' ? 'closure.manifest-moved-to-done' : 'closure.manifest-moved-to-ready-for-review',
+      metadata: { confirmed_merge: to === 'done' },
+    });
+  } catch (err) {
+    logger.emit({
+      initiative_id: input.initiativeId,
+      parent_event_id: parentEventId,
+      phase: 'closure',
+      skill: 'cycle',
+      event_type: 'log',
+      input_refs: [input.manifestPath],
+      output_refs: [],
+      message: 'closure.manifest-move-noop',
+      metadata: { target: to, detail: err instanceof Error ? err.message : String(err) },
+    });
+  }
+}
+
+/**
  * Closure step. Folds the reviewer outcome + the operator-merge
  * confirmation into the final cycle outcome and performs local↔remote
  * alignment on a confirmed merge.
@@ -82,9 +129,12 @@ export async function runClosure(
 
   // The reviewer only ever hands us `pr-open` when the review gate passed
   // AND the PR was created. Any other reviewer outcome (didn't converge,
-  // PR creation failed, send-back cap) is already terminal in
-  // `ready-for-review/` — closure has nothing to confirm; pass it through.
+  // PR creation failed, send-back cap) has no PR to confirm — closure
+  // performs the single terminal move to `ready-for-review/` (the manifest
+  // is still in `in-flight/`; the reviewer no longer moves it) and the
+  // operator picks it up.
   if (reviewerOutcome !== 'pr-open') {
+    terminalMove(input, logger, start.event_id, 'ready-for-review');
     logger.emit({
       initiative_id: input.initiativeId,
       parent_event_id: start.event_id,
@@ -98,6 +148,13 @@ export async function runClosure(
     });
     return { outcome: reviewerOutcome, merged: false };
   }
+
+  // Capture the initiative branch identity NOW, before confirmMerge: in
+  // production the operator merges on GitHub (the local worktree stays on
+  // the initiative branch), but a bench operator-merge model may check out
+  // main locally as a side effect — so resolving the branch after the
+  // confirm would mis-identify it as `main`.
+  const branch = initiativeBranch(input);
 
   // G10 / G1: the ONLY merge signal. Production default = `confirmPrMerged`
   // (`gh pr view --json state` == MERGED). Right after the PR is created
@@ -126,9 +183,10 @@ export async function runClosure(
 
   if (!merged) {
     // Open / unconfirmed PR — the expected unattended terminal state until
-    // the operator merges. The reviewer already moved the manifest to
-    // `ready-for-review/`; leave it there, flagged. Reflection is skipped
-    // (cycle.ts only reflects on `merged`).
+    // the operator merges. Single terminal move: in-flight → ready-for-
+    // review (flagged). Reflection is skipped (cycle.ts only reflects on a
+    // confirmed merge).
+    terminalMove(input, logger, start.event_id, 'ready-for-review');
     logger.emit({
       initiative_id: input.initiativeId,
       parent_event_id: start.event_id,
@@ -159,9 +217,10 @@ export async function runClosure(
   }
 
   // Confirmed MERGED on the remote. Align local↔remote: fast-forward local
-  // `main`, prune the initiative branch.
-  const branch = initiativeBranch(input);
-  if (branch) {
+  // `main`, prune the initiative branch. `branch` was captured before the
+  // confirm (a bench operator-merge may have checked out main); never
+  // prune `main` itself.
+  if (branch && branch !== 'main') {
     const align = alignLocalToRemote(input.worktreePath, branch);
     logger.emit({
       initiative_id: input.initiativeId,
@@ -183,42 +242,21 @@ export async function runClosure(
       event_type: 'log',
       input_refs: [input.worktreePath],
       output_refs: [],
-      message: 'closure.align-skipped-no-branch',
-      metadata: { note: 'detached HEAD or not a git repo — local alignment skipped' },
+      message: 'closure.align-skipped',
+      metadata: {
+        branch,
+        note:
+          branch === 'main'
+            ? 'worktree already on main (operator-merge model ff-merged locally) — local already aligned'
+            : 'detached HEAD or not a git repo — local alignment skipped',
+      },
     });
   }
 
-  // G1: `_queue/done/` ⇒ the PR is MERGED. Move ONLY now (after a
-  // confirmed remote merge), never from an orchestrator-internal flag.
-  try {
-    moveQueueItem(basename(input.manifestPath), 'done');
-    logger.emit({
-      initiative_id: input.initiativeId,
-      parent_event_id: start.event_id,
-      phase: 'closure',
-      skill: 'cycle',
-      event_type: 'log',
-      input_refs: [input.manifestPath],
-      output_refs: [resolve('_queue', 'done', basename(input.manifestPath))],
-      message: 'closure.manifest-moved-to-done',
-      metadata: { confirmed_merge: true },
-    });
-  } catch (err) {
-    // The manifest may already be in done/ (idempotent re-trigger) — that
-    // is fine; surface anything else for diagnosis but don't fail the
-    // cycle (the merge already happened on the remote).
-    logger.emit({
-      initiative_id: input.initiativeId,
-      parent_event_id: start.event_id,
-      phase: 'closure',
-      skill: 'cycle',
-      event_type: 'log',
-      input_refs: [input.manifestPath],
-      output_refs: [],
-      message: 'closure.manifest-move-noop',
-      metadata: { detail: err instanceof Error ? err.message : String(err) },
-    });
-  }
+  // G1: `_queue/done/` ⇒ the PR is MERGED. The single terminal move to
+  // done/ happens ONLY here (after a confirmed remote merge), never from
+  // an orchestrator-internal flag and never from the reviewer.
+  terminalMove(input, logger, start.event_id, 'done');
 
   logger.emit({
     initiative_id: input.initiativeId,

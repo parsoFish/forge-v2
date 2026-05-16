@@ -43,13 +43,17 @@
  *       `.forge/demos/<initiative-id>/`. The Demo section without a link is
  *       a missed handoff.
  *
- *   merge_strategy_respected (0.15)
+ *   merge_strategy_respected (≈0.167, was 0.15 pre-redistribution)
  *       If `Parents:` block present in body, the agent's `gh pr create`
  *       command (captured by the bench, not actually executed) does NOT
  *       include `--squash`. Defends the squash-merge-stacked-prs antipattern.
  *
- *   brain_consulted (0.10)
- *       ≥ 1 brain read in tool-use telemetry. Same anchor as PM/dev-loop.
+ *   (Phase 4.2) The former `brain_consulted` criterion (0.10) was removed:
+ *   per F-41 / theme `brain-read-policy` the reviewer no longer reads the
+ *   brain by design, so scoring it was a false-red. Its weight was
+ *   redistributed proportionally across the six surviving criteria (see the
+ *   WEIGHT_* block below); each weight = its raw pre-redistribution value
+ *   divided by 0.90, so the rubric still sums to 1.0.
  *
  * What this rubric does NOT catch (acknowledged limitation; human-review
  * stage covers these):
@@ -63,7 +67,6 @@ import { existsSync, readFileSync, statSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 import type { WorkItem } from '../../orchestrator/work-item.ts';
-import type { ReviewerToolUseSummary } from '../../orchestrator/reviewer-invocation.ts';
 
 export type ReviewerExpected = {
   /** Project type — informs which recording-tool the agent should use. */
@@ -91,7 +94,6 @@ export type ReviewerCriteria = {
   pr_description_length_floor: 0 | 1;
   pr_links_demo: 0 | 1;
   merge_strategy_respected: 0 | 1;
-  brain_consulted: 0 | 1;
 };
 
 export type ReviewerScore = {
@@ -111,13 +113,53 @@ export type ReviewerScore = {
 export const PASS_THRESHOLD = 0.7;
 
 // Weights — must sum to 1.
-export const WEIGHT_DEMO_RECORDING = 0.15;
-export const WEIGHT_DEMO_EXERCISES_ACS = 0.20;
-export const WEIGHT_PR_WHY_NOT_WHAT = 0.20;
-export const WEIGHT_PR_LENGTH_FLOOR = 0.10;
-export const WEIGHT_PR_LINKS_DEMO = 0.10;
-export const WEIGHT_MERGE_STRATEGY = 0.15;
-export const WEIGHT_BRAIN = 0.10;
+//
+// Phase 4.2 (drift correction): the `brain_consulted` criterion (formerly
+// WEIGHT_BRAIN = 0.10) was REMOVED. Per F-41 / theme `brain-read-policy`, the
+// reviewer no longer reads the brain by design — its job is verify +
+// write-PR anchored on the git log / diff / spec already in the worktree, and
+// the brain-first runtime gate was stripped from the live review-loop
+// (reviewer.ts F-41c). Keeping the criterion was a HIGH false-red: a *correct*
+// reviewer scored 0 on it and lost 0.10, which could flip pass→fail at the
+// 0.7 gate.
+//
+// The freed 0.10 is redistributed **proportionally** across the six
+// surviving criteria so the rubric still sums to 1.0 and each criterion keeps
+// its relative importance. The proportional factor is exactly 1 / 0.90 (the
+// pre-redistribution surviving total): each weight = its raw
+// pre-redistribution value / 0.90.
+//
+// Naively assigning all six as `raw / 0.90` makes them sum to
+// 1.0000000000000002 in IEEE-754 (repeating-decimal rounding), which would
+// trip the exact-equality happy-path assertion. So five weights are the
+// division and the sixth (MERGE_STRATEGY) is the **exact float complement**
+// `1 - (sum of the other five)` — the proportional intent is preserved (the
+// residual it absorbs is < 1e-16, far below any scoring threshold) and the
+// six sum to exactly 1.0.
+const RAW_DEMO_RECORDING = 0.15;
+const RAW_DEMO_EXERCISES_ACS = 0.2;
+const RAW_PR_WHY_NOT_WHAT = 0.2;
+const RAW_PR_LENGTH_FLOOR = 0.1;
+const RAW_PR_LINKS_DEMO = 0.1;
+const RAW_SURVIVING_SUM = 0.9; // 0.15+0.20+0.20+0.10+0.10+0.15 (pre-redistribution)
+
+// Proportional redistribution: each weight = raw / 0.90. Resulting nominal
+// shares — DEMO_RECORDING 1/6 (≈0.1667), DEMO_EXERCISES_ACS 2/9 (≈0.2222),
+// PR_WHY_NOT_WHAT 2/9 (≈0.2222), PR_LENGTH_FLOOR 1/9 (≈0.1111),
+// PR_LINKS_DEMO 1/9 (≈0.1111), MERGE_STRATEGY 1/6 (≈0.1667) — sum = 1.0.
+export const WEIGHT_DEMO_RECORDING = RAW_DEMO_RECORDING / RAW_SURVIVING_SUM;
+export const WEIGHT_DEMO_EXERCISES_ACS = RAW_DEMO_EXERCISES_ACS / RAW_SURVIVING_SUM;
+export const WEIGHT_PR_WHY_NOT_WHAT = RAW_PR_WHY_NOT_WHAT / RAW_SURVIVING_SUM;
+export const WEIGHT_PR_LENGTH_FLOOR = RAW_PR_LENGTH_FLOOR / RAW_SURVIVING_SUM;
+export const WEIGHT_PR_LINKS_DEMO = RAW_PR_LINKS_DEMO / RAW_SURVIVING_SUM;
+// Exact float complement → the six weights sum to exactly 1.0 (no drift).
+export const WEIGHT_MERGE_STRATEGY =
+  1 -
+  (WEIGHT_DEMO_RECORDING +
+    WEIGHT_DEMO_EXERCISES_ACS +
+    WEIGHT_PR_WHY_NOT_WHAT +
+    WEIGHT_PR_LENGTH_FLOOR +
+    WEIGHT_PR_LINKS_DEMO);
 
 // Defaults
 const DEFAULT_MIN_RECORDING_BYTES = 50 * 1024; // 50 KB
@@ -293,9 +335,11 @@ export function mergeStrategyRespected(prBody: string): 0 | 1 {
   return 1;
 }
 
-export function brainConsulted(toolUse: ReviewerToolUseSummary): 0 | 1 {
-  return toolUse.brainReads >= 1 ? 1 : 0;
-}
+// Phase 4.2 (drift correction): `brainConsulted()` was removed. The reviewer
+// no longer reads the brain by design (F-41 / theme `brain-read-policy`), so
+// scoring "≥ 1 brain read" was a false-red. Tool-use telemetry is still
+// captured by the runner (score.ts surfaces it in CaseResult.tool_use for
+// observability) — it is just no longer a scored criterion.
 
 export type CaseScoreInput = {
   /** Path to the worktree (where pr-description.md and demos/ live). */
@@ -307,12 +351,10 @@ export type CaseScoreInput = {
   expected: ReviewerExpected;
   /** Did the orchestrator-verified quality-gate command pass post-agent? */
   qualityGatesPassed: boolean;
-  /** Tool-use telemetry from the agent's session. */
-  toolUse: ReviewerToolUseSummary;
 };
 
 export function caseScore(input: CaseScoreInput): ReviewerScore {
-  const { worktreePath, initiativeId, workItems, expected, qualityGatesPassed, toolUse } = input;
+  const { worktreePath, initiativeId, workItems, expected, qualityGatesPassed } = input;
 
   const prDescriptionPath = resolve(worktreePath, '.forge', 'pr-description.md');
   const prDescriptionPresent = existsSync(prDescriptionPath);
@@ -361,7 +403,6 @@ export function caseScore(input: CaseScoreInput): ReviewerScore {
   const lengthOk = prDescriptionLengthFloor(prBody, expected.min_pr_body_chars);
   const linkOk = prLinksDemo(prBody, initiativeId);
   const mergeOk = mergeStrategyRespected(prBody);
-  const brainOk = brainConsulted(toolUse);
 
   const criteria: ReviewerCriteria = {
     quality_gates_pass: 1,
@@ -372,7 +413,6 @@ export function caseScore(input: CaseScoreInput): ReviewerScore {
     pr_description_length_floor: lengthOk,
     pr_links_demo: linkOk,
     merge_strategy_respected: mergeOk,
-    brain_consulted: brainOk,
   };
 
   const score =
@@ -381,8 +421,7 @@ export function caseScore(input: CaseScoreInput): ReviewerScore {
     WEIGHT_PR_WHY_NOT_WHAT * criteria.pr_description_why_not_what +
     WEIGHT_PR_LENGTH_FLOOR * criteria.pr_description_length_floor +
     WEIGHT_PR_LINKS_DEMO * criteria.pr_links_demo +
-    WEIGHT_MERGE_STRATEGY * criteria.merge_strategy_respected +
-    WEIGHT_BRAIN * criteria.brain_consulted;
+    WEIGHT_MERGE_STRATEGY * criteria.merge_strategy_respected;
 
   return {
     score,
@@ -420,7 +459,6 @@ function zeroScore(diag: {
       pr_description_length_floor: 0,
       pr_links_demo: 0,
       merge_strategy_respected: 0,
-      brain_consulted: 0,
     },
     pr_body_chars: diag.pr_body_chars,
     why_chars: 0,

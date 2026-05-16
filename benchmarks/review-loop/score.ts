@@ -94,7 +94,6 @@ function emptyCriteria(): ReviewerCriteria {
     pr_description_length_floor: 0,
     pr_links_demo: 0,
     merge_strategy_respected: 0,
-    brain_consulted: 0,
   };
 }
 
@@ -143,7 +142,7 @@ const results = await mapConcurrent(cases, CONCURRENCY, async (c): Promise<CaseR
       projectType: c.expected.project_type,
       qualityGateCmd: c.expected.quality_gate_cmd,
       isStackedPr: c.expected.is_stacked_pr,
-      maxBudgetUsd: c.max_cost_usd ?? 0.6,
+      reviewIterationBudgetUsd: c.max_cost_usd ?? 0.6,
     });
   } catch (err) {
     outerError = {
@@ -204,7 +203,6 @@ const results = await mapConcurrent(cases, CONCURRENCY, async (c): Promise<CaseR
     workItems: runOut.workItems,
     expected: c.expected,
     qualityGatesPassed: runOut.qualityGatesPassed,
-    toolUse: runOut.toolUseSummary,
   });
 
   cleanupTempdir(runOut.tempdir);
@@ -241,7 +239,6 @@ const criteriaPassRates: Record<keyof ReviewerCriteria, number> = {
   pr_description_length_floor: 0,
   pr_links_demo: 0,
   merge_strategy_respected: 0,
-  brain_consulted: 0,
 };
 for (const r of results) {
   for (const key of Object.keys(criteriaPassRates) as Array<keyof ReviewerCriteria>) {

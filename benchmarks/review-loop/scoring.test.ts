@@ -24,9 +24,7 @@ import {
   prDescriptionLengthFloor,
   prDescriptionWhyNotWhat,
   prLinksDemo,
-  brainConsulted,
   PASS_THRESHOLD,
-  WEIGHT_BRAIN,
   WEIGHT_DEMO_EXERCISES_ACS,
   WEIGHT_DEMO_RECORDING,
   WEIGHT_MERGE_STRATEGY,
@@ -36,7 +34,6 @@ import {
   type ReviewerExpected,
 } from './scoring.ts';
 import type { WorkItem } from '../../orchestrator/work-item.ts';
-import type { ReviewerToolUseSummary } from '../../orchestrator/reviewer-invocation.ts';
 
 // ---------- Test helpers ----------
 
@@ -66,9 +63,8 @@ function makeExpected(overrides: Partial<ReviewerExpected> = {}): ReviewerExpect
   };
 }
 
-function makeToolUse(overrides: Partial<ReviewerToolUseSummary> = {}): ReviewerToolUseSummary {
-  return { brainReads: 1, writes: 3, bashCalls: 2, recorderInvocations: 1, ...overrides };
-}
+// Phase 4.2: `makeToolUse` removed alongside the `brainConsulted` criterion —
+// the rubric no longer takes tool-use telemetry as a scored input.
 
 function setupWorktree(): { worktree: string; cleanup: () => void } {
   const dir = mkdtempSync(join(tmpdir(), 'forge-bench-review-test-'));
@@ -335,16 +331,7 @@ test('mergeStrategyRespected: 0 when Parents present AND `gh pr merge --squash` 
   assert.equal(mergeStrategyRespected(body), 0);
 });
 
-// ---------- brainConsulted ----------
-
-test('brainConsulted: 1 when brainReads >= 1', () => {
-  assert.equal(brainConsulted(makeToolUse({ brainReads: 1 })), 1);
-  assert.equal(brainConsulted(makeToolUse({ brainReads: 5 })), 1);
-});
-
-test('brainConsulted: 0 when brainReads === 0', () => {
-  assert.equal(brainConsulted(makeToolUse({ brainReads: 0 })), 0);
-});
+// Phase 4.2: the `brainConsulted` unit tests were removed with the criterion.
 
 // ---------- caseScore (end-to-end) ----------
 
@@ -387,7 +374,6 @@ test('caseScore: ideal happy run scores 1.0 and passes', () => {
       workItems: [makeWorkItem()],
       expected: makeExpected(),
       qualityGatesPassed: true,
-      toolUse: makeToolUse(),
     });
     assert.equal(score.score, 1, `score should be 1.0, got ${score.score}`);
     assert.ok(score.passed);
@@ -399,7 +385,6 @@ test('caseScore: ideal happy run scores 1.0 and passes', () => {
     assert.equal(score.criteria.pr_description_length_floor, 1);
     assert.equal(score.criteria.pr_links_demo, 1);
     assert.equal(score.criteria.merge_strategy_respected, 1);
-    assert.equal(score.criteria.brain_consulted, 1);
   } finally {
     cleanup();
   }
@@ -415,7 +400,6 @@ test('caseScore: gate 1 violated (quality gates red) → score 0 across the boar
       workItems: [makeWorkItem()],
       expected: makeExpected(),
       qualityGatesPassed: false, // red gates
-      toolUse: makeToolUse(),
     });
     assert.equal(score.score, 0);
     assert.ok(!score.passed);
@@ -438,7 +422,6 @@ test('caseScore: gate 1 violated but agent did NOT write pr-description.md → p
       workItems: [makeWorkItem()],
       expected: makeExpected(),
       qualityGatesPassed: false,
-      toolUse: makeToolUse(),
     });
     assert.equal(score.score, 0);
     assert.equal(score.criteria.quality_gates_pass, 0);
@@ -458,7 +441,6 @@ test('caseScore: gates pass but no pr-description.md → score 0 (failed review-
       workItems: [makeWorkItem()],
       expected: makeExpected(),
       qualityGatesPassed: true,
-      toolUse: makeToolUse(),
     });
     assert.equal(score.score, 0);
     assert.equal(score.criteria.quality_gates_pass, 1);
@@ -484,11 +466,12 @@ test('caseScore: stacked PR with squash declared → merge_strategy_respected = 
       workItems: [makeWorkItem()],
       expected: makeExpected({ is_stacked_pr: true }),
       qualityGatesPassed: true,
-      toolUse: makeToolUse(),
     });
     assert.equal(score.criteria.merge_strategy_respected, 0);
     assert.ok(score.score < 1);
-    // Lost weight is exactly WEIGHT_MERGE_STRATEGY = 0.15
+    // Lost weight is exactly WEIGHT_MERGE_STRATEGY (≈0.167 post Phase-4.2
+    // proportional redistribution; was 0.15). Asserting against the imported
+    // constant keeps this correct regardless of the literal value.
     assert.ok(Math.abs(score.score - (1 - WEIGHT_MERGE_STRATEGY)) < 1e-6);
   } finally {
     cleanup();
@@ -502,8 +485,10 @@ test('caseScore: weights sum to 1.0', () => {
     WEIGHT_PR_WHY_NOT_WHAT +
     WEIGHT_PR_LENGTH_FLOOR +
     WEIGHT_PR_LINKS_DEMO +
-    WEIGHT_MERGE_STRATEGY +
-    WEIGHT_BRAIN;
+    WEIGHT_MERGE_STRATEGY;
+  // Phase 4.2: WEIGHT_BRAIN dropped; the remaining six are the original
+  // weights proportionally renormalised (each = raw / 0.90), so they must
+  // still sum to exactly 1.0 within float tolerance.
   assert.ok(Math.abs(sum - 1) < 1e-9, `weights must sum to 1, got ${sum}`);
 });
 
@@ -511,22 +496,6 @@ test('caseScore: pass threshold matches phase convention', () => {
   assert.equal(PASS_THRESHOLD, 0.7);
 });
 
-test('caseScore: missing brain reads pulls one-criterion below pass threshold', () => {
-  const initiativeId = 'INIT-2026-05-09-redact-argv';
-  const { worktree, cleanup } = setupHappyWorktree({ initiativeId });
-  try {
-    const score = caseScore({
-      worktreePath: worktree,
-      initiativeId,
-      workItems: [makeWorkItem()],
-      expected: makeExpected(),
-      qualityGatesPassed: true,
-      toolUse: makeToolUse({ brainReads: 0 }),
-    });
-    assert.equal(score.criteria.brain_consulted, 0);
-    assert.ok(Math.abs(score.score - (1 - WEIGHT_BRAIN)) < 1e-6);
-    assert.ok(score.passed, 'losing brain still passes (weight=0.10, threshold=0.7)');
-  } finally {
-    cleanup();
-  }
-});
+// Phase 4.2: the "missing brain reads" test was removed — the reviewer no
+// longer reads the brain by design (F-41 / theme `brain-read-policy`), so
+// there is no `brain_consulted` criterion to score.

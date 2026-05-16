@@ -17,8 +17,14 @@ import { join, resolve } from 'node:path';
 import { writeResults } from '../_lib/results.ts';
 import { p95 } from '../_lib/percentile.ts';
 import { mapConcurrent } from '../_lib/concurrent.ts';
+import { parseSource, emitChainedSliceAndExit } from '../_lib/source-switch.ts';
 import { cleanupTempdir, runArchitect, type RunArchitectResult, type ToolUseSummary } from './sdk.ts';
 import { caseScore, PASS_THRESHOLD, type ArchitectExpected, type ArchitectCriteria } from './scoring.ts';
+
+// --source=chained: print this phase's slice of the latest chained run
+// (scored by the SAME caseScore below) and exit. Default golden path
+// (isolated bench against prompts.json) is unchanged. No SDK call here.
+if (parseSource() === 'chained') emitChainedSliceAndExit('architect', 'architect');
 
 type Case = {
   id: string;

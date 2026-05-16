@@ -31,6 +31,12 @@ import {
 } from './scoring.ts';
 import { parseManifest } from '../../orchestrator/manifest.ts';
 import type { PmToolUseSummary } from '../../orchestrator/pm-invocation.ts';
+import { parseSource, emitChainedSliceAndExit } from '../_lib/source-switch.ts';
+
+// --source=chained: print this phase's slice of the latest chained run
+// (scored by the SAME caseScore below) and exit. Default golden path
+// (isolated bench against initiatives.json) is unchanged. No SDK call here.
+if (parseSource() === 'chained') emitChainedSliceAndExit('project_manager', 'project-manager');
 
 type Case = {
   id: string;

@@ -39,6 +39,12 @@ import {
   type ReviewerExpected,
 } from './scoring.ts';
 import type { ReviewerToolUseSummary } from '../../orchestrator/reviewer-invocation.ts';
+import { parseSource, emitChainedSliceAndExit } from '../_lib/source-switch.ts';
+
+// --source=chained: print this phase's slice of the latest chained run
+// (scored by the SAME caseScore below) and exit. Default golden path
+// (isolated bench against cases.json fixtures) is unchanged. No SDK call.
+if (parseSource() === 'chained') emitChainedSliceAndExit('review_loop', 'review-loop');
 
 type Case = {
   id: string;

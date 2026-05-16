@@ -37,6 +37,12 @@ import {
   type ReflectionExpected,
 } from './scoring.ts';
 import type { ReflectorToolUseSummary } from '../../orchestrator/reflector-invocation.ts';
+import { parseSource, emitChainedSliceAndExit } from '../_lib/source-switch.ts';
+
+// --source=chained: print this phase's slice of the latest chained run
+// (scored by the SAME caseScore below) and exit. Default golden path
+// (isolated bench against cases.json fixtures) is unchanged. No SDK call.
+if (parseSource() === 'chained') emitChainedSliceAndExit('reflection', 'reflection');
 
 type Case = {
   id: string;

@@ -13,21 +13,21 @@
 - [x] 0.5 `_meta/iteration/{PROMPT,AGENT}.md` (loop.ts removed as surface; loops/ralph/runner.ts is the documented unattended-resume engine; in-session driving = the loop)
 
 ## Phase 1 — zero-risk removals (pure deletion; no behaviour change) — US-7.1/7.2, G3
-- [ ] 1.1 delete `validateFilesInScopeAgainstWorktree` + its tests (`orchestrator/work-item.ts`, `work-item.test.ts`)
-- [ ] 1.2 remove `pm-hallucinated-paths` mode end-to-end (`orchestrator/failure-classifier.ts` + tests)
-- [ ] 1.3 remove dead `event_type:'cost'` (`orchestrator/logging.ts`; check `metrics.ts`)
-- [ ] 1.4 delete `loops/_adapters/` entirely
-- [ ] 1.5 remove unread `ForgeConfig.models` (+ `forge.config.json.example`, ADR-009 mention)
+- [x] 1.1 delete `validateFilesInScopeAgainstWorktree` + its tests (`orchestrator/work-item.ts`, `work-item.test.ts`)
+- [x] 1.2 remove `pm-hallucinated-paths` mode end-to-end (`orchestrator/failure-classifier.ts` + tests)
+- [x] 1.3 remove dead `event_type:'cost'` (`orchestrator/logging.ts`; check `metrics.ts`)
+- [x] 1.4 delete `loops/_adapters/` entirely
+- [x] 1.5 remove unread `ForgeConfig.models` (+ `forge.config.json.example`, ADR-009 mention)
 - [ ] 1.6 delete `benchmarks/e2e/scoring.ts` + e2e fixture-as-scored-unit; keep only plumbing
-- [ ] 1.7 remove CLI stub verbs `forge brain query`, `forge bench` (+ help text)
+- [x] 1.7 remove CLI stub verbs `forge brain query`, `forge bench` (+ help text)
 
 ## Phase 2 — doc/code parity & brain-read policy — G3, G7, US-2.*
-- [ ] 2.1 strip brain-gate text from `loops/ralph/PROMPT.md.tmpl`, `AGENT.md.tmpl`
-- [ ] 2.2 rewrite `skills/developer-ralph/SKILL.md` + `skills/reviewer/SKILL.md` to match emitted events + brain-read policy
-- [ ] 2.3 update ADR-010, `PRINCIPLES.md` P4, CLAUDE.md brain-first rule + status section
-- [ ] 2.4 update ADR-011 to real orchestrator LOC + rationale
-- [ ] 2.5 remove stale `assertBrainConsulted`/removed-gate comments & docstrings
-- [ ] 2.6 reconcile `ARCHITECTURE.md` to as-built; link the snapshot
+- [x] 2.1 strip brain-gate text from `loops/ralph/PROMPT.md.tmpl`, `AGENT.md.tmpl`
+- [x] 2.2 rewrite `skills/developer-ralph/SKILL.md` + `skills/reviewer/SKILL.md` to match emitted events + brain-read policy
+- [x] 2.3 update ADR-010, `PRINCIPLES.md` P4, CLAUDE.md brain-first rule + status section
+- [x] 2.4 update ADR-011 to real orchestrator LOC + rationale
+- [x] 2.5 remove stale `assertBrainConsulted`/removed-gate comments & docstrings
+- [x] 2.6 reconcile `ARCHITECTURE.md` to as-built; link the snapshot
 
 ## Phase 3 — consolidation/simplification — US-7.1, §H
 - [ ] 3.1 extract PR/merge from `runReviewer` → `orchestrator/pr.ts`

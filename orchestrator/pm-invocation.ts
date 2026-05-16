@@ -33,6 +33,15 @@ function loadSkillText(): string {
   return cachedSkillText;
 }
 
+// Brain-index staleness window (documented, intentional — US-2.3 /
+// brain-read-policy): this cache is module-level, so a long-running
+// `forge serve` process keeps the brain index it loaded at boot. Themes
+// written by cycle N are NOT visible to cycle N+1 until the process
+// restarts. This is accepted, not a bug: the planner only needs a
+// stable index within a cycle, and restarts are cheap. If per-cycle
+// freshness is ever required, key the cache by cwd+mtime (as
+// reflector-invocation.ts already keys by cwd) rather than adding an
+// invalidation path. Do not "fix" this silently.
 let cachedBrainIndex: string | null = null;
 function loadBrainNavigation(cwd: string): string {
   if (cachedBrainIndex !== null) return cachedBrainIndex;

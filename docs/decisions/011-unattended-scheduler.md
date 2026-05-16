@@ -11,7 +11,7 @@ V1 met a similar requirement with a job queue + worker pool + resource controlle
 
 ## Decision
 
-A **persistent process named `forge serve`** runs the scheduler. It is approximately 150 lines of code. Components:
+A **persistent process named `forge serve`** runs the scheduler. The original scaffold target was ~150 LOC; the **as-built reality is larger** (see the LOC reconciliation below and `docs/architecture/as-built-snapshot-2026-05-16.md` §B — `scheduler.ts` is ~874 LOC, the orchestrator total ≈4,400, most of it the shared bench↔live `*-invocation.ts` contracts). The target stands as a *pressure*, not a measured fact. Components:
 
 - **`_queue/` directory state machine** — `pending/`, `in-flight/`, `ready-for-review/`, `done/`, `failed/`. Each subdirectory contains initiative manifests (markdown files with YAML frontmatter). State transitions are atomic file moves (`mv pending/<id>.md in-flight/<id>.md`).
 - **Bounded worktree pool** — up to `scheduler.maxConcurrentInitiatives` (default 2) `git worktree add` instances at any time. Each in-flight initiative owns one.
@@ -28,8 +28,8 @@ The scheduler exposes:
 ## Consequences
 
 **Positive:**
-- Total scheduler code: scheduler.ts + queue.ts + worktree.ts + notify.ts + file-verdict.ts + config.ts ≈ **1,200 LOC** vs v1's ~6,000 LOC equivalent — still ~5× smaller. The scaffold's "≈ 300 LOC" target reflected a pure happy-path scheduler; pass-1 closure added load-bearing pieces that drove the total up:
-  - `scheduler.ts` (~470) — the original ~150 plus the recovery + dispatch + cleanup paths.
+- Honest LOC reconciliation (2026-05-16, post F-24…F-44): the scheduler subsystem ≈ **1,600 LOC** and the whole `orchestrator/` ≈ **4,400 LOC** vs v1's ~6,000 — still smaller, but well over the scaffold's "≈ 300 LOC" target. Most of the growth is the shared bench↔live `*-invocation.ts` prompt contracts (~1,100 LOC, single source of truth, defensible) plus the F-27 resilience layer. The cap is a *pressure to delete*, not a measured fact; the simplification track (Phase 3 — extract `pr.ts`, split files ≤800 LOC) reduces it. Per-file:
+  - `scheduler.ts` (~874) — claim loop + recovery + dispatch + cleanup + bounded auto-retry.
   - `queue.ts` (~185) — file-state machine + recovery sweep.
   - `worktree.ts` (~120) — `add` / `remove` / `cleanup` / `list`.
   - `notify.ts` (~75) — desktop + webhook providers.

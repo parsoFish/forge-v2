@@ -19,19 +19,13 @@ The orchestrator owns the verdict gate between iterations — it re-runs the pro
 
 ## Required first action
 
-Invoke `brain-query` with:
-
-- "What patterns / antipatterns apply to PR descriptions and demo recordings?"
-- "Have past reviews of similar initiatives surfaced common gotchas?"
-- "What's the project's preferred merge style (merge / squash / rebase)?"
-
-Always-relevant brain themes:
-
-- [`brain/forge/themes/squash-merge-stacked-prs.md`](../../brain/forge/themes/squash-merge-stacked-prs.md) — v1 lesson, squash-merging stacked PRs produces lost-source-files cascades.
-- [`brain/forge/themes/layered-merge-order.md`](../../brain/forge/themes/layered-merge-order.md) — merge layer 0 first with health-check, then layer 1.
-- [`brain/forge/themes/markdown-artifact-flow.md`](../../brain/forge/themes/markdown-artifact-flow.md) — every cross-phase artefact is greppable markdown.
-
-Then read `brain/projects/<project>/profile.md` and any project-specific reviewer themes. **Record the brain query results in AGENT.md** so iterations 2+ don't re-do the queries.
+Read the initiative manifest + the work-item set, then `git log` /
+`git diff --stat` against `main`. **The reviewer does NOT query the
+brain** (see [ADR 010](../../docs/decisions/010-brain-first.md) —
+brain-read policy). The initiative's intent is wholly captured in the
+manifest + the work items the planner authored; the reviewer judges the
+branch against *that*, holistically. A brain read here is wasted cost
+and a source-of-truth split (removed in F-41).
 
 ## Inputs
 
@@ -68,17 +62,12 @@ Then read `brain/projects/<project>/profile.md` and any project-specific reviewe
 
 ## Event-log entries to emit (orchestrator-side)
 
-- `reviewer.start` — review-Ralph initiated.
-- `reviewer.brain-query` — every brain query (one per).
-- `reviewer.iteration` — one event per iteration with iteration number, cost, duration, files touched.
-- `reviewer.quality-gates-checked` — orchestrator's gate-run result + command + exit code.
-- `reviewer.demo-recorded` — agent emitted a recording.
-- `reviewer.pr-description-emitted` — agent emitted/refreshed pr-description.md.
-- `reviewer.verdict` — verdict-provider returned a verdict (approve | send-back).
-- `reviewer.send-back-dispatched` — verdict was send-back; feedback appended to fix_plan.md.
-- `reviewer.merged` — verdict was approve; orchestrator merged + moved manifest to `_queue/done/`.
+- `reviewer.start` — `event_type: 'start'`, review-Ralph initiated.
+- per-iteration `event_type: 'iteration'` — iteration number, cost, duration, files touched.
+- `reviewer.verdict.approve` / `reviewer.verdict.send-back` — `event_type: 'log'`, verdict-provider result + rationale + feedback_count.
+- `reviewer.merged` / `reviewer.merge-failed` — merge outcome (url, merged, pr_created).
 - `reviewer.send-back-cap-exhausted` — iteration budget hit before approval.
-- `reviewer.end` — loop complete.
+- `reviewer.end` — `event_type: 'end'`, loop complete; carries `outcome`, `iterations`, `stop_reason`, `verdicts_summary`, `tool_use`, `pr_url`.
 
 ## Benchmark suite
 
@@ -90,7 +79,7 @@ Two benchmarks exercise this skill:
 ## Iteration-N body
 
 1. Read `PROMPT.md`, `AGENT.md`, `fix_plan.md`.
-2. **Iteration 1** (empty fix_plan.md): brain query, record in AGENT.md.
+2. **Iteration 1** (empty fix_plan.md): assess the initiative branch against the manifest + work-item intent holistically; `git log` / `git diff --stat`. No brain query.
    **Iterations 2+**: read `## Round N send-back` items in fix_plan.md.
 3. **If send-back items exist:** edit project code to satisfy each AC. Add tests if the AC is testable. Tick fix_plan.md items as resolved.
 4. Run the project quality gate. Fix until green.

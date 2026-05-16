@@ -270,10 +270,11 @@ export function prepareDevWorkspace(input: PrepareDevWorkspaceInput): PreparedDe
 export type DevToolUseSummary = {
   reads: number;
   /**
-   * Subset of `reads` whose tool input pointed at a `brain/...` path. Used by
-   * the orchestrator's brain-first runtime gate (cycle.ts:assertBrainConsulted)
-   * to enforce the SKILL.md mandate that every dev-loop WI consults the brain
-   * before iterating.
+   * Subset of `reads` whose tool input pointed at a `brain/...` path.
+   * Telemetry only. Per the brain-read policy the dev-loop does NOT read
+   * the brain (intent is wholly in the work item); there is no runtime
+   * brain-first gate for dev-loop (removed in F-34). A non-zero value
+   * here means the agent strayed off the WI — useful signal, not a gate.
    */
   brainReads: number;
   writes: number;

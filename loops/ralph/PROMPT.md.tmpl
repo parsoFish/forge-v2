@@ -24,8 +24,7 @@
 
 ## Your task this iteration
 
-0. **Brain queries (REQUIRED, before any other tool call on iteration 1).** Read at least one `brain/forge/themes/*.md` and at least one `brain/projects/<project>/themes/*.md` (or the project's `profile.md`) to load conventions and antipatterns for this kind of work. The orchestrator's brain-first gate FAILS THE WORK ITEM if no `brain/...` reads are recorded. This is unconditional, not "when unsure".
-1. Read `AGENT.md` and `fix_plan.md`.
+1. Read the **Spec** and **Acceptance criteria** above, plus `AGENT.md` and `fix_plan.md`. The work item is the **single source of intent** — everything you need is here.
 2. Make progress on the highest-priority unchecked item in `fix_plan.md`.
 3. Commit your changes with a conventional-commits message.
 4. Run the project's quality gates (the orchestrator will verify; your claim is not trusted).
@@ -34,7 +33,7 @@
 
 ## Hard rules
 
-- **Brain-first (REQUIRED).** Your first tool calls in iteration 1 must be `Read`/`Grep`/`Glob` against `brain/...` paths. Skipping is a hard fail (orchestrator marks the WI failed regardless of test status).
+- **The work item is the only source of intent.** Do NOT read `brain/`, the project README, or unrelated files — the planner already encoded all needed conventions/antipatterns into this WI's spec and acceptance criteria.
 - **Atomic commits.** One concern per commit.
 - **No shortcuts.** Don't skip tests, don't `--no-verify`, don't disable lint rules to pass.
 - **No scope creep.** This work item's scope is in the spec above. Other improvements: note in `AGENT.md` for the reflector to capture; do not implement here.

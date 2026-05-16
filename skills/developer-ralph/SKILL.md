@@ -14,13 +14,12 @@ Drive a single work item to completion via the Ralph loop pattern ([ADR 002](../
 
 ## Required first action
 
-Invoke `brain-query` with:
-
-- "What patterns apply to <work-item-type>?"
-- "What antipatterns should be avoided based on <files_in_scope>?"
-- "Has the brain seen a similar work item before? If so, what was learned?"
-
-The brain query result becomes part of the initial `AGENT.md` content (institutional memory the loop carries across iterations).
+Read the work-item spec. **The dev-loop does NOT query the brain** (see
+[ADR 010](../../docs/decisions/010-brain-first.md) — brain-read policy).
+The planner already consulted the brain and encoded every relevant
+pattern/antipattern/convention into this WI's spec + acceptance
+criteria. The work item is the **single source of intent**; a brain
+read here is wasted cost and a source-of-truth split.
 
 ## Inputs
 
@@ -40,11 +39,9 @@ The brain query result becomes part of the initial `AGENT.md` content (instituti
 
 ## Event-log entries to emit
 
-- `ralph.start` — loop initiated for a work item.
-- `ralph.iteration` — one event per iteration with iteration number, cost, duration, files touched.
-- `ralph.brain-query` — every brain query within the loop.
-- `ralph.stop-condition` — when the loop exits, which condition fired.
-- `ralph.end` — loop complete.
+- `ralph.start` — `event_type: 'log'`, loop initiated for a work item.
+- per-iteration `event_type: 'iteration'` — iteration number, cost, duration, files touched.
+- `ralph.end` — `event_type: 'end'`, loop complete; carries `status`, `iterations`, `stop_reason`, `tool_use`.
 
 ## Benchmark suite
 
@@ -52,11 +49,10 @@ The brain query result becomes part of the initial `AGENT.md` content (instituti
 
 ## Process
 
-1. **Brain query first** — populate initial `AGENT.md` with relevant patterns/antipatterns.
-2. Read the work item spec.
-3. Stamp `loops/ralph/PROMPT.md.tmpl` with the work-item content + acceptance criteria → `<worktree>/PROMPT.md`.
-4. Stamp `loops/ralph/AGENT.md.tmpl` with the brain-query results → `<worktree>/AGENT.md`.
-5. Initialise `<worktree>/fix_plan.md` with the acceptance criteria as a checklist.
+1. Read the work item spec — the single source of intent (no brain query).
+2. Stamp `loops/ralph/PROMPT.md.tmpl` with the work-item content + acceptance criteria → `<worktree>/PROMPT.md`.
+3. Stamp `loops/ralph/AGENT.md.tmpl` → `<worktree>/AGENT.md` (empty institutional memory; the loop fills it across iterations).
+4. Initialise `<worktree>/fix_plan.md` with the acceptance criteria as a checklist.
 6. Invoke `loops/ralph/runner.ts` with the worktree path and stop-condition config (from initiative manifest's `iteration_budget` and `cost_budget_usd`).
 7. The runner returns: `{ status: 'complete' | 'failed' | 'wedged', iterations: n, cost: usd }`. The orchestrator writes `status` back to the WI spec — the skill does not.
 

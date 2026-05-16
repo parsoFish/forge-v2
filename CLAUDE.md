@@ -16,7 +16,7 @@ If the answer to (1) is no, the change must justify why. If (2) reveals a re-inv
 
 **Before** answering a question about how forge works, before designing, before implementing — **query the brain**. The brain is at [`brain/`](./brain/) and is queryable via the `brain-query` skill. If the brain doesn't know, research further AND log the gap so the next ingest pass can fill it.
 
-This rule is mandatory for every skill, every agent invocation, every cycle. It is enforced by `SKILL.md` instructions in [`skills/`](./skills/).
+This rule binds the **planning** phases (architect / project-manager) and the **reflector**. The **dev-loop and reviewer deliberately do NOT read the brain** — the planner already encoded every relevant convention/antipattern into the work items, which are their single source of intent (amended 2026-05-16; see [ADR 010](./docs/decisions/010-brain-first.md) and [`brain/forge/themes/brain-read-policy.md`](./brain/forge/themes/brain-read-policy.md)).
 
 ## Architecture, principles, decisions
 
@@ -49,7 +49,7 @@ If a change conflicts with an ADR, **update the ADR first** (with rationale) bef
 - Re-invent a job queue, worker pool, resource controller, or process isolator. (See ADRs 011-013 for the line we hold.)
 - Spawn agents as Claude CLI subprocesses. Use Claude Code skills via the SDK.
 - Write a phase docstring without a benchmark suite that proves "this phase got better."
-- Ship a skill that doesn't call `brain-query` first.
+- Ship a **planner or reflector** skill that doesn't read the brain first. (The dev-loop and reviewer skills correctly do NOT — see the brain-read policy.)
 - Add a feature flag, fallback, or "for backwards compatibility" path. v2 has no v1 users to support.
 - Squash-merge stacked PRs (we learned this in v1; the lesson lives in the brain after Pass B).
 

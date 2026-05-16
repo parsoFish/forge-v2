@@ -30,8 +30,8 @@
 | SIMPL-LOC | no source file > 800 LOC | loc-max | `800 :: orchestrator loops` | fast |
 | CLI-1 | brain-query stub verb removed | grep-absent | `(skeleton) brain-query :: orchestrator/cli.ts` | fast |
 | CLI-2 | bench stub verb removed | grep-absent | `Run via: npm run bench :: orchestrator/cli.ts` | fast |
-| US-2.3 | brain index cache invalidated or documented | pending | phase-2 | fast |
-| G7 | doc/code parity (ARCHITECTURE/ADR-010/PRINCIPLES reconciled) | pending | phase-2 | fast |
+| US-2.3 | brain index cache staleness documented | grep-present | `Brain-index staleness window (documented :: orchestrator/pm-invocation.ts` | fast |
+| G7 | doc/code parity (ARCHITECTURE reconciled to as-built) | grep-present | `Reconciled 2026-05-16 :: ARCHITECTURE.md` | fast |
 | US-7.1-notify | one notify sink (no hardcoded literal) | grep-absent | `desktop: true, webhook_url: null :: orchestrator/cycle.ts` | fast |
 | US-1.3-pr | PR/merge extracted to orchestrator/pr.ts | file-present | `orchestrator/pr.ts` | fast |
 | G11 | per-phase benches, no false-colour | pending | phase-4 | full |

@@ -1,10 +1,30 @@
 # Architecture
 
-> This document is the narrative version of [`docs/architecture/forge2.0.drawio.png`](./docs/architecture/forge2.0.drawio.png). The diagram is the source of truth; this is its English translation. ADRs in [`docs/decisions/`](./docs/decisions/) record the load-bearing decisions made on top of it.
+> This document is the **narrative / intended** architecture. For the
+> **honest as-built** (what the code actually does, with Mermaid graphs)
+> see [`docs/architecture/as-built-snapshot-2026-05-16.md`](./docs/architecture/as-built-snapshot-2026-05-16.md);
+> where the two differ, the snapshot is the truth. ADRs in
+> [`docs/decisions/`](./docs/decisions/) record load-bearing decisions.
+>
+> **Reconciled 2026-05-16** with the as-built. Key divergences from the
+> idealised description below: (a) **5 phases are wired into `runCycle`;
+> the architect is a deliberate out-of-cycle human moment** (slash
+> command, not a wired phase); (b) **brain-first is narrowed** — the
+> planner and reflector read the brain; the dev-loop and reviewer do
+> not (see [ADR 010](./docs/decisions/010-brain-first.md) +
+> `brain/forge/themes/brain-read-policy.md`); (c) the **review phase is
+> being redesigned** (no auto-merge; PR is the human surface;
+> `brain/forge/themes/review-phase-target-design.md`).
 
 ## Overview
 
-Forge is six phases backed by a brain. The phases run in sequence per initiative; the brain is read by every phase as the first source of knowledge and written to at the end of every cycle.
+Forge is six phases backed by a brain. Five run in sequence inside
+`runCycle` (project-manager → developer-loop → review-loop →
+reflection, with the architect as a human moment that produces the
+initiative). The brain is read by the **planning** phases and the
+reflector as a first source of knowledge, and written to at the end of
+every cycle; the dev-loop and reviewer take their intent solely from
+the planner's work items.
 
 ![forge2.0 architecture](./docs/architecture/forge2.0.drawio.png)
 

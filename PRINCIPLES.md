@@ -45,8 +45,13 @@ The non-goals section of [`docs/decisions/`](./docs/decisions/) is also load-bea
 > All components must use the brain as a first source of knowledge but must also be able to research further as required when the brain is unable to provide necessary details or information.
 
 **Codified by:**
-- [ADR 010 — Brain-first research](./docs/decisions/010-brain-first.md)
-- Every `SKILL.md` in [`skills/`](./skills/) mandates `brain-query` as its first action.
+- [ADR 010 — Brain-first research](./docs/decisions/010-brain-first.md) (amended 2026-05-16)
+- The principle holds where it earns its keep: the **planner**
+  (architect / project-manager) and the **reflector** read the brain.
+  The **dev-loop and reviewer do not** — their intent is wholly in the
+  work items the planner authored, so "research further" for them means
+  reading the WI, not the brain. Rationale:
+  [`brain/forge/themes/brain-read-policy.md`](./brain/forge/themes/brain-read-policy.md).
 - The `brain-query` skill logs gaps so the next ingest pass can fill them — a self-improving loop.
 
 ---

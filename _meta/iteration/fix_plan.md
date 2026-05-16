@@ -37,8 +37,8 @@
 - [x] 3.5 retire `pm-stale-context` (verify unreachable → delete)
 
 ## Phase 4 — benchmark fidelity — US-6.1, G11
-- [ ] 4.1 PM bench `sdk.ts`: cwd→worktree, budget 0.75→2.5
-- [ ] 4.2 review-loop bench: drop `brainConsulted` 0.10; real `runReviewer` path
+- [x] 4.1 PM bench `sdk.ts`: cwd→worktree, budget 0.75→2.5
+- [x] 4.2 review-loop bench: drop `brainConsulted` 0.10; real `runReviewer` path
 - [ ] 4.3 re-run all per-phase benches; record in `brain/log.md`; assert no false-colour
 
 ## Phase 5 — chained benchmark — US-6.2, G12

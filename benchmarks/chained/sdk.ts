@@ -53,7 +53,9 @@ import { join, resolve } from 'node:path';
 import { runCycle, type CycleInput, type CycleResult } from '../../orchestrator/cycle.ts';
 import { confirmPrMerged } from '../../orchestrator/pr.ts';
 import { parseManifest } from '../../orchestrator/manifest.ts';
+import { getPaths } from '../../orchestrator/queue.ts';
 import { layerBrain } from '../_lib/brain-mask.ts';
+import { runCycleWithBoundedRetry } from '../_lib/chained-retry.ts';
 import {
   buildGhShimScript,
   forgeSnapshotDir,
@@ -68,6 +70,63 @@ import { runArchitect, type RunArchitectResult } from '../architect/sdk.ts';
 import { simulatorVerdict, runSpecChecks, type TargetSpec } from '../e2e/simulator.ts';
 
 const FORGE_ROOT = resolve(import.meta.dirname, '..', '..');
+
+/**
+ * The reflector's stage-3 operator feedback. The 3rd human moment: in
+ * production a human writes `_logs/<cycle-id>/user-feedback.md` (via
+ * `/forge-reflect <id>`) before the next cycle; the reflector reads it
+ * for retro Sections 2 + 3. In the chained bench there is no operator, so
+ * the harness pre-writes this canned, minimal-but-realistic payload —
+ * exactly mirroring how `benchmarks/reflection/` simulates the same
+ * handoff (a short `## Answers` block + a `## Free-form` paragraph). This
+ * is a legitimately-absent human in a bench, faithfully stubbed.
+ */
+const CANNED_USER_FEEDBACK = `# User feedback — chained bench
+
+## Answers
+
+> _Answers to the questions the reflector wrote in \`user-questions.md\`.
+> The chained bench has no live operator; this is the canned stand-in._
+
+- The cycle ran end-to-end (architect → PM → dev-loop → review → merge).
+  Treat a single PM re-run, if it happened, as the expected stochastic
+  recovery — not a defect; the bounded auto-retry is working as designed.
+- Nothing here needs escalation. Capture the run as a healthy
+  reference cycle for this seed.
+
+## Free-form
+
+No surprises on the dev or review side. The bounded-retry mirror means
+the chained bench now exercises the same self-heal path production does.
+`;
+
+/**
+ * Where the reflector phase reads/writes its cycle artefacts. The
+ * reflector resolves `cycleLogDir` module-relative to the REAL forge root
+ * (`resolve(import.meta.dirname, '../..')` in
+ * `orchestrator/phases/reflector.ts`), NOT cwd — so even though the
+ * chained harness `chdir`s into the tempdir, the reflector reads
+ * `<realforge>/_logs/<cycleId>/user-feedback.md`. The harness pre-writes
+ * there and cleans it up afterwards (mirroring the brain-mask "leave no
+ * residue" discipline).
+ */
+function realForgeCycleLogDir(cycleId: string): string {
+  return resolve(FORGE_ROOT, '_logs', cycleId);
+}
+
+/**
+ * Pre-populate the reflector's stage-3 feedback file BEFORE the cycle
+ * runs (the reflector phase only reads it; it never overwrites an
+ * existing file). Idempotent. Mirrors
+ * `benchmarks/reflection/simulator.ts:prepareUserFeedback`.
+ */
+export function prewriteCannedUserFeedback(cycleId: string): string {
+  const dir = realForgeCycleLogDir(cycleId);
+  mkdirSync(dir, { recursive: true });
+  const feedbackPath = resolve(dir, 'user-feedback.md');
+  writeFileSync(feedbackPath, CANNED_USER_FEEDBACK);
+  return feedbackPath;
+}
 
 /**
  * One chain seed. Mirrors a `benchmarks/architect/prompts.json` entry
@@ -445,6 +504,15 @@ export async function runChain(input: RunChainInput): Promise<ChainArtifacts> {
   // The project repo becomes a real git repo now (after the architect step,
   // before the cycle) so PM/dev/review run on `initiative-<id>`.
   initGitRepo(projDir, initiativeId);
+  // Capture the pre-cycle HEAD on the initiative branch. The bounded-retry
+  // wrapper resets the repo to this commit between attempts — the in-place
+  // equivalent of the scheduler giving each retry a fresh `git worktree
+  // add` of the initiative branch.
+  const preCycleHead = execFileSync('git', ['rev-parse', 'HEAD'], {
+    cwd: projDir,
+    stdio: ['pipe', 'pipe', 'pipe'],
+    encoding: 'utf8',
+  }).trim();
 
   const withManifest: Omit<ChainArtifacts, 'chainError'> = {
     ...base,
@@ -458,8 +526,17 @@ export async function runChain(input: RunChainInput): Promise<ChainArtifacts> {
     seed.qualityGateCmd ??
     (existsSync(resolve(projDir, 'package.json')) ? ['npm', 'test', '--silent'] : ['true']);
 
+  // Deterministic, unique cycle id so the harness can pre-write the
+  // reflector's stage-3 `user-feedback.md` BEFORE the cycle runs (the
+  // reflector resolves the cycle-log dir module-relative to the real
+  // forge root, so the id must be known up-front and collision-free
+  // across runs).
+  const cycleId = `chained-${initiativeId}-${Date.now()}`;
+  const userFeedbackPath = prewriteCannedUserFeedback(cycleId);
+
   const cycleInput: CycleInput = {
     initiativeId,
+    cycleId,
     manifestPath: inFlightPath,
     projectRepoPath: projDir,
     worktreePath: projDir,
@@ -508,7 +585,26 @@ export async function runChain(input: RunChainInput): Promise<ChainArtifacts> {
     process.chdir(tempdir);
     process.env.PATH = `${resolve(tempdir, 'bin')}:${originalPath}`;
     process.env.GH_TOKEN = 'invalid';
-    cycleResult = await runCycle(cycleInput);
+    // Production-faithful bounded auto-retry. `forge serve` never runs a
+    // cycle bare — the scheduler wraps every cycle in
+    // `dispatchTerminalStatus` → `decideAutoRetry` (cap +
+    // anti-thrash, reading the `failure_classification` event `runCycle`
+    // wrote). The wrapper REUSES that exact production code as the retry
+    // authority and only sequences attempts the way the scheduler's
+    // poll loop does (re-claim pending/ → in-flight/, fresh-worktree
+    // git reset, re-run). One stochastic PM slip (now
+    // `pm-invalid-work-items`, recoverable) therefore self-heals here
+    // exactly as it would in prod, instead of aborting the chain.
+    const retry = await runCycleWithBoundedRetry({
+      cycleInput,
+      paths: getPaths(resolve(tempdir, '_queue')),
+      filename: `${initiativeId}.md`,
+      manifest: { initiativeId, project: seed.project },
+      projDir,
+      preCycleHead,
+      runCycleFn: runCycle,
+    });
+    cycleResult = retry.result;
   } catch (err) {
     chainError = {
       step: 'cycle',
@@ -522,6 +618,44 @@ export async function runChain(input: RunChainInput): Promise<ChainArtifacts> {
     else process.env.GH_TOKEN = originalGhToken;
     // CRITICAL: always restore the live brain.
     restoreLiveBrain(brainMask);
+    // Wiring bridge (gap fix): the reflector phase resolves its cycle-log
+    // dir module-relative to the REAL forge root (it `mkdir`s + writes
+    // retro.md / user-questions.md to `<realforge>/_logs/<cycleId>/`),
+    // but the reflection `caseScore` reads `<benchRoot>/_logs/<cycleId>/`
+    // (benchRoot = tempdir). Without bridging, `retro_emitted` /
+    // `retro_structured` always fail on chained even on a perfect run.
+    // Copy the reflector's real-forge artefacts into the tempdir
+    // `_logs/<cycleId>/` (the event log already lands there — it's
+    // cwd-relative via createLogger), then remove the real-forge dir so
+    // the run leaves no residue (same discipline as the brain mask).
+    try {
+      const realCycleLogDir = realForgeCycleLogDir(cycleId);
+      if (existsSync(realCycleLogDir)) {
+        const tempdirCycleLogDir = resolve(tempdir, '_logs', cycleId);
+        mkdirSync(tempdirCycleLogDir, { recursive: true });
+        for (const entry of readdirSync(realCycleLogDir)) {
+          // Don't clobber the cwd-relative event log already in the
+          // tempdir; copy only the reflector's module-relative artefacts.
+          if (entry === 'events.jsonl') continue;
+          cpSync(
+            resolve(realCycleLogDir, entry),
+            resolve(tempdirCycleLogDir, entry),
+            { recursive: true, force: true },
+          );
+        }
+      }
+    } catch {
+      /* best-effort — reflection caseScore degrades gracefully if absent */
+    }
+    if (process.env.FORGE_BENCH_KEEP_TEMPDIR !== '1') {
+      try {
+        rmSync(realForgeCycleLogDir(cycleId), { recursive: true, force: true });
+      } catch {
+        /* best-effort */
+      }
+    } else {
+      process.stdout.write(`[chained] kept reflector feedback: ${userFeedbackPath}\n`);
+    }
   }
 
   const ghMeta = readGhMetadata(tempdir);

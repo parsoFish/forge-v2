@@ -32,7 +32,7 @@
  */
 
 import { execFileSync } from 'node:child_process';
-import { existsSync, renameSync } from 'node:fs';
+import { existsSync, readFileSync, renameSync } from 'node:fs';
 import { join } from 'node:path';
 
 import type { CycleInput, CycleResult } from '../../orchestrator/cycle.ts';
@@ -88,6 +88,55 @@ export type BoundedRetryResult = {
 const NOOP_NOTIFY = async (_event: NotifyEvent): Promise<void> => {
   /* bench: no notification sink */
 };
+
+/**
+ * Bench-scoped EXTRA recoverable modes — production's `RECOVERABLE_MODES`
+ * is deliberately untouched. Rationale: a `dev-loop-total-failure` is a
+ * 0/N stochastic dev-loop wedge (one paid run completed all 6 WIs; a
+ * later run with the SAME seed/budget had WI-1 make no file progress and
+ * the wedge-guard correctly stopped it). Production keeps this
+ * non-recoverable *conservatively* (it could be a genuinely unsolvable
+ * WI — don't burn operator budget). But in a bench the absent operator
+ * is exactly the thing that would re-run a flukey wedge, so the chained
+ * harness rides it — bounded by the SAME `1 + MAX_AUTO_RETRIES` total
+ * cap (≤2 fresh dev-loop samples). Retrying a *stochastic* failure is
+ * productive (fresh sample), not thrashing; the hard attempt cap stops
+ * a genuinely unsolvable seed.
+ */
+const BENCH_EXTRA_RECOVERABLE = new Set<string>(['dev-loop-total-failure']);
+
+/** Last `failure_classification` mode from the cycle's event log (null if none). */
+function readClassifiedMode(logPath: string): string | null {
+  try {
+    const lines = readFileSync(logPath, 'utf8').split('\n');
+    for (let i = lines.length - 1; i >= 0; i -= 1) {
+      const ln = lines[i].trim();
+      if (!ln) continue;
+      const e = JSON.parse(ln) as { message?: string; metadata?: Record<string, unknown> };
+      if (e.message === 'failure_classification') {
+        const m = e.metadata?.failure_mode;
+        return typeof m === 'string' ? m : null;
+      }
+    }
+  } catch {
+    /* no/again unreadable log → no bench-extra ride */
+  }
+  return null;
+}
+
+/** Bench-only: pull a manifest the real dispatch moved to `failed/` back to `in-flight/`. */
+function reclaimFromFailed(filename: string, paths: QueuePaths): boolean {
+  const from = join(paths.failed, filename);
+  const to = join(paths.inFlight, filename);
+  if (existsSync(to)) return true;
+  if (!existsSync(from)) return false;
+  try {
+    renameSync(from, to);
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 /**
  * Reset the project repo to its pre-cycle commit on the initiative
@@ -206,6 +255,21 @@ export async function runCycleWithBoundedRetry(
     ) {
       retriedModes.push(outcome.retry_decision.mode);
       continue; // policy authorised an auto-retry — re-run the cycle.
+    }
+
+    // Production policy declined. Before treating it as terminal, the
+    // BENCH (not production) rides a stochastic dev-loop wedge the absent
+    // operator would re-run — bounded by the same total attempt cap.
+    const mode = readClassifiedMode(result.log_path);
+    if (
+      mode !== null &&
+      BENCH_EXTRA_RECOVERABLE.has(mode) &&
+      attempts < maxAttempts &&
+      reclaimFromFailed(filename, paths)
+    ) {
+      retriedModes.push(`bench:${mode}`);
+      resetRepoForRetry(projDir, preCycleHead);
+      continue; // fresh stochastic sample of the same seed.
     }
 
     // Policy declined a retry (non-recoverable / cap reached / same mode

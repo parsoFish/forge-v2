@@ -28,9 +28,12 @@ import {
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 
+import { execFileSync } from 'node:child_process';
+
 import {
   cleanupTempdir,
   maskLiveBrain,
+  prewriteCannedUserFeedback,
   restoreLiveBrain,
   setupChainedTempdir,
   type ChainArtifacts,
@@ -44,6 +47,15 @@ import {
   syntheticAggregateWorkItem,
 } from './chained-artifacts.ts';
 import type { WorkItem } from '../../orchestrator/work-item.ts';
+import {
+  buildGhShimScript,
+  forgeSnapshotDir,
+  readGhMetadata,
+  writeShim,
+} from '../_lib/gh-shim.ts';
+import { confirmPrMerged } from '../../orchestrator/pr.ts';
+import { classifyCycleFailure } from '../../orchestrator/failure-classifier.ts';
+import type { EventLogEntry } from '../../orchestrator/logging.ts';
 
 const FORGE_ROOT = resolve(import.meta.dirname, '..', '..');
 
@@ -345,4 +357,191 @@ test('readChainedWorkItems / readChainedGraphText: read from the generated work-
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
+});
+
+// ---------- deterministic operator/remote-stub plumbing (no SDK / no $) ----------
+//
+// The chained bench legitimately has no human + no GitHub. These prove the
+// stubs (bare origin, smart gh-shim, simulated operator-merge, canned
+// reflector feedback) + the new classifier mode are coherent WITHOUT any
+// paid LLM call — the parts a paid run shouldn't be needed to validate.
+
+/** A real git repo on `main` with a bare `origin`, on an initiative branch. */
+function repoWithBareOrigin(): { root: string; projDir: string; cleanup: () => void } {
+  const root = mkdtempSync(join(tmpdir(), 'forge-chained-plumb-'));
+  const projDir = join(root, 'proj');
+  mkdirSync(projDir, { recursive: true });
+  const sh = (args: string[], cwd = projDir): string =>
+    execFileSync('git', args, { cwd, stdio: ['pipe', 'pipe', 'pipe'], encoding: 'utf8' });
+  sh(['init', '-q', '-b', 'main']);
+  sh(['config', 'user.email', 'bench@forge.local']);
+  sh(['config', 'user.name', 'forge bench']);
+  writeFileSync(join(projDir, 'README.md'), '# seed\n');
+  sh(['add', '-A']);
+  sh(['commit', '-q', '-m', 'seed']);
+  const origin = join(root, '_origin.git');
+  sh(['init', '-q', '--bare', origin], root);
+  sh(['remote', 'add', 'origin', origin]);
+  sh(['push', '-q', 'origin', 'main']);
+  sh(['checkout', '-q', '-b', 'initiative-INIT-x']);
+  return { root, projDir, cleanup: () => rmSync(root, { recursive: true, force: true }) };
+}
+
+test('bare-origin push works (the dev-loop / G8 local↔remote precondition)', () => {
+  const r = repoWithBareOrigin();
+  try {
+    const sh = (args: string[]): string =>
+      execFileSync('git', args, { cwd: r.projDir, stdio: ['pipe', 'pipe', 'pipe'], encoding: 'utf8' });
+    writeFileSync(join(r.projDir, 'src.txt'), 'work\n');
+    sh(['add', '-A']);
+    sh(['commit', '-q', '-m', 'wi-1']);
+    // The dev-loop pushes the initiative branch every WI; must succeed
+    // against the bare origin initGitRepo creates.
+    sh(['push', '-q', '-u', 'origin', 'initiative-INIT-x']);
+    const remoteBranches = sh(['branch', '-r']);
+    assert.match(remoteBranches, /origin\/initiative-INIT-x/);
+    // origin/<branch> == local HEAD (the G8 invariant assertLocalRemoteSynced checks).
+    const localHead = sh(['rev-parse', 'HEAD']).trim();
+    const remoteHead = sh(['rev-parse', 'origin/initiative-INIT-x']).trim();
+    assert.equal(localHead, remoteHead);
+  } finally {
+    r.cleanup();
+  }
+});
+
+test('gh-shim: pr create → pr view OPEN → pr merge → pr view MERGED; confirmMerge→confirmPrMerged returns merged', () => {
+  const r = repoWithBareOrigin();
+  try {
+    const tempdir = r.root;
+    const binDir = join(tempdir, 'bin');
+    mkdirSync(binDir, { recursive: true });
+    writeShim(join(binDir, 'gh'), buildGhShimScript(r.projDir, tempdir, { cleanAfterMerge: true }));
+
+    // Put a commit on the initiative branch so the ff-merge has content.
+    const sh = (args: string[]): string =>
+      execFileSync('git', args, { cwd: r.projDir, stdio: ['pipe', 'pipe', 'pipe'], encoding: 'utf8' });
+    mkdirSync(join(r.projDir, '.forge'), { recursive: true });
+    writeFileSync(join(r.projDir, '.forge', 'pr-description.md'), '# PR\nWhat: did a thing.\n');
+    writeFileSync(join(r.projDir, 'feature.txt'), 'feature\n');
+    sh(['add', '-A']);
+    sh(['commit', '-q', '-m', 'feat: thing']);
+
+    const ghEnv = { ...process.env, PATH: `${binDir}:${process.env.PATH ?? ''}` };
+    const runGh = (args: string[]): string =>
+      execFileSync('gh', args, { cwd: r.projDir, env: ghEnv, stdio: ['pipe', 'pipe', 'pipe'], encoding: 'utf8' });
+
+    // 1. pr create (what orchestrator/pr.ts:openPullRequest runs).
+    const url = runGh([
+      'pr', 'create',
+      '--title', 'feat: thing',
+      '--body-file', join(r.projDir, '.forge', 'pr-description.md'),
+    ]).trim();
+    assert.match(url, /bench\.local\/pr/);
+    let meta = readGhMetadata(tempdir);
+    assert.equal(meta?.created, true);
+    assert.equal(meta?.merged, false);
+
+    // 2. pr view --json state == OPEN (confirmPrMerged before the operator merges).
+    assert.equal(withGhOnPath(binDir, () => confirmPrMerged(r.projDir)), false);
+
+    // 3. The simulated operator merges (the chained confirmMerge hook does
+    //    exactly this: gh pr merge --merge via the shim).
+    runGh(['pr', 'merge', '--merge']);
+    meta = readGhMetadata(tempdir);
+    assert.equal(meta?.merged, true);
+
+    // 4. confirmPrMerged now reads MERGED — the ONLY signal that gates
+    //    closure → reflection (G10/G1).
+    assert.equal(withGhOnPath(binDir, () => confirmPrMerged(r.projDir)), true);
+
+    // The pre-merge .forge/ snapshot survived (review/reflection rubrics
+    // read it after the gh-shim's git clean).
+    assert.equal(existsSync(forgeSnapshotDir(tempdir)), true);
+    assert.equal(
+      existsSync(join(forgeSnapshotDir(tempdir), 'pr-description.md')),
+      true,
+    );
+    // The ff-merge actually landed on main.
+    const mainLog = execFileSync('git', ['log', '--oneline', 'main'], {
+      cwd: r.projDir, stdio: ['pipe', 'pipe', 'pipe'], encoding: 'utf8',
+    });
+    assert.match(mainLog, /feat: thing/);
+  } finally {
+    r.cleanup();
+  }
+});
+
+/**
+ * Run `fn` with the gh-shim dir prepended to PATH, then restore PATH.
+ * `confirmPrMerged` resolves `gh` via PATH (execFileSync), so the call
+ * must see the shim — but we must not leak PATH into other tests.
+ */
+function withGhOnPath<T>(binDir: string, fn: () => T): T {
+  const original = process.env.PATH ?? '';
+  process.env.PATH = `${binDir}:${original}`;
+  try {
+    return fn();
+  } finally {
+    process.env.PATH = original;
+  }
+}
+
+test('prewriteCannedUserFeedback: the reflector stage-3 feedback file exists before the cycle (3rd human moment stub)', () => {
+  // The chained harness pre-writes this BEFORE runCycle so the reflector
+  // (which reads _logs/<cycleId>/user-feedback.md, module-relative to the
+  // real forge root) finds the canned operator feedback — mirroring
+  // benchmarks/reflection/simulator.ts:prepareUserFeedback.
+  const cycleId = `chained-unittest-${process.pid}-${Date.now()}`;
+  const FORGE_ROOT = resolve(import.meta.dirname, '..', '..');
+  const expected = resolve(FORGE_ROOT, '_logs', cycleId, 'user-feedback.md');
+  try {
+    const written = prewriteCannedUserFeedback(cycleId);
+    assert.equal(written, expected);
+    assert.equal(existsSync(expected), true, 'feedback present before reflection');
+    const body = readFileSync(expected, 'utf8');
+    // Minimal but realistic: the reflection-bench convention (an
+    // "## Answers" block + a "## Free-form" paragraph).
+    assert.match(body, /##\s*Answers/);
+    assert.match(body, /##\s*Free-form/);
+    assert.ok(body.trim().length > 0);
+  } finally {
+    rmSync(resolve(FORGE_ROOT, '_logs', cycleId), { recursive: true, force: true });
+  }
+});
+
+test('classifier: pm-invalid-work-items is detected from the PM error event and is recoverable (chained self-heal precondition)', () => {
+  // This is the exact event runProjectManager emits when it produces a
+  // schema-invalid work item (per_item_error_count > 0 on the PM error
+  // event) — the failure that aborted paid run-2. It must now classify
+  // recoverable so the bounded-retry wrapper re-runs the PM.
+  const events: EventLogEntry[] = [
+    {
+      event_id: 'e1',
+      cycle_id: 'c',
+      initiative_id: 'INIT-x',
+      started_at: '',
+      phase: 'project-manager',
+      skill: 'project-manager',
+      event_type: 'error',
+      input_refs: [],
+      output_refs: [],
+      message: 'pm.end',
+      metadata: { work_item_count: 4, per_item_error_count: 1, hidden_coupling_violations: [] },
+    } as unknown as EventLogEntry,
+    {
+      event_id: 'e2',
+      cycle_id: 'c',
+      initiative_id: 'INIT-x',
+      started_at: '',
+      phase: 'orchestrator',
+      skill: 'cycle',
+      event_type: 'error',
+      input_refs: [],
+      output_refs: [],
+      message: 'project-manager phase failed: 1 per-item validation errors',
+    } as unknown as EventLogEntry,
+  ];
+  const cls = classifyCycleFailure(events);
+  assert.equal(cls.mode, 'pm-invalid-work-items');
+  assert.equal(cls.recoverable, true);
 });

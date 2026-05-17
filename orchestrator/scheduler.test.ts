@@ -501,6 +501,41 @@ test('classifyCycleFailure: unknown when no signature matches', async () => {
   assert.equal(cls.recoverable, false);
 });
 
+test('classifyCycleFailure: pm-invalid-work-items detected from PM error per_item_error_count > 0 and is recoverable', async () => {
+  const { classifyCycleFailure } = await import('./failure-classifier.ts');
+  const events = [
+    { event_id: 'e1', cycle_id: 'c', initiative_id: 'i', started_at: '', phase: 'project-manager', skill: 'project-manager', event_type: 'error', input_refs: [], output_refs: [], message: 'pm.end', metadata: { work_item_count: 3, per_item_error_count: 1, hidden_coupling_violations: [] } },
+    { event_id: 'e2', cycle_id: 'c', initiative_id: 'i', started_at: '', phase: 'orchestrator', skill: 'cycle', event_type: 'error', input_refs: [], output_refs: [], message: 'project-manager phase failed: 1 per-item validation errors' },
+  ];
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const cls = classifyCycleFailure(events as any);
+  assert.equal(cls.mode, 'pm-invalid-work-items');
+  assert.equal(cls.recoverable, true);
+  assert.match(cls.recommendation, /re-running the PM/i);
+  assert.ok(cls.evidence_event_ids.includes('e1'));
+});
+
+test('classifyCycleFailure: per_item_error_count = 0 does NOT trigger pm-invalid-work-items', async () => {
+  const { classifyCycleFailure } = await import('./failure-classifier.ts');
+  const events = [
+    { event_id: 'e1', cycle_id: 'c', initiative_id: 'i', started_at: '', phase: 'project-manager', skill: 'project-manager', event_type: 'error', input_refs: [], output_refs: [], message: 'pm.end', metadata: { work_item_count: 0, per_item_error_count: 0, hidden_coupling_violations: [] } },
+  ];
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const cls = classifyCycleFailure(events as any);
+  assert.notEqual(cls.mode, 'pm-invalid-work-items');
+});
+
+test('classifyCycleFailure: hidden-coupling takes precedence over invalid-work-items when both present (both recoverable)', async () => {
+  const { classifyCycleFailure } = await import('./failure-classifier.ts');
+  const events = [
+    { event_id: 'e1', cycle_id: 'c', initiative_id: 'i', started_at: '', phase: 'project-manager', skill: 'project-manager', event_type: 'error', input_refs: [], output_refs: [], message: 'pm.end', metadata: { per_item_error_count: 1, hidden_coupling_violations: [{ a: 'WI-1', b: 'WI-2', sharedFiles: ['src/x.ts'] }] } },
+  ];
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const cls = classifyCycleFailure(events as any);
+  assert.equal(cls.mode, 'pm-hidden-coupling');
+  assert.equal(cls.recoverable, true);
+});
+
 // ---- F-28: dispatchTerminalStatus must NOT signal cleanup for ready-for-review ----
 
 test('dispatchTerminalStatus: send-back-cap-exhausted → no manifest move (cycle.ts owns it)', async () => {

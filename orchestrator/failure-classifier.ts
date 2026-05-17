@@ -24,6 +24,7 @@ export type FailureMode =
   | 'brain-skipped'             // agent never read brain/ — F-13 gate (architect / PM only post-F-34)
   | 'pm-budget-exhausted'       // PM phase hit its USD cap
   | 'pm-hidden-coupling'        // F-43: two WIs share files_in_scope with no depends_on edge between them
+  | 'pm-invalid-work-items'     // F-45: PM emitted ≥1 work item that failed per-item schema validation
   | 'gate-missing-script'       // npm run X failed with "missing script: X"
   | 'worktree-no-deps'          // gate stderr matched "Cannot find module" / module-resolution
   | 'agent-rate-limited'        // SDK threw rate_limit_error
@@ -52,6 +53,7 @@ const RECOVERABLE_MODES = new Set<FailureMode>([
   'brain-skipped',
   'agent-rate-limited',
   'pm-hidden-coupling',
+  'pm-invalid-work-items',
 ]);
 
 const RECOMMENDATIONS: Record<FailureMode, string> = {
@@ -63,6 +65,8 @@ const RECOMMENDATIONS: Record<FailureMode, string> = {
     'PM phase hit its USD cap before producing valid WIs. Increase iteration_budget / cost_budget_usd in the manifest.',
   'pm-hidden-coupling':
     'Two or more WIs share files_in_scope without a depends_on edge between them — they would conflict at merge time. PM correctly identified the decomposition shape but forgot to serialise siblings that touch the same file. Auto-retry; the PM prompt explicitly covers this rule and the retry usually adds the missing edge.',
+  'pm-invalid-work-items':
+    'The PM emitted one or more work items that failed per-item schema validation (missing/malformed acceptance_criteria, files_in_scope, depends_on, ids, etc.). This is a stochastic generation slip, not a manifest defect — the manifest and PM prompt are valid, the model just produced one bad item this pass. Re-running the PM is exactly the right recovery (identical in spirit to pm-hidden-coupling): the next pass almost always emits a clean set. Auto-retry.',
   'gate-missing-script':
     'quality_gate_cmd referenced an npm script that does not exist in the project. Manifest bug — fix the script name; auto-retry will not help.',
   'worktree-no-deps':
@@ -100,6 +104,7 @@ export function classifyCycleFailure(events: readonly EventLogEntry[]): FailureC
   let brainSkipped = false;
   let pmBudgetExhausted = false;
   let pmHiddenCoupling = false;
+  let pmInvalidWorkItems = false;
   let gateMissingScript = false;
   let worktreeNoDeps = false;
   let rateLimited = false;
@@ -142,6 +147,22 @@ export function classifyCycleFailure(events: readonly EventLogEntry[]): FailureC
       md.hidden_coupling_violations.length > 0
     ) {
       pmHiddenCoupling = true;
+      pushEvidence(e);
+    }
+
+    // F-45 pm-invalid-work-items: the PM phase error event carries a
+    // positive per_item_error_count (runProjectManager emits this on the
+    // project-manager error event and throws
+    // `project-manager phase failed: ... N per-item validation errors`).
+    // One schema-invalid item is a stochastic generation slip — re-running
+    // the PM is the right recovery (same shape as pm-hidden-coupling).
+    if (
+      e.phase === 'project-manager' &&
+      e.event_type === 'error' &&
+      typeof md.per_item_error_count === 'number' &&
+      md.per_item_error_count > 0
+    ) {
+      pmInvalidWorkItems = true;
       pushEvidence(e);
     }
 
@@ -193,6 +214,7 @@ export function classifyCycleFailure(events: readonly EventLogEntry[]): FailureC
   if (gateMissingScript) mode = 'gate-missing-script';
   else if (worktreeNoDeps) mode = 'worktree-no-deps';
   else if (pmHiddenCoupling) mode = 'pm-hidden-coupling';
+  else if (pmInvalidWorkItems) mode = 'pm-invalid-work-items';
   else if (pmBudgetExhausted) mode = 'pm-budget-exhausted';
   else if (trivialPass) mode = 'trivial-pass';
   else if (brainSkipped) mode = 'brain-skipped';

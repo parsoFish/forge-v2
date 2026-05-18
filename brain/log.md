@@ -762,6 +762,46 @@ Operator-authorised G11 validation: ran the `slugifier-chain` seed through the f
 - **G11 closed on its design-of-record definition** (benchmark-alignment.md §D — the 3 Phase-4 drift fixes in code; runs confirm no false-colour: per-phase rubrics scored faithfully, nothing false-green). **Not claimed**: a green end-to-end chained cycle (0/1 across 2 runs for the documented reasons above). Chained-cycle convergence on a live seed is **stochastic and is NOT a closure gate** — documented characteristic. No 3rd paid run (cost/thrash discipline; honest over forced-green).
 - Demonstration built from real run-1 artifacts: `_meta/iteration/demonstration/`.
 
+## [2026-05-17] cycle-reflection | trafficGame — INIT-2026-05-17-world-graph-connectivity (world-graph connectivity + neighbour-unlock)
+
+Cycle merged (PR #53). Dev-loop clean 3/3 WIs in single iterations. Reviewer loop exhausted send-back cap (budget mismatch); manual operator merge.
+
+**Brain deltas (this reflection):**
+- New raw source: `brain/_raw/cycles/2026-05-17T13-36-43_INIT-2026-05-17-world-graph-connectivity.md`.
+- New theme (antipattern): `projects/trafficGame/themes/2026-05-17-stale-brain-contradicts-code-pm-failure.md` — stale brain themes that contradict the codebase cause PM-phase failure.
+- New theme (antipattern): `projects/trafficGame/themes/2026-05-17-reviewer-budget-undersized-medium-initiatives.md` — reviewer per-iteration budget ($0.60) undersized for medium-complexity initiatives.
+- New theme (antipattern): `projects/trafficGame/themes/2026-05-17-demo-server-reuse-captures-stale-build.md` — `reuseExistingServer:true` latches onto main-repo vite server.
+- New theme (pattern): `projects/trafficGame/themes/2026-05-17-file-isolation-constraint-enables-single-iteration.md` — one-file-per-WI manifest constraint correlated with single-iteration dev-loop success.
+
+---
+
 ## [2026-05-17] structural | GREEN end-to-end chained cycle achieved (G11 + E2E validated)
 
 After hardening the chained harness (missing-origin fix, F-45 pm-invalid-work-items recoverable mode, bench-scoped dev-loop-wedge ride, and two deterministic bench false-reds fixed: review caseScore base-dir + reflector post-merge manifest bridge — all proven against preserved real run artifacts, no extra paid runs), a real paid chained run scored **1/1, every phase green** (architect 1.0 / PM 1.0 / dev-loop 0.80 / review 1.0 / reflection 1.0; $7.59). Forge ran one seed through the full product path to a genuine green end-to-end result with the human+remote faithfully stubbed. Demonstration: `_meta/iteration/demonstration/`. Closure-matrix gains `E2E-GREEN`; `closure-check --tier=full` green. Total chained validation spend across the diagnostic arc: ~5 paid runs (each surfaced a real, fixed issue — the full-flow gate doing its job).
+
+## [2026-05-18] reflection | world-map review arc closed + operator-review reliability hardened
+
+trafficGame world-map connectivity refined to close via PR #54 (merged,
+origin/main `386e973`): connected 5-map `CampaignGraph` with directed
+**convergent-AND** unlock (a map unlocks only when EVERY feeder is
+complete; sources always unlocked), real connection points validated for
+**count parity** in the production graph (registry from MapDefinitions),
+and a spatial map-of-maps hub where every connection is a **two-way road**
+(exit+entry on each connected side, mating across borders). Scoring/main.ts
+untouched. Project theme `campaign-mode-state` rewritten to the as-built
+model (it had gone stale TWICE during the arc — the precise brain-staleness
+that thrashed the PM; updating it is the reflection's load-bearing act).
+
+The arc's reusable forge lesson is new pattern theme
+`pr-as-sole-review-window`: when the operator is engaged, iterating on the
+PR comment thread is the tightest loop, but the PR must be self-contained —
+the demo has to live IN the PR. Private repos can't use inline raw-URL
+images (GitHub's proxy can't fetch private raw) → commit a relative-link
+`DEMO.md`. Implemented as `pr.ts:embedDemoInPr` (visibility-aware). Forge
+also gained 5 operator-review reliability fixes from the post-mortem
+(alignLocalToRemote no longer strands the project tree; node_modules
+symlink can't be committed; reviewer per-iteration budget guards removed;
+demo-runtime prefers built preview; brain-staleness preflight WARN +
+`pm-thrash-no-converge` classifier). All forge changes are on local branch
+`fix/operator-review-reliability` (forge has no remote) — committed, gates
+green (tsc, 489 tests, closure 25/25), **awaiting operator review/merge**.

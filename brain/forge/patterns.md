@@ -58,6 +58,7 @@
 
 ### Process discipline
 
+- [`pr-as-sole-review-window`](./themes/pr-as-sole-review-window.md) — Iterate via PR comments; the demo must live IN the PR. Private repos: commit a relative-link DEMO.md, not inline raw URLs (image proxy can't fetch private raw).
 - [`dependency-ordered-work`](./themes/dependency-ordered-work.md) — `depends_on` edges + graph-critic make parallelism a correctness property.
 - [`cost-aware-model-routing`](./themes/cost-aware-model-routing.md) — Opus for design, Sonnet for coding, Haiku for triage; per-skill overrides. v1: 87% cost reduction.
 - [`prompt-caching-strategy`](./themes/prompt-caching-strategy.md) — Stable prefix first; v1 Cycle 3 hit 92% cache reads. Largest cost lever.

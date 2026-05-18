@@ -56,12 +56,16 @@ sets the exit code) so an unattended caller can gate on it.
 | **C4** | Machine-readable architecture context | **HARD** | A `roadmap.md` in the project root **and** a brain sub-wiki at `brain/projects/<name>/profile.md`. |
 | **C5** | Locked-core mandates the harness honours | advisory | A constraints doc exists (`CLAUDE.md` / `AGENTS.md` / `.forge/constraints.md` / `CONSTRAINTS.md`). Advisory because file presence cannot *prove* the harness honours the constraints — it only proves the operator declared them. |
 | **C6** | A satisfiable merge model | advisory | **Forge-side-satisfied** post-Phase-6: the review phase produces a demo-embedded PR and STOPS; the operator merges in GitHub; there is no auto-merge ([ADR 011 path](./011-unattended-scheduler.md), Phase-6 review redesign). The only project-side requirement is a GitHub remote so a PR surface exists; the preflight states the clause is forge-side-satisfied and checks the remote. |
+| **BRAIN** | Brain freshness (themes cite live source paths) | advisory | Added 2026-05-18. Scans `brain/projects/<name>/themes/*.md` for `src/`/`tests/` paths that no longer exist in the project tree. A theme that contradicts the code (left stale by a by-hand change that skipped the reflection phase) silently poisons the PM/architect (they read the brain first) — this surfaces it *before* a cycle. WARN-only: themes legitimately reference history, and the operator/reflection judges. Known coarse false-positive: a theme that *documents a deletion* must name the deleted path — phrase such references without an `src/…`-shaped token. Pairs with the `pm-thrash-no-converge` failure mode (capped + degenerate WIs ⇒ NOT auto-retried; recommends running `forge preflight` + sharpening the manifest). |
 
 Hard clauses (C1/C2/C4) fail the preflight and exit non-zero — forge
-**declines**, naming the failing clause. Advisory clauses (C3/C5/C6)
-surface as warnings and never flip the verdict, because their checks are
-heuristic (C3), unprovable by inspection (C5), or structurally owned by
-forge rather than the project (C6).
+**declines**, naming the failing clause. Advisory clauses (C3/C5/C6 +
+BRAIN) surface as warnings and never flip the verdict, because their
+checks are heuristic (C3), unprovable by inspection (C5), structurally
+owned by forge rather than the project (C6), or a freshness signal the
+operator judges (BRAIN). The contract proper remains the six C-clauses;
+BRAIN is an added advisory freshness check, not a seventh contract
+clause.
 
 This was empirically validated: `forge preflight trafficGame` reports
 **6/6 PASS** against the real project, confirming C1–C5 are met by

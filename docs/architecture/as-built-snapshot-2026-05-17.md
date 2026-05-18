@@ -539,3 +539,62 @@ Standing constraint (US-7.1/7.2): adding surface to satisfy a story is
 a defect to redesign, not accept. The contract preflight (`preflight.ts`,
 ADR-017) is the codified front door: a project either passes C1–C6 or
 forge declines with the failing clause named.
+
+---
+
+## UPDATE 2026-05-18 — operator-review reliability pass (supersedes the above where they differ)
+
+Surfaced driving real trafficGame arcs with the agent acting as the
+operator (world-graph-connectivity + the world-map review PR #54). All
+landed on `main` (merge `77cff66`); tsc clean, 489 unit tests,
+`closure-check --tier=fast` 25/25.
+
+- **`alignLocalToRemote` (pr.ts) — the #1 fix.** Was `git update-ref
+  refs/heads/main` with **no checkout** ("main may be checked out
+  elsewhere"). In the normal operator-merge path the project repo *is*
+  the `main` checkout, so the operator's working tree stayed frozen at
+  pre-merge code with a huge phantom dirty `git status` — they opened the
+  repo and saw old code. Now: when the project repo is the `main`
+  checkout, bring its **working tree** forward with a guarded
+  `merge --ff-only`, **stashing/restoring uncommitted operator state**
+  (e.g. the architect's `roadmap.md`) — never silently discarded; bare
+  ref-move kept only as the not-on-main fallback.
+- **`embedDemoInPr` (pr.ts) — the PR is the sole review window.** The
+  reviewer's demo lived in gitignored `.forge/demos/` (invisible to a PR
+  reviewer). Now copied to a tracked `demo/<id>/`, committed on the
+  branch before the push, and surfaced in the PR body **visibility-
+  aware**: a relative-link `DEMO.md` for **private** repos (GitHub's
+  image proxy cannot fetch private raw URLs → inline `![](raw)` renders
+  broken), inline raw images only when `gh repo view` says public.
+  Default-private if unknown. Pattern: `brain/forge/themes/pr-as-sole-review-window.md`.
+- **`node_modules` symlink can no longer be committed.** `linkProjectDeps`
+  (scheduler.ts) writes the worktree git-exclude; `commitDevLoopBoundary`
+  (cycle.ts) also unstages it; project `.gitignore` tightened. (The
+  self-referential symlink had been merged into a project main.)
+- **Reviewer per-iteration $/turn budget guards removed**
+  (`REVIEWER_LIVE_MAX_*` deleted). They were undersized — every review
+  iteration was cut at ~$0.60 before producing a verdict (0 verdicts,
+  mislabelled `send-back-cap-exhausted`). The reviewer Ralph loop is now
+  bounded **only** by the adaptive iteration cap. Benches still pass an
+  explicit `reviewIterationBudgetUsd`. `reviewer.send-back-cap-exhausted`
+  now records `verdicts` / `never_reached_verdict` for diagnosability.
+- **`demo-runtime.startServer`** prefers built `preview` over the
+  dev/watch server when a build output exists (deterministic capture; the
+  watch server was the stale-capture class).
+- **preflight** gained an advisory **BRAIN** clause (themes citing
+  `src/`/`tests/` paths that no longer exist → WARN; the planner reads
+  the brain first, so a stale theme silently poisons it). **classifier**
+  gained `pm-thrash-no-converge` (PM hit a turn/$ cap **and** emitted
+  degenerate WIs → NOT auto-retried; recommends `forge preflight` +
+  manifest sharpening, not a blind retry). ADR-017 updated.
+- **Queue hygiene:** the discarded `INIT-2026-05-10-trafficgame-jsdoc`
+  (roadmap: "dropped — no-op (absorbed)") was cleared out of
+  `ready-for-review/` to `failed/` with its stale `.seen` scratch
+  removed; `_queue/` is now pending 0 / in-flight 0 / ready-for-review 0
+  / done 9 / failed 4.
+
+Doc alignment done in the same pass: `README.md` (operator
+human-in-the-loop walkthrough rewritten; scaffold/CLI/status refreshed),
+`docs/phases/review-loop.md`, `ARCHITECTURE.md`, `docs/decisions/017`,
+`CLAUDE.md`. Brain verified clean (index coverage both scopes;
+`forge preflight trafficGame` → PASS BRAIN · CONTRACT MET).

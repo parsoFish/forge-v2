@@ -166,6 +166,16 @@ export function renderReviewerUserPrompt(input: ReviewerUserPromptInput): string
     `   - Source: \`${input.worktreeRelPath}/.forge/demos/${input.initiativeId}/${sourceFile}\`.`,
     `   - The source MUST textually reference each WI\'s acceptance-criterion \`then\`-clause keywords AND any send-back ACs from fix_plan.md.`,
     `   - Run \`${recordCmd}\` from the demo directory to produce \`${recordingFile}\` (≥ 50 KB).`,
+    '   - **Server isolation (Playwright — load-bearing, do not skip).** The'
+      + ' demo MUST capture THIS worktree\'s build, never a stray/ambient'
+      + ' server. If you write a `playwright.config.ts` or use a `webServer`'
+      + ' block: set `reuseExistingServer: false` (NEVER `true`); pick a'
+      + ' unique non-default port and pass `--strictPort` so a port clash'
+      + ' fails loudly instead of silently serving someone else\'s app;'
+      + ' prefer serving the freshly-built output (`npm run build` then'
+      + ' `vite preview --port <p> --strictPort`) over a dev/watch server.'
+      + ' Never assume an app is already running. A stale capture (wrong'
+      + ' build) is worse than no demo — it actively misleads the operator.',
     `   - Write the demo \`README.md\` (one paragraph: what the demo shows, prereqs, expected outcome).`,
     `6. **Draft \`${input.worktreeRelPath}/.forge/pr-description.md\`.** All four sections required: \`## Why\` (≥ 50 chars), \`## What\`, \`## How\`, \`## Demo\` (markdown link to the recording). Total body ≥ 300 chars. Anchor on the git log + diff stat from step 2 — describe what actually landed, not what was hoped for.`,
     input.isStackedPr

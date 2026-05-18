@@ -11,6 +11,7 @@
  */
 
 import { readFileSync, writeFileSync, existsSync, mkdirSync, lstatSync, symlinkSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
 import { join, resolve } from 'node:path';
 import { setInterval, clearInterval } from 'node:timers';
 import {
@@ -394,6 +395,31 @@ function linkProjectDeps(projectRepoPath: string, worktreePath: string): void {
     } catch {
       /* best-effort — a project that doesn't need deps shouldn't break the cycle */
     }
+  }
+  // 2026-05-18 fix: forge itself creates the `node_modules` symlink above.
+  // A project `.gitignore` of `node_modules/` (trailing slash = directory)
+  // does NOT match a *symlink* named `node_modules`, so `git add -A` (the
+  // dev-loop boundary commit, and any per-WI agent commit) would sweep the
+  // symlink into the PR and merge it to main. Add `node_modules` to THIS
+  // worktree's git exclude so no commit path in the worktree can ever stage
+  // it — forge-side, non-invasive (does not touch the project's tracked
+  // .gitignore), and independent of how the project wrote its rule.
+  try {
+    const excludePath = execFileSync(
+      'git',
+      ['-C', worktreePath, 'rev-parse', '--git-path', 'info/exclude'],
+      { encoding: 'utf8', stdio: 'pipe' },
+    ).trim();
+    const abs = resolve(worktreePath, excludePath);
+    const existing = existsSync(abs) ? readFileSync(abs, 'utf8') : '';
+    if (!existing.split('\n').some((l) => l.trim() === 'node_modules')) {
+      writeFileSync(
+        abs,
+        existing + (existing && !existing.endsWith('\n') ? '\n' : '') + 'node_modules\n',
+      );
+    }
+  } catch {
+    /* best-effort — the boundary-commit reset below is the second guard */
   }
 }
 

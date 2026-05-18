@@ -25,6 +25,7 @@ export type FailureMode =
   | 'pm-budget-exhausted'       // PM phase hit its USD cap
   | 'pm-hidden-coupling'        // F-43: two WIs share files_in_scope with no depends_on edge between them
   | 'pm-invalid-work-items'     // F-45: PM emitted ≥1 work item that failed per-item schema validation
+  | 'pm-thrash-no-converge'     // 2026-05-18: PM hit a turn/$ cap AND produced degenerate WIs — never converged (often a stale brain contradicting the code, or an ambiguous manifest). NOT auto-retryable.
   | 'gate-missing-script'       // npm run X failed with "missing script: X"
   | 'worktree-no-deps'          // gate stderr matched "Cannot find module" / module-resolution
   | 'agent-rate-limited'        // SDK threw rate_limit_error
@@ -67,6 +68,8 @@ const RECOMMENDATIONS: Record<FailureMode, string> = {
     'Two or more WIs share files_in_scope without a depends_on edge between them — they would conflict at merge time. PM correctly identified the decomposition shape but forgot to serialise siblings that touch the same file. Auto-retry; the PM prompt explicitly covers this rule and the retry usually adds the missing edge.',
   'pm-invalid-work-items':
     'The PM emitted one or more work items that failed per-item schema validation (missing/malformed acceptance_criteria, files_in_scope, depends_on, ids, etc.). This is a stochastic generation slip, not a manifest defect — the manifest and PM prompt are valid, the model just produced one bad item this pass. Re-running the PM is exactly the right recovery (identical in spirit to pm-hidden-coupling): the next pass almost always emits a clean set. Auto-retry.',
+  'pm-thrash-no-converge':
+    'The PM exhausted its turn/$ cap AND the work items it did emit are degenerate (hidden coupling / schema-invalid). It never converged — this is NOT a "forgot one depends_on edge" slip and a blind auto-retry will burn the retry budget down to terminal failed/ on the same root cause. Most common cause: the project brain contradicts the current code (a by-hand change that skipped the reflection phase left a theme citing deleted/renamed files), so the PM reads the brain, then Globs the tree, hits an irreconcilable contradiction, and thrashes. Second cause: the manifest is too long/ambiguous. Do NOT auto-retry. Recover by: (1) `forge preflight <project>` — read the brain-staleness WARN and correct any theme whose cited source paths no longer exist; (2) sharpen the manifest to be terse and file-scoped; then re-queue.',
   'gate-missing-script':
     'quality_gate_cmd referenced an npm script that does not exist in the project. Manifest bug — fix the script name; auto-retry will not help.',
   'worktree-no-deps':
@@ -105,6 +108,8 @@ export function classifyCycleFailure(events: readonly EventLogEntry[]): FailureC
   let pmBudgetExhausted = false;
   let pmHiddenCoupling = false;
   let pmInvalidWorkItems = false;
+  // 2026-05-18: PM hit a hard turn/$ cap (error_max_turns | error_max_budget_usd).
+  let pmCapped = false;
   let gateMissingScript = false;
   let worktreeNoDeps = false;
   let rateLimited = false;
@@ -136,6 +141,21 @@ export function classifyCycleFailure(events: readonly EventLogEntry[]): FailureC
     // pm-budget-exhausted: PM result_subtype.
     if (e.phase === 'project-manager' && md.result_subtype === 'error_max_budget_usd') {
       pmBudgetExhausted = true;
+      pushEvidence(e);
+    }
+
+    // pm-thrash signal: PM hit a hard turn OR $ cap. On its own this is a
+    // budget bump; combined with degenerate output (hidden coupling /
+    // invalid items) in the SAME failure it means the PM never converged —
+    // most often because the brain contradicts the code (a by-hand change
+    // that skipped reflection left a theme stale) or the manifest is
+    // ambiguous. That co-occurrence must NOT be auto-retried with the
+    // "add the missing edge" advice (it would burn retries to terminal).
+    if (
+      e.phase === 'project-manager' &&
+      (md.result_subtype === 'error_max_turns' || md.result_subtype === 'error_max_budget_usd')
+    ) {
+      pmCapped = true;
       pushEvidence(e);
     }
 
@@ -213,6 +233,11 @@ export function classifyCycleFailure(events: readonly EventLogEntry[]): FailureC
   let mode: FailureMode;
   if (gateMissingScript) mode = 'gate-missing-script';
   else if (worktreeNoDeps) mode = 'worktree-no-deps';
+  // Thrash signature (capped AND degenerate output) is MORE specific than
+  // bare hidden-coupling / invalid-items / budget — check it first so the
+  // operator gets the reconcile-brain advice, not the misleading
+  // "add the missing edge / auto-retry" guidance.
+  else if (pmCapped && (pmHiddenCoupling || pmInvalidWorkItems)) mode = 'pm-thrash-no-converge';
   else if (pmHiddenCoupling) mode = 'pm-hidden-coupling';
   else if (pmInvalidWorkItems) mode = 'pm-invalid-work-items';
   else if (pmBudgetExhausted) mode = 'pm-budget-exhausted';

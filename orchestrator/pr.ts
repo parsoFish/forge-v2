@@ -24,6 +24,15 @@
  */
 
 import { execFileSync } from 'node:child_process';
+import {
+  cpSync,
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  writeFileSync,
+} from 'node:fs';
+import { extname, join } from 'node:path';
 
 /**
  * Best-effort PR creation via `gh pr create`. Returns the PR URL on success,
@@ -35,6 +44,152 @@ import { execFileSync } from 'node:child_process';
  * called `gh pr create` without a push, which fails with "no pull requests
  * found" since the branch wasn't published.
  */
+/** Initiative id from a `forge/<initiativeId>` branch name. */
+function basenameInitiativeId(branch: string): string {
+  return branch.startsWith('forge/') ? branch.slice('forge/'.length) : branch;
+}
+
+/** Parse `owner/repo` from a git origin URL (https or ssh form). */
+function parseOwnerRepo(originUrl: string): string | null {
+  const s = originUrl.trim().replace(/\.git$/, '');
+  const m =
+    s.match(/github\.com[:/]([^/]+\/[^/]+)$/) ?? s.match(/[:/]([^/]+\/[^/]+)$/);
+  return m ? m[1] : null;
+}
+
+const DEMO_IMAGE_EXTS = new Set(['.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg']);
+
+/**
+ * 2026-05-18 amendment: make the PR the SOLE review window. The reviewer
+ * writes the demo bundle into `.forge/demos/<id>/` (gitignored — invisible
+ * to a PR reviewer, who otherwise has to open a local HTML, infer the
+ * change, then come back to comment). This copies that bundle into a
+ * TRACKED `demo/<id>/` dir, commits it on the initiative branch, and
+ * returns a `## Demo` markdown block that embeds the screenshots INLINE in
+ * the PR body via GitHub raw URLs (and links non-image artefacts). After
+ * this the reviewer sees and comments on everything from the PR alone.
+ *
+ * Best-effort: returns `null` on any failure (no demo, not a GitHub
+ * remote, git error) so PR creation never breaks because of the demo.
+ */
+export function embedDemoInPr(
+  worktreePath: string,
+  initiativeId: string,
+  branch: string,
+): string | null {
+  try {
+    const srcDir = join(worktreePath, '.forge', 'demos', initiativeId);
+    if (!existsSync(srcDir)) return null;
+    const entries = readdirSync(srcDir, { withFileTypes: true })
+      .filter((e) => e.isFile())
+      .map((e) => e.name)
+      .filter((n) => !n.startsWith('.'));
+    if (entries.length === 0) return null;
+
+    const originUrl = execFileSync('git', ['-C', worktreePath, 'remote', 'get-url', 'origin'], {
+      stdio: 'pipe',
+      encoding: 'utf8',
+    }).trim();
+    const ownerRepo = parseOwnerRepo(originUrl);
+    if (!ownerRepo) return null; // only GitHub raw URLs render inline
+
+    // Copy the bundle into a tracked path.
+    const relDir = `demo/${initiativeId}`;
+    const dstDir = join(worktreePath, relDir);
+    mkdirSync(dstDir, { recursive: true });
+    cpSync(srcDir, dstDir, { recursive: true, force: true });
+
+    const images = entries.filter((n) => DEMO_IMAGE_EXTS.has(extname(n).toLowerCase())).sort();
+    const others = entries
+      .filter((n) => !DEMO_IMAGE_EXTS.has(extname(n).toLowerCase()))
+      .sort();
+
+    // Ensure a DEMO.md with RELATIVE image links exists. This is the
+    // visibility-agnostic surface: GitHub renders a committed markdown
+    // file (with relative images) for the authenticated reviewer on the
+    // blob page even for a PRIVATE repo — whereas an `![](raw-url)` inline
+    // in the PR body is fetched by GitHub's image proxy, which CANNOT read
+    // a private repo and shows a broken image. Don't clobber an
+    // agent-authored DEMO.md.
+    const demoMdPath = join(dstDir, 'DEMO.md');
+    if (!existsSync(demoMdPath) && images.length > 0) {
+      const md = ['# Demo', ''];
+      for (const img of images) {
+        const label = img.replace(/\.[^.]+$/, '');
+        md.push(`## ${label}`, '', `![${label}](./${img})`, '');
+      }
+      writeFileSync(demoMdPath, md.join('\n') + '\n');
+    }
+
+    // Commit the bundle on the branch (idempotent).
+    execFileSync('git', ['add', '--', relDir], { cwd: worktreePath, stdio: 'pipe' });
+    const staged = execFileSync('git', ['diff', '--cached', '--name-only', '--', relDir], {
+      cwd: worktreePath,
+      stdio: 'pipe',
+      encoding: 'utf8',
+    }).trim();
+    if (staged) {
+      execFileSync(
+        'git',
+        ['commit', '-m', `docs(demo): embed review demo for ${initiativeId}`],
+        { cwd: worktreePath, stdio: 'pipe' },
+      );
+    }
+
+    // Repo visibility decides whether inline raw images render. Default to
+    // PRIVATE (the safe assumption — a broken inline image is worse than a
+    // link) if `gh` can't tell us.
+    let isPrivate = true;
+    try {
+      const vis = execFileSync(
+        'gh',
+        ['repo', 'view', ownerRepo, '--json', 'isPrivate', '-q', '.isPrivate'],
+        { cwd: worktreePath, stdio: 'pipe', encoding: 'utf8' },
+      ).trim();
+      isPrivate = vis !== 'false';
+    } catch {
+      /* keep the safe default */
+    }
+
+    const rawBase = `https://github.com/${ownerRepo}/raw/${branch}/${relDir}`;
+    const blobBase = `https://github.com/${ownerRepo}/blob/${branch}/${relDir}`;
+    const lines: string[] = ['', '---', '', '## Demo', ''];
+
+    // Always: the reliable, visibility-agnostic surface.
+    if (existsSync(demoMdPath)) {
+      lines.push(
+        `▶ **[Open the rendered demo: \`${relDir}/DEMO.md\`](${blobBase}/DEMO.md)**` +
+          ' — renders inline on GitHub (works for private repos too).',
+        '',
+      );
+    }
+    lines.push(
+      `The screenshots are also visible in this PR's **Files changed** tab` +
+        ` (committed under \`${relDir}/\`).`,
+      '',
+    );
+
+    if (!isPrivate && images.length > 0) {
+      // Public repo: GitHub's proxy can fetch raw → inline them too.
+      for (const img of images) {
+        const label = img.replace(/\.[^.]+$/, '');
+        lines.push(`**${label}**`, '', `![${label}](${rawBase}/${encodeURIComponent(img)})`, '');
+      }
+    }
+    if (others.length > 0) {
+      lines.push('Demo artefacts:');
+      for (const f of others) lines.push(`- [\`${f}\`](${blobBase}/${encodeURIComponent(f)})`);
+      lines.push('');
+    }
+    return lines.join('\n');
+  } catch (err) {
+    const e = err as { stderr?: Buffer | string; message?: string };
+    const stderr = typeof e.stderr === 'string' ? e.stderr : e.stderr?.toString() ?? '';
+    process.stderr.write(`[embedDemoInPr] non-fatal: ${stderr || e.message || 'failed'}\n`);
+    return null;
+  }
+}
+
 export function openPullRequest(
   worktreePath: string,
   prDescriptionPath: string,
@@ -49,6 +204,26 @@ export function openPullRequest(
     }).trim();
     if (!branch || branch === 'HEAD') return null;
 
+    // Make the PR self-contained: commit the demo bundle on the branch and
+    // build a combined body (PR description + inline demo). Best-effort —
+    // a demo failure must never block the PR. Done BEFORE the push so the
+    // demo commit ships with the branch.
+    let bodyFile = prDescriptionPath;
+    try {
+      const demoMd = embedDemoInPr(worktreePath, basenameInitiativeId(branch), branch);
+      if (demoMd) {
+        const base = existsSync(prDescriptionPath)
+          ? readFileSync(prDescriptionPath, 'utf8')
+          : '';
+        const combined = join(worktreePath, '.forge', 'pr-body-with-demo.md');
+        mkdirSync(join(worktreePath, '.forge'), { recursive: true });
+        writeFileSync(combined, base + '\n' + demoMd + '\n');
+        bodyFile = combined;
+      }
+    } catch {
+      /* keep the plain description */
+    }
+
     // Push to origin (set-upstream so gh pr create knows the head ref).
     // Failures here propagate to the catch — a non-pushable branch is a
     // genuine merge blocker, not a soft warning.
@@ -59,7 +234,7 @@ export function openPullRequest(
 
     const out = execFileSync(
       'gh',
-      ['pr', 'create', '--body-file', prDescriptionPath, '--title', title],
+      ['pr', 'create', '--body-file', bodyFile, '--title', title],
       { cwd: worktreePath, stdio: 'pipe', encoding: 'utf8' },
     );
     const match = out.match(/https:\S+/);
@@ -297,46 +472,133 @@ export type AlignResult = {
  * cosmetic local hygiene, surfaced via the returned detail + event log).
  *
  * Caller contract: only invoke after `confirmPrMerged` returned true.
+ *
+ * 2026-05-18 fix: the prior implementation moved `refs/heads/main` with
+ * `git update-ref` and deliberately SKIPPED the checkout, on the assumption
+ * that "main may be checked out elsewhere". In the normal operator-merge
+ * path the project repo at `projectRepoPath` IS the working checkout of
+ * `main` (the forge worktree is a *separate* dir that gets removed), so a
+ * bare ref move left the operator's working tree frozen at the pre-merge
+ * code with a huge phantom reverse-diff in `git status` — they opened the
+ * repo, saw OLD code, and could not review. When `projectRepoPath` is the
+ * `main` checkout we now bring its WORKING TREE forward with
+ * `merge --ff-only`, preserving any uncommitted operator/architect state
+ * (e.g. `roadmap.md`, which the architect phase writes directly into the
+ * project repo and which is NOT part of the merged initiative) via a
+ * stash that is always restored or surfaced — never silently discarded.
+ * The bare-ref path is kept as a fallback for the not-on-main case.
  */
-export function alignLocalToRemote(worktreePath: string, initiativeBranch: string): AlignResult {
+export function alignLocalToRemote(
+  worktreePath: string,
+  initiativeBranch: string,
+  projectRepoPath?: string,
+): AlignResult {
   const steps: string[] = [];
+  // Prefer the project repo for git ops (it shares the object store with the
+  // forge worktree, so a fetch there populates origin/main for both).
+  const gitCwd =
+    projectRepoPath && existsSync(projectRepoPath) ? projectRepoPath : worktreePath;
   try {
-    execFileSync('git', ['fetch', 'origin', '--prune'], { cwd: worktreePath, stdio: 'pipe' });
+    execFileSync('git', ['fetch', 'origin', '--prune'], { cwd: gitCwd, stdio: 'pipe' });
     steps.push('fetched origin');
   } catch {
     steps.push('fetch origin failed (non-fatal)');
   }
-  // Fast-forward local main to origin/main without checking it out (the
-  // project repo may have main checked out elsewhere — a forge worktree
-  // is attached off the same repo). `update-ref` is safe when main is an
-  // ancestor of origin/main, which it is after a clean PR merge.
-  const originMain = revParse(worktreePath, 'refs/remotes/origin/main');
-  const localMain = revParse(worktreePath, 'refs/heads/main');
-  if (originMain && originMain !== localMain) {
+  const originMain = revParse(gitCwd, 'refs/remotes/origin/main');
+  const localMain = revParse(gitCwd, 'refs/heads/main');
+
+  let alignedViaProjectTree = false;
+  if (
+    projectRepoPath &&
+    existsSync(projectRepoPath) &&
+    originMain &&
+    originMain !== localMain &&
+    currentBranch(projectRepoPath) === 'main'
+  ) {
+    // The project repo is the working checkout of `main` — bring its WORKING
+    // TREE (not just the ref) to origin/main. Preserve any uncommitted
+    // operator/architect state via stash; never discard it silently.
+    let dirty = false;
     try {
-      execFileSync('git', ['update-ref', 'refs/heads/main', originMain], {
-        cwd: worktreePath,
+      const out = execFileSync('git', ['status', '--porcelain'], {
+        cwd: projectRepoPath,
         stdio: 'pipe',
+        encoding: 'utf8',
       });
-      steps.push(`fast-forwarded main → ${originMain.slice(0, 8)}`);
+      dirty = out.trim().length > 0;
     } catch {
-      steps.push('main fast-forward failed (non-fatal)');
+      /* if status is unreadable, treat as clean and let ff-only be the guard */
     }
-  } else {
-    steps.push('main already up to date');
+    let stashed = false;
+    if (dirty) {
+      try {
+        execFileSync(
+          'git',
+          ['stash', 'push', '--include-untracked', '-m', `forge-closure-preserve ${initiativeBranch}`],
+          { cwd: projectRepoPath, stdio: 'pipe' },
+        );
+        stashed = true;
+        steps.push('stashed uncommitted project changes');
+      } catch {
+        steps.push('could not stash uncommitted changes — skipped working-tree ff (no data loss)');
+      }
+    }
+    if (!dirty || stashed) {
+      try {
+        execFileSync('git', ['merge', '--ff-only', 'origin/main'], {
+          cwd: projectRepoPath,
+          stdio: 'pipe',
+        });
+        steps.push(`project working tree fast-forwarded main → ${originMain.slice(0, 8)}`);
+        alignedViaProjectTree = true;
+      } catch {
+        steps.push('project working-tree ff-only failed (non-fatal)');
+      }
+    }
+    if (stashed) {
+      try {
+        execFileSync('git', ['stash', 'pop'], { cwd: projectRepoPath, stdio: 'pipe' });
+        steps.push('restored uncommitted project changes');
+      } catch {
+        steps.push(
+          'uncommitted changes kept in `git stash` (pop conflicted — operator resolves; no data loss)',
+        );
+      }
+    }
   }
+
+  if (!alignedViaProjectTree) {
+    // Fallback: move the ref without a checkout (original behaviour) when the
+    // project repo is not the `main` checkout / not provided.
+    if (originMain && originMain !== localMain) {
+      try {
+        execFileSync('git', ['update-ref', 'refs/heads/main', originMain], {
+          cwd: gitCwd,
+          stdio: 'pipe',
+        });
+        steps.push(
+          `fast-forwarded main ref → ${originMain.slice(0, 8)} (ref-only — project repo not the main checkout)`,
+        );
+      } catch {
+        steps.push('main fast-forward failed (non-fatal)');
+      }
+    } else {
+      steps.push('main already up to date');
+    }
+  }
+
   // Prune the initiative branch locally + on origin. The scheduler's
   // worktree.cleanup() also deletes the local branch in its finally; this
   // makes the closure self-contained for the operator-driven path.
   try {
-    execFileSync('git', ['branch', '-D', initiativeBranch], { cwd: worktreePath, stdio: 'pipe' });
+    execFileSync('git', ['branch', '-D', initiativeBranch], { cwd: gitCwd, stdio: 'pipe' });
     steps.push(`deleted local ${initiativeBranch}`);
   } catch {
     steps.push(`local ${initiativeBranch} already gone`);
   }
   try {
     execFileSync('git', ['push', 'origin', '--delete', initiativeBranch], {
-      cwd: worktreePath,
+      cwd: gitCwd,
       stdio: 'pipe',
     });
     steps.push(`deleted origin ${initiativeBranch}`);

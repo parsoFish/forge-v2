@@ -151,7 +151,22 @@ type ServerHandle = { url: string; stop: () => Promise<void> };
  */
 export async function startServer(treePath: string): Promise<ServerHandle | null> {
   const pkg = readPackageJson(treePath);
-  const script = pkg?.scripts?.dev ? 'dev' : pkg?.scripts?.preview ? 'preview' : null;
+  // 2026-05-18: prefer `preview` (serves the built, fully-rendered output —
+  // deterministic, no HMR settling, fixed port) over `dev` WHENEVER a build
+  // output exists. A dev/watch server is non-deterministic to settle and is
+  // the class of server that produced stale before/after captures. Fall back
+  // to `dev` only when there is no build output to preview.
+  const hasBuildOutput = ['dist', 'build', '.output', 'out'].some((d) =>
+    existsSync(join(treePath, d)),
+  );
+  const script =
+    hasBuildOutput && pkg?.scripts?.preview
+      ? 'preview'
+      : pkg?.scripts?.dev
+        ? 'dev'
+        : pkg?.scripts?.preview
+          ? 'preview'
+          : null;
   if (!script) return null;
   const exclude = await ambientUrls();
   const child = spawn('npm', ['run', script], {

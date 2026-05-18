@@ -221,7 +221,7 @@ export async function runClosure(
   // confirm (a bench operator-merge may have checked out main); never
   // prune `main` itself.
   if (branch && branch !== 'main') {
-    const align = alignLocalToRemote(input.worktreePath, branch);
+    const align = alignLocalToRemote(input.worktreePath, branch, input.projectRepoPath);
     logger.emit({
       initiative_id: input.initiativeId,
       parent_event_id: start.event_id,

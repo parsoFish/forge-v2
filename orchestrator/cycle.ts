@@ -332,6 +332,19 @@ function commitDevLoopBoundary(
 ): void {
   try {
     execFileSync('git', ['add', '-A'], { cwd: worktreePath, stdio: 'pipe' });
+    // Second guard (linkProjectDeps writes the primary one to the worktree's
+    // git exclude): never let the forge-created `node_modules` symlink into
+    // the boundary commit. A project .gitignore of `node_modules/` does not
+    // match a symlink named `node_modules`; `--ignore-unmatch` keeps this a
+    // no-op when it isn't staged.
+    try {
+      execFileSync('git', ['reset', '-q', '--', 'node_modules'], {
+        cwd: worktreePath,
+        stdio: 'pipe',
+      });
+    } catch {
+      /* best-effort — not staged / nothing to unstage */
+    }
     execFileSync(
       'git',
       [

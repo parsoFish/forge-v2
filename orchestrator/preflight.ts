@@ -21,7 +21,7 @@ import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { join, resolve, relative } from 'node:path';
 
-export type ClauseId = 'C1' | 'C2' | 'C3' | 'C4' | 'C5' | 'C6';
+export type ClauseId = 'C1' | 'C2' | 'C3' | 'C4' | 'C5' | 'C6' | 'BRAIN';
 
 export type ClauseResult = {
   clause: ClauseId;
@@ -93,6 +93,7 @@ export function runPreflight(
     checkC4(dir, projectName, forgeRoot),
     checkC5(dir),
     checkC6(dir),
+    checkBrainStaleness(dir, projectName, forgeRoot),
   ];
 
   const ok = clauses.filter((c) => c.hard).every((c) => c.pass);
@@ -277,6 +278,77 @@ function readQualityGateCmd(dir: string): { source: string; cmd: string } | null
     if (cmd) return { source: '.forge/quality_gate_cmd', cmd };
   }
   return null;
+}
+
+/**
+ * Advisory (never blocks): scan the project's brain themes for cited
+ * `src/…` / `tests/…` source paths that no longer exist in the project
+ * repo. A theme citing deleted/renamed files is the failure mode that
+ * silently thrashed the PM (2026-05-18): the PM reads the brain first,
+ * ingests a model that contradicts the actual tree, and burns its whole
+ * budget unable to reconcile. This surfaces the contradiction BEFORE a
+ * cycle, so the operator can reconcile the theme (the reflection phase
+ * normally does this, but by-hand project changes skip it).
+ *
+ * WARN only — themes legitimately reference history; the operator judges.
+ */
+function checkBrainStaleness(
+  dir: string,
+  projectName: string,
+  forgeRoot: string,
+): ClauseResult {
+  const base = {
+    clause: 'BRAIN' as const,
+    title: 'Brain freshness (themes cite live source paths)',
+    hard: false,
+  };
+  const themesDir = resolve(forgeRoot, 'brain', 'projects', projectName, 'themes');
+  if (!existsSync(themesDir)) {
+    return { ...base, pass: true, detail: 'no project brain themes to check' };
+  }
+  // Match worktree-relative source tokens in markdown links or inline code,
+  // including the `…/projects/<name>/src/…` link form themes use — we only
+  // flag the high-signal `src/` and `tests/` code paths with a file ext.
+  const pathRe = /(?:^|[("`\s/])((?:src|tests)\/[A-Za-z0-9._/-]+\.[A-Za-z0-9]+)/g;
+  const missing = new Map<string, string>(); // citedPath -> first theme file
+  let themeFiles: string[] = [];
+  try {
+    themeFiles = readdirSync(themesDir).filter((f) => f.endsWith('.md'));
+  } catch {
+    return { ...base, pass: true, detail: 'project themes unreadable — skipped' };
+  }
+  for (const f of themeFiles) {
+    let content: string;
+    try {
+      content = readFileSync(join(themesDir, f), 'utf8');
+    } catch {
+      continue;
+    }
+    for (const m of content.matchAll(pathRe)) {
+      const cited = m[1];
+      if (missing.has(cited)) continue;
+      if (!existsSync(join(dir, cited))) missing.set(cited, f);
+    }
+  }
+  if (missing.size === 0) {
+    return {
+      ...base,
+      pass: true,
+      detail: `all src/tests paths cited by ${themeFiles.length} theme(s) exist in the project`,
+    };
+  }
+  const sample = [...missing.entries()]
+    .slice(0, 6)
+    .map(([p, f]) => `${p} (${f})`)
+    .join('; ');
+  return {
+    ...base,
+    pass: false,
+    detail:
+      `${missing.size} brain-cited source path(s) no longer exist — theme(s) may be stale and ` +
+      `will mislead the planner (PM/architect read the brain first). Reconcile against the code ` +
+      `(or run a reflection pass). Sample: ${sample}`,
+  };
 }
 
 function walkSource(dir: string): string[] {

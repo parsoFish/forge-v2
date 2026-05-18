@@ -61,9 +61,18 @@ import type { CycleInput, ReviewerOutcome } from '../cycle-context.ts';
  * loop continues. Cap: 3 iterations (1 prep + 2 send-back rounds).
  */
 const REVIEWER_LIVE_DEFAULT_ITERATIONS = 3;
-const REVIEWER_LIVE_DEFAULT_USD_PER_ITERATION = 1.0;
-const REVIEWER_LIVE_MAX_TURNS_PER_ITERATION = 40;
-const REVIEWER_LIVE_MAX_BUDGET_USD_PER_ITERATION = 0.6;
+
+// Operator decision (2026-05-18): the per-iteration $/turn budget guards on
+// the reviewer were removed. They were undersized for medium initiatives —
+// every iteration hit the ~$0.60 cap before producing the demo + PR
+// description, so the pre-verdict gate never passed and the reviewer never
+// reached the operator verdict gate (0 verdicts, mislabelled
+// send-back-cap-exhausted). We have NOT observed the reviewer spinning
+// endlessly, so the iteration/round cap (`iterationCap`, the send-back
+// protocol bound) is the loop's terminator; an explicit per-iteration $/turn
+// guard is not reinstated until evidence shows it is needed. Benches still
+// pass an explicit `reviewIterationBudgetUsd` (review-loop / chained sdk),
+// so bench cost accounting is unaffected.
 
 /**
  * Infer project type from the worktree contents. Used to give the reviewer
@@ -133,8 +142,11 @@ export async function runReviewer(input: CycleInput, logger: EventLogger): Promi
   // the merge-base and HEAD, capped to avoid runaway budgets.
   const adaptiveCap = computeAdaptiveReviewIterationCap(input.worktreePath);
   const iterationCap = input.reviewIterationCap ?? adaptiveCap;
+  // No production $ budget guard (operator decision above): when the bench
+  // supplies an explicit per-iteration budget we honour it; otherwise the
+  // reviewer Ralph loop is bounded only by `iterationCap` (rounds), not cost.
   const usdBudget =
-    input.reviewIterationBudgetUsd ?? REVIEWER_LIVE_DEFAULT_USD_PER_ITERATION;
+    input.reviewIterationBudgetUsd ?? Number.POSITIVE_INFINITY;
 
   // Read the completed work items the reviewer will be reviewing.
   const workItemsDir = resolve(input.worktreePath, '.forge', 'work-items');
@@ -205,8 +217,9 @@ export async function runReviewer(input: CycleInput, logger: EventLogger): Promi
     disallowedTools: [...REVIEWER_DISALLOWED_TOOLS],
     permissionMode: 'acceptEdits',
     systemPrompt,
-    maxTurnsPerIteration: REVIEWER_LIVE_MAX_TURNS_PER_ITERATION,
-    maxBudgetUsdPerIteration: REVIEWER_LIVE_MAX_BUDGET_USD_PER_ITERATION,
+    // No per-iteration turn/$ cap on the reviewer agent (operator decision
+    // above). Omitted ⇒ createClaudeAgent leaves the SDK options unset ⇒
+    // unbounded per iteration; the loop's bound is `iterationCap` (rounds).
     queryFn: tallyingQueryFn,
   });
 
@@ -398,7 +411,14 @@ export async function runReviewer(input: CycleInput, logger: EventLogger): Promi
       input_refs: [input.worktreePath],
       output_refs: [],
       message: 'reviewer.send-back-cap-exhausted',
-      metadata: { rounds: gateState.invocations },
+      metadata: {
+        rounds: gateState.invocations,
+        verdicts: gateState.verdicts.length,
+        // verdicts === 0 ⇒ the loop exhausted iterations WITHOUT ever
+        // reaching the operator verdict gate (a reviewer-side stall, not a
+        // human send-back). Distinct from rounds>0 (genuine send-back cap).
+        never_reached_verdict: gateState.verdicts.length === 0,
+      },
     });
     // Manifest stays in-flight; closure moves it to ready-for-review/.
   } else {

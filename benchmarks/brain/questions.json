@@ -209,5 +209,43 @@
     "expected_keywords": ["gw:plan", "dry-run", "terraform", "plan-then-apply", "control repo"],
     "scope": "GitWeave",
     "category": null
+  },
+  {
+    "id": "Q19",
+    "question": "Which themes bridge the PR-as-sole-review-window pattern and the review-phase-target-design — i.e. share a connection with both?",
+    "expected_sources": [
+      "brain/forge/themes/pr-as-sole-review-window.md",
+      "brain/forge/themes/review-phase-target-design.md",
+      "brain/forge/themes/human-interaction-via-own-session.md"
+    ],
+    "expected_keywords": ["pr", "review", "human interaction", "own session", "bridge", "operator"],
+    "scope": null,
+    "category": null
+  },
+  {
+    "id": "Q20",
+    "question": "What other themes are directly structurally connected to the Karpathy three-layer-wiki theme — i.e. one wikilink, related_themes, or sources hop away?",
+    "expected_sources": [
+      "brain/forge/themes/karpathy-three-layer-wiki.md",
+      "brain/forge/themes/brain-first-research.md",
+      "brain/forge/themes/theme-page-format.md",
+      "brain/forge/themes/wiki-over-truncated-context.md",
+      "brain/forge/themes/brain-gap-feedback-loop.md"
+    ],
+    "expected_keywords": ["karpathy", "theme page", "wiki", "raw", "brain-first", "gap"],
+    "scope": null,
+    "category": null
+  },
+  {
+    "id": "Q21",
+    "question": "The trafficGame stale-brain antipattern (`2026-05-17-stale-brain-contradicts-code-pm-failure.md`) describes a PM cycle that thrashed because cited code had been deleted. Which other forge-level themes are structurally connected to it — patterns or antipatterns that share related_themes, wikilinks, or sources?",
+    "expected_sources": [
+      "brain/projects/trafficGame/themes/2026-05-17-stale-brain-contradicts-code-pm-failure.md",
+      "brain/forge/themes/brain-gap-feedback-loop.md",
+      "brain/forge/themes/brain-first-research.md"
+    ],
+    "expected_keywords": ["stale", "antipattern", "pm", "thrash", "campaign", "brain", "gap"],
+    "scope": null,
+    "category": null
   }
 ]

@@ -915,3 +915,17 @@ scope was wildly exceeded. Counts toward the `human-directed-work-as-initiatives
 antipattern: large operator-driven arcs that succeed but produce no
 autonomy-signal data. The exploration-vs-implementation theme is the
 proposed remediation.
+
+---
+
+## [2026-05-23] structural | S1.4 — graphify additive brain layer landed (deterministic walker)
+
+`brain/graph.json` committed as the canonical structural index per C21. **168 nodes, 627 edges** built deterministically from frontmatter `related_themes`, Obsidian `[[wikilinks]]`, and `## Sources` citations. Render artefacts (`brain/graph.html`, `brain/GRAPH_REPORT.md`) gitignored.
+
+The deterministic walker (`orchestrator/brain-graph.ts`) emits nodes + edges in the [`graphifyy`](https://github.com/rhanka/graphify) schema (`GraphNode` + `GraphEdge`). An operator with an `ANTHROPIC_API_KEY` can swap in `npx graphify update brain/ --backend anthropic --all` to overlay richer semantic edges at the same path — schema compatible, no consumer changes.
+
+New skill `skills/brain-graph/SKILL.md` (hand-authored per C22) wraps four operations: `update | query | report | install-hook`. `skills/brain-query/SKILL.md` rewritten for graph-first lookup with keyword fall-back (C20 dual-index). `benchmarks/brain/questions.json` grew from 18 → 21 with 3 structural questions (`Q19` bridges, `Q20` neighbours, `Q21` connected antipatterns).
+
+Karpathy gist re-ingested as canonical text at `brain/_raw/web/karpathy-llm-wiki.md`; the Pass-A synthesis archived under `brain/_archive/2026-05-23/karpathy-llm-wiki.chat.md` per `feedback_destructive_instruction_preserve_intent`. Three forge themes updated to cite the canonical URL.
+
+Bench not executed during the stage (operator asleep; OAuth token doesn't authenticate the direct API). Operator's wake task: `npm run bench:brain` ≥ 94.4%. See `_worktrees/s1.4-graphify/S1.4-DECISIONS.md` for the full decisions log.

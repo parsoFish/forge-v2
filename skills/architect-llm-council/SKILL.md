@@ -63,9 +63,38 @@ Each critic is invoked as a sub-agent via the Claude Agent SDK. Order matters:
 3. The runner aggregates `flags` (mechanical) for auto-application and de-duplicates `escalations` (taste) by `(critic, question)`.
 4. Apply auto-resolutions to the draft based on the returned `flags[].appliedFix` descriptions (the calling architect skill writes them).
 5. Order escalations by severity (CEO > Eng > DX > Design by default; adjust per project).
-6. Return `{ flags, escalations, totalCostUsd, perCritic }` to the calling architect skill.
+6. Return `{ flags, escalations, totalCostUsd, perCritic, fallbackCritics }` to the calling architect skill.
 
 The council's TypeScript helper lives at [`council.ts`](./council.ts). Default critics + their prompts come from `defaultCritics()`. The SDK's `query` is dependency-injectable via `queryFn` for unit tests.
+
+## Robustness contract (I-23 — landed in S2A of the 2026-05-20 refinement)
+
+The runner survives the failure modes observed in the 2026-05-20 batch where
+councils running ≥13k-char drafts at a 30-turn budget returned `result`
+messages with no `structured_output`. Specifically:
+
+- **`maxTurns` default is 60** (was 5) — large drafts need room.
+- **`maxDraftChars` default is 50 000** — drafts longer than this are
+  truncated for the critic (the call site still holds the full draft).
+  Pass a custom `maxDraftChars` if a critic must see a tighter slice.
+- **Empty `structured_output` ⇒ retry once** with a tighter `messageFormat`
+  that asks the critic to repeat its verdict as a fenced ```json block; the
+  runner parses the first such block out of the assistant text.
+- **Second failure ⇒ partial result + fallback event.** The runner emits a
+  `council.fallback-required` event via the `onEvent` callback, records the
+  critic in `fallbackCritics`, and returns a `CriticVerdict` of
+  `{ flags: [], escalations: [] }` for that critic. The runner does NOT
+  throw — the calling architect can decide whether to surface the fallback
+  to the operator (e.g. as an inline escalation in PLAN.md asking the
+  operator to manually critique the slice).
+
+When a fallback is required, the architect skill should:
+
+1. Read the raw text from the `council.fallback-required` event.
+2. Add it as a verbatim block to PLAN.md under a "Council fallback" heading
+   so the operator sees what the critic was trying to say.
+3. Continue with the remaining critics — one fallback should not abort the
+   whole chain.
 
 ## Constraints
 

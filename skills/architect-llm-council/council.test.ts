@@ -19,6 +19,7 @@ import {
   type Critic,
   type CriticVerdict,
   type CouncilQueryFn,
+  type CouncilEvent,
 } from './council.ts';
 
 type CapturedInvocation = { criticName: string; prompt: string };
@@ -125,7 +126,11 @@ test('runCouncil: auto-applies flags and aggregates escalations', async () => {
   assert.equal(result.totalCostUsd, 0.02, 'cost = sum of per-critic cost');
 });
 
-test('runCouncil: surfaces an error when a critic returns no result', async () => {
+test('runCouncil: no result message ⇒ runner falls through to fallback (does NOT throw, post-I-23)', async () => {
+  // Pre-S2A this case threw with /ceo.*no result/. Post-S2A the runner
+  // retries with a tighter prompt asking for fenced JSON; both attempts here
+  // also yield no result message, so the runner records a fallback-required
+  // event and returns a partial result.
   const critics: Critic[] = [{ name: 'ceo', prompt: 'CEO', model: 'sonnet' }];
   const queryFn: CouncilQueryFn = () => {
     async function* gen() {
@@ -134,28 +139,22 @@ test('runCouncil: surfaces an error when a critic returns no result', async () =
     }
     return gen();
   };
-
-  await assert.rejects(
-    runCouncil({ draft: DRAFT, critics, queryFn }),
-    /ceo.*no result|no.*verdict/i,
-  );
+  const events: CouncilEvent[] = [];
+  const result = await runCouncil({
+    draft: DRAFT,
+    critics,
+    queryFn,
+    onEvent: (e) => events.push(e),
+  });
+  assert.equal(result.fallbackCritics.length, 1);
+  assert.equal(result.fallbackCritics[0], 'ceo');
+  assert.ok(events.some((e) => e.type === 'council.fallback-required'));
 });
 
-test('runCouncil: missing structured_output triggers a typed error', async () => {
-  const critics: Critic[] = [{ name: 'eng', prompt: 'Eng', model: 'sonnet' }];
-  const queryFn: CouncilQueryFn = () => {
-    async function* gen() {
-      yield { type: 'result', subtype: 'success', total_cost_usd: 0.01, num_turns: 1 };
-      // structured_output missing
-    }
-    return gen();
-  };
-
-  await assert.rejects(
-    runCouncil({ draft: DRAFT, critics, queryFn }),
-    /structured_output|verdict/i,
-  );
-});
+// Note: prior to the S2A robustness fix (I-23), missing structured_output
+// threw. As of S2A, the runner retries with a tighter messageFormat asking
+// for fenced JSON; if BOTH attempts fail it emits a fallback-required event
+// and returns a partial result. The retry path is covered below.
 
 test('defaultCritics: returns ceo + eng + design + dx in order', () => {
   const critics = defaultCritics();
@@ -167,4 +166,131 @@ test('defaultCritics: returns ceo + eng + design + dx in order', () => {
   for (const c of critics) {
     assert.ok(c.prompt.length > 50, `${c.name} prompt is non-trivial`);
   }
+});
+
+// ---------------------------------------------------------------------------
+// Robustness fix (I-23) — added in stage S2A of the 2026-05-20 refinement.
+// ---------------------------------------------------------------------------
+
+test('runCouncil: empty structured_output ⇒ retries once with tighter messageFormat, parses fenced JSON, returns verdict', async () => {
+  const critics: Critic[] = [{ name: 'eng', prompt: 'Eng', model: 'sonnet' }];
+  let call = 0;
+  const queryFn: CouncilQueryFn = () => {
+    call += 1;
+    async function* gen() {
+      if (call === 1) {
+        // First attempt: no structured_output (the I-23 failure mode).
+        yield { type: 'result', subtype: 'success', total_cost_usd: 0.01, num_turns: 1 };
+        return;
+      }
+      // Second attempt (after retry): the critic repeats its verdict as a fenced JSON block.
+      yield {
+        type: 'assistant',
+        message: {
+          content: [{
+            type: 'text',
+            text: [
+              'Here is the verdict as requested:',
+              '',
+              '```json',
+              JSON.stringify({
+                flags: [{ id: 'retry-ok', description: 'fix', appliedFix: 'applied' }],
+                escalations: [],
+              }),
+              '```',
+            ].join('\n'),
+          }],
+        },
+      };
+      yield { type: 'result', subtype: 'success', total_cost_usd: 0.01, num_turns: 1 };
+    }
+    return gen();
+  };
+
+  const result = await runCouncil({ draft: DRAFT, critics, queryFn });
+  assert.equal(call, 2, 'retry fired exactly once');
+  assert.equal(result.flags.length, 1, 'retry verdict was parsed from fenced JSON');
+  assert.equal(result.flags[0].id, 'retry-ok');
+  assert.ok(result.totalCostUsd > 0);
+});
+
+test('runCouncil: empty structured_output on both attempts ⇒ partial result + fallback event emitted', async () => {
+  const critics: Critic[] = [{ name: 'ceo', prompt: 'CEO', model: 'sonnet' }];
+  const events: Array<{ type: string; critic?: string; rawText?: string }> = [];
+  const queryFn: CouncilQueryFn = () => {
+    async function* gen() {
+      yield {
+        type: 'assistant',
+        message: { content: [{ type: 'text', text: 'no JSON here' }] },
+      };
+      yield { type: 'result', subtype: 'success', total_cost_usd: 0.005, num_turns: 1 };
+    }
+    return gen();
+  };
+
+  const result = await runCouncil({
+    draft: DRAFT,
+    critics,
+    queryFn,
+    onEvent: (e) => events.push(e),
+  });
+
+  // Did NOT throw; partial result returned
+  assert.ok(result, 'runCouncil returned a result instead of throwing');
+  assert.equal(result.perCritic.length, 1);
+  // The critic verdict surfaces the raw text the architect can read
+  const ev = events.find((e) => e.type === 'council.fallback-required');
+  assert.ok(ev, 'council.fallback-required event was emitted');
+  assert.equal(ev?.critic, 'ceo');
+  assert.match(ev?.rawText ?? '', /no JSON here/);
+});
+
+test('runCouncil: respects maxDraftChars by truncating long drafts before invoking the critic', async () => {
+  const critics: Critic[] = [{ name: 'eng', prompt: 'Eng', model: 'sonnet' }];
+  const longDraft = '# huge draft\n' + 'x'.repeat(25_000);
+  let observedPromptLen = 0;
+  const queryFn: CouncilQueryFn = ({ prompt }) => {
+    observedPromptLen = prompt.length;
+    async function* gen() {
+      yield {
+        type: 'result',
+        subtype: 'success',
+        total_cost_usd: 0.01,
+        num_turns: 1,
+        structured_output: { flags: [], escalations: [] },
+      };
+    }
+    return gen();
+  };
+
+  await runCouncil({ draft: longDraft, critics, queryFn, maxDraftChars: 5_000 });
+  // The prompt is the critic prompt + the (truncated) draft + boilerplate;
+  // the upper bound is maxDraftChars + a generous slack for the prompt
+  // framing. The original draft was 25k chars; if we hadn't truncated, the
+  // prompt would necessarily be ≥ 25k.
+  assert.ok(
+    observedPromptLen < 10_000,
+    `prompt length ${observedPromptLen} suggests draft was NOT truncated to 5_000 chars`,
+  );
+});
+
+test('runCouncil: a synthetic 20k-char draft does not throw (default maxDraftChars 50_000 accommodates it)', async () => {
+  const critics: Critic[] = [{ name: 'ceo', prompt: 'CEO', model: 'sonnet' }];
+  const draft = '# huge\n' + 'y'.repeat(20_000);
+  const queryFn: CouncilQueryFn = () => {
+    async function* gen() {
+      yield {
+        type: 'result',
+        subtype: 'success',
+        total_cost_usd: 0.01,
+        num_turns: 1,
+        structured_output: { flags: [], escalations: [] },
+      };
+    }
+    return gen();
+  };
+  // Should NOT throw — proves AC8 (handles ≥ 20k draft).
+  const result = await runCouncil({ draft, critics, queryFn });
+  assert.ok(result);
+  assert.equal(result.perCritic.length, 1);
 });

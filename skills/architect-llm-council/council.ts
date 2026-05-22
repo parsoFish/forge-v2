@@ -10,6 +10,19 @@
  *
  * The SDK's `query` is dependency-injectable (`queryFn`) so unit tests verify
  * the critic-chain plumbing without hitting the network.
+ *
+ * S2A robustness fix (I-23):
+ *  - `maxTurns` default bumped to 60 (was 5).
+ *  - On `result` with no `structured_output`, the runner retries ONCE with a
+ *    tighter `messageFormat` asking the critic to repeat the verdict as a
+ *    fenced ```json block, then parses that block.
+ *  - On second failure, emits a `council.fallback-required` event with the
+ *    raw last assistant text and returns a PARTIAL CouncilResult (the calling
+ *    architect can decide whether to surface the fallback inline). The runner
+ *    no longer throws on the empty-structured-output case.
+ *  - New `maxDraftChars?: number` option (default 50_000) caps how much of
+ *    the draft is fed into each critic; longer drafts are truncated and the
+ *    critic is told they're seeing a slice.
  */
 
 import { query as sdkQuery } from '@anthropic-ai/claude-agent-sdk';
@@ -53,6 +66,17 @@ export type CouncilQueryFn = (params: {
   options?: Record<string, unknown>;
 }) => AsyncIterable<unknown>;
 
+/** Lightweight event sink used to surface runner-level telemetry (fallbacks,
+ *  retries) to the caller without polluting the structured result. */
+export type CouncilEvent =
+  | { type: 'council.start' }
+  | { type: 'council.critic-start'; critic: string }
+  | { type: 'council.critic-end'; critic: string; costUsd: number }
+  | { type: 'council.retry-with-fenced-json'; critic: string }
+  | { type: 'council.fallback-required'; critic: string; rawText: string }
+  | { type: 'council.draft-truncated'; critic: string; fromChars: number; toChars: number }
+  | { type: 'council.end'; totalCostUsd: number };
+
 export type CouncilInput = {
   /** The draft initiative spec (markdown body — frontmatter handled separately). */
   draft: string;
@@ -62,6 +86,12 @@ export type CouncilInput = {
   projectContext?: string;
   /** Inject a fake `query` for testing. */
   queryFn?: CouncilQueryFn;
+  /** Maximum chars of the draft fed to each critic. Default 50_000. */
+  maxDraftChars?: number;
+  /** Maximum turns per critic invocation. Default 60. */
+  maxTurns?: number;
+  /** Optional event sink — fired in order; throws are swallowed. */
+  onEvent?: (event: CouncilEvent) => void;
 };
 
 export type CouncilResult = {
@@ -70,6 +100,8 @@ export type CouncilResult = {
   totalCostUsd: number;
   /** Per-critic verdicts kept for audit / event log. */
   perCritic: { critic: string; verdict: CriticVerdict; costUsd: number }[];
+  /** Critics that fell through to the fallback path. Empty on clean runs. */
+  fallbackCritics: string[];
 };
 
 const STRUCTURED_OUTPUT_SCHEMA = {
@@ -113,40 +145,52 @@ const STRUCTURED_OUTPUT_SCHEMA = {
   required: ['flags', 'escalations'],
 };
 
+const DEFAULT_MAX_DRAFT_CHARS = 50_000;
+const DEFAULT_MAX_TURNS = 60;
+
 export async function runCouncil(input: CouncilInput): Promise<CouncilResult> {
   const queryFn: CouncilQueryFn = input.queryFn ?? (sdkQuery as unknown as CouncilQueryFn);
+  const maxDraftChars = input.maxDraftChars ?? DEFAULT_MAX_DRAFT_CHARS;
+  const maxTurns = input.maxTurns ?? DEFAULT_MAX_TURNS;
+  const onEvent = input.onEvent ?? (() => undefined);
+  const emit = (e: CouncilEvent): void => {
+    try { onEvent(e); } catch { /* event sinks must not break the runner */ }
+  };
+
   const flags: Flag[] = [];
   const escalations: Escalation[] = [];
   const perCritic: CouncilResult['perCritic'] = [];
+  const fallbackCritics: string[] = [];
   let totalCostUsd = 0;
-  const seen = new Set<string>(); // critic:question keys for de-duplication
+  const seen = new Set<string>();
+
+  emit({ type: 'council.start' });
 
   for (const critic of input.critics) {
-    const prompt = renderCriticPrompt(critic, input.draft, input.projectContext);
-    const options: Record<string, unknown> = {
-      systemPrompt: critic.prompt,
-      model: critic.model,
-      maxTurns: 5,
-      permissionMode: 'plan',                         // critics never modify files
-      allowedTools: [],                                // structured-only
-      outputFormat: { type: 'json_schema', schema: STRUCTURED_OUTPUT_SCHEMA },
-      _criticName: critic.name,                        // for test introspection only
-    };
-
-    let verdict: CriticVerdict | null = null;
-    let costUsd = 0;
-    for await (const msg of queryFn({ prompt, options })) {
-      const m = msg as { type?: string; subtype?: string; structured_output?: unknown; total_cost_usd?: number };
-      if (m.type !== 'result') continue;
-      if (typeof m.total_cost_usd === 'number') costUsd = m.total_cost_usd;
-      if (!m.structured_output) {
-        throw new Error(`council critic ${critic.name}: result message had no structured_output (verdict)`);
-      }
-      verdict = m.structured_output as CriticVerdict;
-      break;
+    emit({ type: 'council.critic-start', critic: critic.name });
+    const draftSlice = sliceDraft(input.draft, maxDraftChars);
+    if (draftSlice.truncated) {
+      emit({
+        type: 'council.draft-truncated',
+        critic: critic.name,
+        fromChars: input.draft.length,
+        toChars: draftSlice.text.length,
+      });
     }
-    if (!verdict) {
-      throw new Error(`council critic ${critic.name}: no result message received (no verdict)`);
+
+    const { verdict, costUsd, fellBack, rawText } = await runOneCritic({
+      critic,
+      draft: draftSlice.text,
+      truncatedNote: draftSlice.note,
+      projectContext: input.projectContext,
+      queryFn,
+      maxTurns,
+      emit,
+    });
+
+    if (fellBack) {
+      emit({ type: 'council.fallback-required', critic: critic.name, rawText });
+      fallbackCritics.push(critic.name);
     }
 
     totalCostUsd += costUsd;
@@ -158,12 +202,197 @@ export async function runCouncil(input: CouncilInput): Promise<CouncilResult> {
       seen.add(key);
       escalations.push(e);
     }
+    emit({ type: 'council.critic-end', critic: critic.name, costUsd });
   }
 
-  return { flags, escalations, totalCostUsd, perCritic };
+  emit({ type: 'council.end', totalCostUsd });
+  return { flags, escalations, totalCostUsd, perCritic, fallbackCritics };
 }
 
-function renderCriticPrompt(critic: Critic, draft: string, projectContext?: string): string {
+// ---------------------------------------------------------------------------
+// One critic, three states: structured success | fenced-json retry | fallback
+// ---------------------------------------------------------------------------
+
+type OneCriticOutcome = {
+  verdict: CriticVerdict;
+  costUsd: number;
+  fellBack: boolean;
+  rawText: string;
+};
+
+async function runOneCritic(args: {
+  critic: Critic;
+  draft: string;
+  truncatedNote: string | null;
+  projectContext?: string;
+  queryFn: CouncilQueryFn;
+  maxTurns: number;
+  emit: (e: CouncilEvent) => void;
+}): Promise<OneCriticOutcome> {
+  const { critic, draft, truncatedNote, projectContext, queryFn, maxTurns, emit } = args;
+  const prompt = renderCriticPrompt(critic, draft, projectContext, truncatedNote);
+
+  // --- attempt 1: structured output via json_schema ---
+  const r1 = await invokeCritic(queryFn, {
+    prompt,
+    systemPrompt: critic.prompt,
+    model: critic.model,
+    maxTurns,
+    outputFormat: { type: 'json_schema', schema: STRUCTURED_OUTPUT_SCHEMA },
+    criticName: critic.name,
+  });
+
+  if (r1.verdict) {
+    return { verdict: r1.verdict, costUsd: r1.costUsd, fellBack: false, rawText: r1.rawText };
+  }
+
+  // --- attempt 2: tighter prompt asking for a fenced JSON block ---
+  emit({ type: 'council.retry-with-fenced-json', critic: critic.name });
+  const retryPrompt = [
+    prompt,
+    '',
+    '---',
+    '',
+    'IMPORTANT: the previous attempt returned no structured output.',
+    'Repeat your verdict NOW as a fenced JSON block matching this shape:',
+    '',
+    '```json',
+    JSON.stringify({
+      flags: [{ id: '<id>', description: '<desc>', appliedFix: '<fix>' }],
+      escalations: [
+        {
+          critic: critic.name,
+          question: '<question>',
+          options: [{ label: '<label>', rationale: '<rationale>' }],
+        },
+      ],
+    }, null, 2),
+    '```',
+    '',
+    'Emit the JSON block and nothing else after it. If you have no flags or escalations, emit `{ "flags": [], "escalations": [] }`.',
+  ].join('\n');
+
+  const r2 = await invokeCritic(queryFn, {
+    prompt: retryPrompt,
+    systemPrompt: critic.prompt,
+    model: critic.model,
+    maxTurns,
+    outputFormat: undefined, // free-text — we parse fenced JSON from the body
+    criticName: critic.name,
+  });
+
+  const parsedFromFence = parseFencedJsonVerdict(r2.rawText);
+  if (parsedFromFence) {
+    return {
+      verdict: parsedFromFence,
+      costUsd: r1.costUsd + r2.costUsd,
+      fellBack: false,
+      rawText: r2.rawText,
+    };
+  }
+
+  // --- attempt 3: fallback — return empty verdict + raw text for the caller ---
+  return {
+    verdict: { flags: [], escalations: [] },
+    costUsd: r1.costUsd + r2.costUsd,
+    fellBack: true,
+    rawText: r2.rawText || r1.rawText,
+  };
+}
+
+type InvokeResult = {
+  verdict: CriticVerdict | null;
+  costUsd: number;
+  rawText: string;
+};
+
+async function invokeCritic(
+  queryFn: CouncilQueryFn,
+  params: {
+    prompt: string;
+    systemPrompt: string;
+    model: 'sonnet' | 'opus' | 'haiku';
+    maxTurns: number;
+    outputFormat: { type: string; schema: unknown } | undefined;
+    criticName: string;
+  },
+): Promise<InvokeResult> {
+  const options: Record<string, unknown> = {
+    systemPrompt: params.systemPrompt,
+    model: params.model,
+    maxTurns: params.maxTurns,
+    permissionMode: 'plan',
+    allowedTools: [],
+    _criticName: params.criticName,
+  };
+  if (params.outputFormat) options.outputFormat = params.outputFormat;
+
+  let verdict: CriticVerdict | null = null;
+  let costUsd = 0;
+  let rawText = '';
+  for await (const msg of queryFn({ prompt: params.prompt, options })) {
+    const m = msg as {
+      type?: string;
+      subtype?: string;
+      structured_output?: unknown;
+      total_cost_usd?: number;
+      message?: { content?: Array<{ type?: string; text?: string }> };
+    };
+    if (m.type === 'assistant') {
+      // Accumulate assistant text so we can parse fenced JSON on retry.
+      for (const block of m.message?.content ?? []) {
+        if (block?.type === 'text' && typeof block.text === 'string') {
+          rawText += (rawText ? '\n' : '') + block.text;
+        }
+      }
+      continue;
+    }
+    if (m.type !== 'result') continue;
+    if (typeof m.total_cost_usd === 'number') costUsd = m.total_cost_usd;
+    if (m.structured_output && typeof m.structured_output === 'object') {
+      verdict = m.structured_output as CriticVerdict;
+    }
+    break;
+  }
+  return { verdict, costUsd, rawText };
+}
+
+/** Pull the first ```json fenced block out of free-text and parse it as a CriticVerdict.
+ *  Returns null if no block found or the parsed shape isn't a verdict. */
+function parseFencedJsonVerdict(text: string): CriticVerdict | null {
+  if (!text) return null;
+  const fence = /```json\s*([\s\S]*?)```/i;
+  const m = fence.exec(text);
+  if (!m) return null;
+  try {
+    const parsed = JSON.parse(m[1]) as Partial<CriticVerdict>;
+    if (!parsed || typeof parsed !== 'object') return null;
+    return {
+      flags: Array.isArray(parsed.flags) ? (parsed.flags as Flag[]) : [],
+      escalations: Array.isArray(parsed.escalations) ? (parsed.escalations as Escalation[]) : [],
+    };
+  } catch {
+    return null;
+  }
+}
+
+function sliceDraft(draft: string, maxDraftChars: number): { text: string; truncated: boolean; note: string | null } {
+  if (draft.length <= maxDraftChars) {
+    return { text: draft, truncated: false, note: null };
+  }
+  return {
+    text: draft.slice(0, maxDraftChars),
+    truncated: true,
+    note: `[draft was truncated for this critic from ${draft.length} chars to ${maxDraftChars} chars; later sections were elided]`,
+  };
+}
+
+function renderCriticPrompt(
+  critic: Critic,
+  draft: string,
+  projectContext: string | undefined,
+  truncatedNote: string | null,
+): string {
   return [
     `You are the **${critic.name}** critic on the architect's LLM Council.`,
     '',
@@ -175,6 +404,7 @@ function renderCriticPrompt(critic: Critic, draft: string, projectContext?: stri
     'Do not invent new requirements. Improve what is there; do not expand scope.',
     '',
     projectContext ? `## Project context\n\n${projectContext}\n` : '',
+    truncatedNote ? `> ${truncatedNote}\n` : '',
     '## Draft initiative',
     '',
     draft,

@@ -7,11 +7,13 @@
 import { readFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { counts, listInFlight, getPaths } from './queue.ts';
+import { loadAliases } from './initiative-id.ts';
 
 export type StatusSnapshot = {
   queueCounts: Record<string, number>;
   inFlight: Array<{
     initiativeId: string;
+    handle: string;
     project: string;
     phase: string;
     iteration: number;
@@ -22,13 +24,18 @@ export type StatusSnapshot = {
 
 export function snapshot(queueRoot = '_queue'): StatusSnapshot {
   const paths = getPaths(queueRoot);
+  const aliases = loadAliases({ queueRoot: paths.root });
   return {
     queueCounts: counts(paths),
-    inFlight: listInFlight(paths).map((filename) => parseInFlight(filename, paths.inFlight)),
+    inFlight: listInFlight(paths).map((filename) => {
+      const row = parseInFlight(filename, paths.inFlight);
+      const meta = aliases.by_canonical[row.initiativeId];
+      return { ...row, handle: meta?.handle ?? '' };
+    }),
   };
 }
 
-function parseInFlight(filename: string, inFlightDir: string): StatusSnapshot['inFlight'][number] {
+function parseInFlight(filename: string, inFlightDir: string): Omit<StatusSnapshot['inFlight'][number], 'handle'> {
   const manifestPath = join(inFlightDir, filename);
   const hbPath = join(inFlightDir, filename + '.heartbeat');
   const initiativeId = filename.replace(/\.md$/, '');
@@ -69,10 +76,12 @@ export function render(s: StatusSnapshot): string {
   if (s.inFlight.length === 0) {
     lines.push('  (none)');
   } else {
-    lines.push('  ID                              project       phase                 iter  hb-age');
+    // S1.1: handle column sits right of the canonical ID. Empty cell (`-`) when
+    // a manifest pre-dates the backfill — operator can re-run backfill-aliases.
+    lines.push('  ID                              handle      project       phase                 iter  hb-age');
     for (const f of s.inFlight) {
       lines.push(
-        `  ${f.initiativeId.padEnd(31)} ${f.project.padEnd(13)} ${f.phase.padEnd(21)} ${String(f.iteration).padStart(4)}  ${String(f.heartbeatAgeSec).padStart(5)}s`,
+        `  ${f.initiativeId.padEnd(31)} ${(f.handle || '-').padEnd(11)} ${f.project.padEnd(13)} ${f.phase.padEnd(21)} ${String(f.iteration).padStart(4)}  ${String(f.heartbeatAgeSec).padStart(5)}s`,
       );
     }
   }

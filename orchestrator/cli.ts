@@ -26,6 +26,7 @@ import { runPreflight, formatPreflightReport } from './preflight.ts';
 import { fileVerdictPaths } from './file-verdict.ts';
 import { assertEnv } from './config.ts';
 import { writeCycleReport } from './cycle-report.ts';
+import { resolveInitiativeId } from './initiative-id.ts';
 
 const args = process.argv.slice(2);
 const cmd = args[0];
@@ -94,9 +95,10 @@ Usage:
   forge status [--watch]                  Print queue + in-flight snapshot
   forge metrics [<cycle-id>]              Per-cycle aggregates (or all cycles)
   forge preflight <project>               Check the C1–C6 forge↔project contract (declines, naming the failing clause)
-  forge review <initiative-id>            Print the open verdict prompt and the response file's path
+  forge review <initiative-id-or-handle>  Print the open verdict prompt and the response file's path
+                                          Accepts canonical INIT-…, handle proj#N, name alias, or unique substring.
   forge report <cycle-id> [--regenerate]  Print (or regenerate) the human-facing cycle report
-  forge demo <project> <baseRef> <changedRef> [--initiative <id>] [--out <dir>] [--build] [--brief <file>]
+  forge demo <project> <baseRef> <changedRef> [--initiative <id-or-handle>] [--out <dir>] [--build] [--brief <file>]
                                           Generate a self-contained before/after comparison demo (HTML)
   forge brain index [--scope <project>]   Emit the brain navigation indexes as a single blob (cache-friendly prefix for prompts)
 
@@ -273,13 +275,36 @@ function cmdStatus(rest: string[]): void {
   if (watch) setInterval(print, 2000);
 }
 
-function cmdReview(rest: string[]): void {
-  const initiativeId = rest[0];
-  if (!initiativeId) {
-    console.error('forge review: missing <initiative-id>');
-    console.error('Usage: forge review <initiative-id> [--inspect | --approve | --abandon]');
+/**
+ * S1.1 helper: take any operator-typed `<id>` (canonical | handle | name |
+ * unique substring) and produce the canonical id. On ambiguity print all
+ * matches + exit 2 per plan 07b. On `not-found` for a non-canonical input,
+ * exit 2 with a friendly message. Canonical inputs are accepted even if the
+ * registry doesn't know them yet (so existing manifests pre-backfill work).
+ */
+function resolveOrExit(input: string, verb: string): string {
+  const r = resolveInitiativeId(input);
+  if (r.kind === 'ok') return r.canonical;
+  if (r.kind === 'ambiguous') {
+    console.error(`forge ${verb}: "${input}" matched multiple initiatives:`);
+    for (const m of r.matches) console.error(`  ${m}`);
+    console.error('Specify a more specific handle, name, or full canonical id.');
     process.exit(2);
   }
+  console.error(`forge ${verb}: no initiative resolved from "${input}".`);
+  console.error('Tried: canonical exact, handle (proj#N), name alias, unique substring.');
+  console.error('Run `forge status` to list active IDs.');
+  process.exit(2);
+}
+
+function cmdReview(rest: string[]): void {
+  const rawId = rest[0];
+  if (!rawId) {
+    console.error('forge review: missing <initiative-id-or-handle>');
+    console.error('Usage: forge review <initiative-id-or-handle> [--inspect | --approve | --abandon]');
+    process.exit(2);
+  }
+  const initiativeId = resolveOrExit(rawId, 'review');
   // F-31: recovery sub-commands. The default behaviour (print verdict prompt)
   // is preserved; the new flags target the case where a cycle landed in
   // ready-for-review/ via send-back-cap-exhausted and the human needs to
@@ -530,7 +555,8 @@ async function cmdDemo(rest: string[]): Promise<void> {
     console.error(`forge demo: ${projectRepoPath} is not a git repo (clone the project into projects/${project}/ first)`);
     process.exit(2);
   }
-  const initiativeId = flagValue(rest, '--initiative');
+  const rawInitiative = flagValue(rest, '--initiative');
+  const initiativeId = rawInitiative ? resolveOrExit(rawInitiative, 'demo') : undefined;
   const out = flagValue(rest, '--out') ?? join('_logs', 'demos', `${project}-${Date.now()}`);
   const briefFile = flagValue(rest, '--brief');
   const brief = briefFile && existsSync(briefFile) ? readFileSync(briefFile, 'utf8') : undefined;

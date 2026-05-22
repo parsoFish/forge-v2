@@ -13,7 +13,7 @@
   "scripts": {
     "build": "tsc",
     "build:watch": "tsc --watch",
-    "test": "node --test --experimental-strip-types orchestrator/*.test.ts orchestrator/phases/*.test.ts loops/ralph/*.test.ts skills/*/*.test.ts benchmarks/_lib/*.test.ts benchmarks/*/*.test.ts",
+    "test": "node --test --experimental-strip-types orchestrator/*.test.ts orchestrator/phases/*.test.ts loops/ralph/*.test.ts skills/*/*.test.ts benchmarks/_lib/*.test.ts benchmarks/*/*.test.ts scripts/*.test.ts",
     "bench:brain": "node --experimental-strip-types benchmarks/brain/score.ts",
     "bench:brain:negatives": "node --experimental-strip-types benchmarks/brain/score-negatives.ts",
     "bench:brain:judge": "node --experimental-strip-types benchmarks/brain/score-judged.ts",
@@ -29,10 +29,12 @@
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "^0.1.0",
     "globby": "^14.1.0",
-    "gray-matter": "^4.0.3"
+    "gray-matter": "^4.0.3",
+    "proper-lockfile": "^4.1.2"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
+    "@types/proper-lockfile": "^4.1.4",
     "typescript": "^5.6.0"
   }
 }

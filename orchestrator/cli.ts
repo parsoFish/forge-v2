@@ -40,6 +40,10 @@ import { fileVerdictPaths } from './file-verdict.ts';
 import { assertEnv } from './config.ts';
 import { writeCycleReport } from './cycle-report.ts';
 import { resolveInitiativeId } from './initiative-id.ts';
+import {
+  dispatchArchitectCommit,
+  ArchitectCommitError,
+} from './architect-commit.ts';
 
 const args = process.argv.slice(2);
 const cmd = args[0];
@@ -81,6 +85,8 @@ process.chdir(FORGE_ROOT);
       return await cmdDemo(args.slice(1));
     case 'brain':
       return cmdBrain(args.slice(1));
+    case 'architect':
+      return await cmdArchitect(args.slice(1));
     case '--help':
     case '-h':
     case undefined:
@@ -113,6 +119,12 @@ Usage:
   forge report <cycle-id> [--regenerate]  Print (or regenerate) the human-facing cycle report
   forge demo <project> <baseRef> <changedRef> [--initiative <id-or-handle>] [--out <dir>] [--build] [--brief <file>]
                                           Generate a self-contained before/after comparison demo (HTML)
+  forge architect commit <session-id> [--project <name>] [--via-pr]
+                                          Ingest the operator's PLAN.md annotations + verdict for an architect session
+                                          - approve  → writes manifests to _queue/pending/, emits architect.plan-approved
+                                          - revise   → writes session-dir/feedback.md, emits architect.plan-revised
+                                          - reject   → archives session dir, emits architect.plan-rejected
+                                          --via-pr opens a draft PR on the project repo; falls back to local-edit if no origin
   forge brain index [--scope <project>]   Emit the brain navigation indexes as a single blob (cache-friendly prefix for prompts)
   forge brain index --write               Regenerate brain/INDEX.md from filesystem (counts + sub-wiki listing)
   forge brain lint [--scope <s>] [--fix]  Structural integrity checks on brain/ (7 checks, scopes: full|forge-only|project-only|single-file|cycle-touched-themes|cleanup-dry-run)
@@ -808,4 +820,105 @@ function cmdBrainGraphQuery(rest: string[]): void {
     'forge brain graph query: ops: neighbours <id> | reachable <id> [hops] | bridges <a> <b> | node <id>\n',
   );
   process.exit(2);
+}
+
+// ---------------------------------------------------------------------------
+// forge architect commit <session-id>
+//
+// S2A: the architect's terminal step is now writing PLAN.md to the project's
+// `_architect/<sid>/` dir, NOT manifests to `_queue/pending/`. This
+// subcommand ingests the operator's annotations + verdict and dispatches.
+// ---------------------------------------------------------------------------
+
+async function cmdArchitect(rest: string[]): Promise<void> {
+  const sub = rest[0];
+  if (sub === 'commit') return await cmdArchitectCommit(rest.slice(1));
+  console.error('forge architect: subcommands: commit <session-id>');
+  console.error('  forge architect commit <session-id> [--project <name>] [--via-pr]');
+  process.exit(2);
+}
+
+async function cmdArchitectCommit(rest: string[]): Promise<void> {
+  const sessionId = rest[0];
+  if (!sessionId) {
+    console.error('forge architect commit: missing <session-id>');
+    console.error('Usage: forge architect commit <session-id> [--project <name>] [--via-pr]');
+    process.exit(2);
+  }
+  const projectIdx = rest.indexOf('--project');
+  const projectArg = projectIdx >= 0 ? rest[projectIdx + 1] : undefined;
+  const viaPr = rest.includes('--via-pr');
+
+  // Resolve the project root. Two surfaces:
+  //  - explicit `--project <name>` → `projects/<name>/`
+  //  - default: scan `projects/*/_architect/<session-id>/` for the dir
+  let projectRoot: string;
+  if (projectArg) {
+    projectRoot = resolve('projects', projectArg);
+  } else {
+    const found = findSessionProject(sessionId);
+    if (!found) {
+      console.error(
+        `forge architect commit: no project found containing _architect/${sessionId}/. ` +
+          `Pass --project <name> to disambiguate.`,
+      );
+      process.exit(2);
+    }
+    projectRoot = found;
+  }
+
+  if (!existsSync(projectRoot)) {
+    console.error(`forge architect commit: project root not found: ${projectRoot}`);
+    process.exit(2);
+  }
+
+  try {
+    const result = await dispatchArchitectCommit({
+      sessionId,
+      projectRoot,
+      viaPr,
+    });
+    if (result.verdict === 'approve') {
+      console.log(`approved. wrote ${result.writtenManifestPaths.length} manifest(s):`);
+      for (const p of result.writtenManifestPaths) console.log(`  ${p}`);
+    } else if (result.verdict === 'revise') {
+      console.log(`revise. feedback bundled at ${result.feedbackPath}`);
+      console.log(`Re-run /forge-architect ${result.verdict === 'revise' ? '<project>' : ''} to regenerate PLAN.md with feedback.`);
+    } else {
+      console.log(`rejected. archived to ${result.archivedPath}`);
+    }
+  } catch (err) {
+    if (err instanceof ArchitectCommitError) {
+      console.error(`forge architect commit: ${err.message}`);
+      process.exit(2);
+    }
+    throw err;
+  }
+}
+
+/**
+ * Scan `projects/*` for `_architect/<sessionId>/PLAN.md` and return the
+ * first match's project root. Used when the operator omits `--project`.
+ */
+function findSessionProject(sessionId: string): string | null {
+  const projectsDir = resolve('projects');
+  if (!existsSync(projectsDir)) return null;
+  let entries: string[];
+  try {
+    entries = readdirSync(projectsDir);
+  } catch {
+    return null;
+  }
+  for (const name of entries) {
+    const candidate = join(projectsDir, name);
+    try {
+      const stat = statSync(candidate);
+      if (!stat.isDirectory()) continue;
+    } catch {
+      continue;
+    }
+    const planPath = join(candidate, '_architect', sessionId, 'PLAN.md');
+    if (existsSync(planPath)) return candidate;
+  }
+  return null;
 }

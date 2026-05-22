@@ -21,7 +21,8 @@ import { snapshot, render } from './visualise.ts';
 import { summariseCycle, summariseAll } from './metrics.ts';
 import { getPaths } from './queue.ts';
 import { parseManifest, validateManifest, writeManifest } from './manifest.ts';
-import { loadBrainIndex } from './brain-index.ts';
+import { loadBrainIndex, regenerateBrainIndex } from './brain-index.ts';
+import { runBrainLint, type Scope as BrainLintScope } from './brain-lint.ts';
 import { runPreflight, formatPreflightReport } from './preflight.ts';
 import { fileVerdictPaths } from './file-verdict.ts';
 import { assertEnv } from './config.ts';
@@ -99,6 +100,8 @@ Usage:
   forge demo <project> <baseRef> <changedRef> [--initiative <id>] [--out <dir>] [--build] [--brief <file>]
                                           Generate a self-contained before/after comparison demo (HTML)
   forge brain index [--scope <project>]   Emit the brain navigation indexes as a single blob (cache-friendly prefix for prompts)
+  forge brain index --write               Regenerate brain/INDEX.md from filesystem (counts + sub-wiki listing)
+  forge brain lint [--scope <s>] [--fix]  Structural integrity checks on brain/ (7 checks, scopes: full|forge-only|project-only|single-file|cycle-touched-themes|cleanup-dry-run)
 
 For phase-implementation guidance see docs/phases/. For decisions see docs/decisions/.`,
   );
@@ -602,12 +605,87 @@ function cmdMetrics(rest: string[]): void {
 function cmdBrain(rest: string[]): void {
   const sub = rest[0];
   if (sub === 'index') return cmdBrainIndex(rest.slice(1));
-  console.error('forge brain: subcommands: index');
+  if (sub === 'lint') return cmdBrainLint(rest.slice(1));
+  console.error('forge brain: subcommands: index | lint');
   process.exit(2);
 }
 
 function cmdBrainIndex(rest: string[]): void {
+  const write = rest.includes('--write');
+  if (write) {
+    const result = regenerateBrainIndex({ cwd: FORGE_ROOT, write: true });
+    console.log(
+      `brain-index: ${result.changed ? 'updated' : 'unchanged'} ${result.path}\n` +
+        `  ${result.stats.forgeThemeCount} forge themes, ` +
+        `${result.stats.projectThemeCount} project themes, ` +
+        `${result.stats.rawCount} raw sources, ` +
+        `${result.stats.projects.length} sub-wikis`,
+    );
+    return;
+  }
+  // Default: legacy prompt-prefix loader behaviour (`--scope <project>`).
   const scopeIdx = rest.indexOf('--scope');
   const scope = scopeIdx >= 0 ? rest[scopeIdx + 1] ?? null : null;
   process.stdout.write(loadBrainIndex({ scope }) + '\n');
+}
+
+function cmdBrainLint(rest: string[]): void {
+  // Parse flags. Mirror the standalone brain-lint.ts CLI but wire through the
+  // forge CLI so the operator types `forge brain lint ...`.
+  let scope: BrainLintScope = 'full';
+  let project: string | undefined;
+  let file: string | undefined;
+  let cycle: string | undefined;
+  let fix = false;
+  for (let i = 0; i < rest.length; i++) {
+    const a = rest[i];
+    if (a === '--scope') {
+      const v = rest[++i];
+      const allowed: BrainLintScope[] = [
+        'full',
+        'forge-only',
+        'project-only',
+        'single-file',
+        'cycle-touched-themes',
+        'cleanup-dry-run',
+      ];
+      if (!allowed.includes(v as BrainLintScope)) {
+        console.error(`forge brain lint: unknown --scope: ${v}`);
+        process.exit(2);
+      }
+      scope = v as BrainLintScope;
+    } else if (a === '--project') {
+      project = rest[++i];
+    } else if (a === '--file') {
+      file = rest[++i];
+    } else if (a === '--cycle') {
+      cycle = rest[++i];
+    } else if (a === '--fix') {
+      fix = true;
+    }
+  }
+  const result = runBrainLint({ cwd: FORGE_ROOT, scope, project, file, cycle, fix });
+
+  const errors = result.findings.filter((f) => f.category === 'error');
+  const flags = result.findings.filter((f) => f.category === 'flag');
+  const fixes = result.findings.filter((f) => f.category === 'auto-fix');
+  for (const [label, group] of [
+    ['ERRORS', errors],
+    ['FLAGS', flags],
+    ['AUTO-FIXES', fixes],
+  ] as const) {
+    if (group.length === 0) continue;
+    console.log(`## ${label} (${group.length})`);
+    for (const f of group) {
+      const relPath = f.file.startsWith(FORGE_ROOT)
+        ? f.file.slice(FORGE_ROOT.length + 1)
+        : f.file;
+      console.log(`- [${f.check ?? 'check'}] ${relPath}: ${f.message}`);
+    }
+    console.log('');
+  }
+  console.log(
+    `Summary: ${errors.length} error(s), ${flags.length} flag(s), ${fixes.length} auto-fix(es).`,
+  );
+  process.exit(result.exitCode);
 }

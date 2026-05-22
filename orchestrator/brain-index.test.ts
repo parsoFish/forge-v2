@@ -1,10 +1,10 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { loadBrainIndex } from './brain-index.ts';
+import { loadBrainIndex, regenerateBrainIndex } from './brain-index.ts';
 
 function scaffoldBrain(): string {
   const root = mkdtempSync(join(tmpdir(), 'brain-index-test-'));
@@ -79,4 +79,101 @@ test('loadBrainIndex: nonexistent scope adds nothing', () => {
   const baseline = loadBrainIndex({ cwd: root });
   const scoped = loadBrainIndex({ cwd: root, scope: 'does-not-exist' });
   assert.equal(scoped, baseline);
+});
+
+// ===========================================================================
+// regenerateBrainIndex
+// ===========================================================================
+
+function scaffoldBrainForRegen(): string {
+  const root = mkdtempSync(join(tmpdir(), 'brain-index-regen-'));
+  mkdirSync(join(root, 'brain', 'forge', 'themes'), { recursive: true });
+  mkdirSync(join(root, 'brain', '_raw', 'docs'), { recursive: true });
+  mkdirSync(join(root, 'brain', '_raw', 'cycles'), { recursive: true });
+
+  writeFileSync(join(root, 'brain', 'forge', 'themes', 't1.md'), '# t1\n');
+  writeFileSync(join(root, 'brain', 'forge', 'themes', 't2.md'), '# t2\n');
+  writeFileSync(join(root, 'brain', 'forge', 'themes', 'README.md'), '# template — excluded\n');
+
+  mkdirSync(join(root, 'brain', 'projects', 'alpha', 'themes'), { recursive: true });
+  writeFileSync(
+    join(root, 'brain', 'projects', 'alpha', 'profile.md'),
+    `---
+project: alpha
+status: active
+---
+
+# alpha
+
+A simple example project. Stack is TypeScript.
+
+## Taste signals
+`,
+  );
+  writeFileSync(join(root, 'brain', 'projects', 'alpha', 'themes', 'a1.md'), '# a1\n');
+
+  mkdirSync(join(root, 'brain', 'projects', 'beta', 'themes'), { recursive: true });
+  writeFileSync(
+    join(root, 'brain', 'projects', 'beta', 'profile.md'),
+    `---
+project: beta
+---
+
+# beta
+
+A second project for testing.
+`,
+  );
+
+  // contamination dir — must be EXCLUDED from the regenerated index.
+  mkdirSync(join(root, 'brain', 'projects', '__chained_test_proj_1', 'themes'), {
+    recursive: true,
+  });
+
+  writeFileSync(join(root, 'brain', '_raw', 'docs', 'r1.md'), '# raw\n');
+  writeFileSync(join(root, 'brain', '_raw', 'cycles', 'c1.md'), '# cycle\n');
+
+  return root;
+}
+
+test('regenerateBrainIndex: counts themes + projects + raw sources from filesystem', () => {
+  const root = scaffoldBrainForRegen();
+  const result = regenerateBrainIndex({ cwd: root });
+  assert.equal(result.stats.forgeThemeCount, 2, 'two forge themes (README excluded)');
+  assert.equal(result.stats.projectThemeCount, 1, 'one project theme (alpha/a1.md)');
+  assert.equal(result.stats.projects.length, 2, 'alpha + beta (contamination excluded)');
+  assert.equal(result.stats.rawCount, 2, 'two raw sources');
+});
+
+test('regenerateBrainIndex: lists projects by name with one-paragraph hook', () => {
+  const root = scaffoldBrainForRegen();
+  const result = regenerateBrainIndex({ cwd: root });
+  assert.ok(result.content.includes('[alpha](./projects/alpha/profile.md)'));
+  assert.ok(result.content.includes('A simple example project.'));
+  assert.ok(result.content.includes('[beta](./projects/beta/profile.md)'));
+  // Contamination dir must NOT appear in the index.
+  assert.ok(!result.content.includes('__chained_test_proj'));
+});
+
+test('regenerateBrainIndex: write=true creates INDEX.md byte-stable on repeat invocation', () => {
+  const root = scaffoldBrainForRegen();
+  const first = regenerateBrainIndex({ cwd: root, write: true });
+  const onDisk1 = readFileSync(first.path, 'utf8');
+  assert.equal(first.changed, true);
+  assert.equal(first.content, onDisk1);
+
+  const second = regenerateBrainIndex({ cwd: root, write: true });
+  const onDisk2 = readFileSync(second.path, 'utf8');
+  assert.equal(second.changed, false, 'second run is a no-op (idempotent)');
+  assert.equal(onDisk1, onDisk2, 'INDEX.md byte-stable on identical input');
+});
+
+test('regenerateBrainIndex: round-trip — write, mutate, regen restores expected content', () => {
+  const root = scaffoldBrainForRegen();
+  const first = regenerateBrainIndex({ cwd: root, write: true });
+  // Mutate INDEX.md by hand.
+  writeFileSync(first.path, '# tampered\n');
+  const second = regenerateBrainIndex({ cwd: root, write: true });
+  assert.equal(second.changed, true, 'detected tampering');
+  assert.equal(readFileSync(first.path, 'utf8'), first.content, 'restored to canonical');
 });

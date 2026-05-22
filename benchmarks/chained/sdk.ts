@@ -331,10 +331,43 @@ function maskedCounterpart(tempdir: string, project: string, liveTarget: string)
 }
 
 /**
+ * Defensive pre-clean: empty `__chained_test_proj_*` and `__bench_*`
+ * directories under `brain/projects/` left by previously-interrupted bench
+ * runs. The normal `restoreLiveBrain` removes the parent on success; this
+ * sweep covers the case where a previous node process was killed before its
+ * `finally` ran. Safe — only deletes EMPTY dirs matching the contamination
+ * pattern. See `scripts/brain-scrub-test-contamination.ts` for the
+ * standalone scrubber and `docs/planning/2026-05-20-refinement/01-brain.md`
+ * §"Cleanup playbook" Tier A.
+ */
+function preCleanContamination(): void {
+  const projectsRoot = resolve(FORGE_ROOT, 'brain', 'projects');
+  if (!existsSync(projectsRoot)) return;
+  for (const entry of readdirSync(projectsRoot)) {
+    if (!/^__(chained_test_proj_|bench_)/.test(entry)) continue;
+    const full = resolve(projectsRoot, entry);
+    try {
+      if (!lstatSync(full).isDirectory()) continue;
+      if (readdirSync(full).length !== 0) continue;
+      // recursive:true required even for empty dirs — `rm` Node refuses to
+      // remove directories without it (EISDIR).
+      rmSync(full, { recursive: true, force: true });
+    } catch {
+      /* best-effort */
+    }
+  }
+}
+
+/**
  * Move each live target aside and symlink it to its masked tempdir
  * counterpart. Returns a handle for `restoreLiveBrain`.
+ *
+ * Contamination boundary (per S1.2 plan 01 refinement #3): we pre-clean any
+ * empty `__chained_test_proj_*` dirs left by prior interrupted runs before
+ * setting up our own.
  */
 export function maskLiveBrain(tempdir: string, project: string): BrainMaskHandle {
+  preCleanContamination();
   const handle: BrainMaskHandle = { swaps: [], createdDirs: [] };
   for (const live of liveBrainTargets(project)) {
     const masked = maskedCounterpart(tempdir, project, live);
@@ -398,7 +431,10 @@ export function restoreLiveBrain(handle: BrainMaskHandle): void {
   for (const dir of [...handle.createdDirs].reverse()) {
     try {
       if (existsSync(dir) && readdirSync(dir).length === 0) {
-        rmSync(dir, { recursive: false, force: true });
+        // recursive:true required for empty directories — Node's rm refuses
+        // to remove a directory without it (EISDIR). S1.2 fix: this was the
+        // root cause of the 128 contamination dirs in the corpus.
+        rmSync(dir, { recursive: true, force: true });
       }
     } catch {
       /* best-effort */

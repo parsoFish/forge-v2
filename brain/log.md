@@ -915,3 +915,8 @@ scope was wildly exceeded. Counts toward the `human-directed-work-as-initiatives
 antipattern: large operator-driven arcs that succeed but produce no
 autonomy-signal data. The exploration-vs-implementation theme is the
 proposed remediation.
+
+## [2026-05-22] cleanup pass — brain-scrub-test-contamination
+
+- 128 Tier-A deletes (empty, untracked, matching `__chained_test_proj_*` / `__bench_*`)
+- scrubber: `scripts/brain-scrub-test-contamination.ts`

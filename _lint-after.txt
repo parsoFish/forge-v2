@@ -1,0 +1,130 @@
+## ERRORS (65)
+- [checkFrontmatter] brain/projects/trafficGame/themes/2026-05-10-campaign-mode-state.md: category "snapshot" not in whitelist {pattern|antipattern|decision|operation|reference}
+- [checkFrontmatter] brain/projects/trafficGame/themes/2026-05-10-mvp-architecture-snapshot.md: category "snapshot" not in whitelist {pattern|antipattern|decision|operation|reference}
+- [checkFrontmatter] brain/projects/trafficGame/themes/2026-05-10-recent-extractions-and-tech-debt.md: category "snapshot" not in whitelist {pattern|antipattern|decision|operation|reference}
+- [checkFrontmatter] brain/projects/trafficGame/themes/2026-05-10-test-stack-and-gates.md: category "process" not in whitelist {pattern|antipattern|decision|operation|reference}
+- [checkFrontmatter] brain/projects/trafficGame/themes/2026-05-10-traffic-location-data-model.md: category "snapshot" not in whitelist {pattern|antipattern|decision|operation|reference}
+- [checkFrontmatter] brain/projects/trafficGame/themes/2026-05-10-ui-canvas-overlay-pattern.md: category "bug-candidate" not in whitelist {pattern|antipattern|decision|operation|reference}
+- [checkSourceLinks] brain/forge/themes/agent-stuck-no-detection.md: broken link: ../../loops/ralph/stop-conditions.ts
+- [checkSourceLinks] brain/forge/themes/brain-read-policy.md: broken link: ../../../_logs/2026-05-16_trafficgame-arc-reflection/architecture.md
+- [checkSourceLinks] brain/forge/themes/chained-phase-benchmarks.md: broken link: ../../../_logs/2026-05-16_trafficgame-arc-reflection/benchmark-alignment.md
+- [checkSourceLinks] brain/forge/themes/forge-current-architecture-as-built.md: broken link: ../../../_logs/2026-05-16_trafficgame-arc-reflection/retro.md
+- [checkSourceLinks] brain/forge/themes/forge-project-onboarding-contract.md: broken link: ../../../_logs/2026-05-16_trafficgame-arc-reflection/retro.md
+- [checkSourceLinks] brain/forge/themes/holistic-metrics-onboarding.md: broken link: ../../../projects/trafficGame/scripts/grading/runSweep.mjs
+- [checkSourceLinks] brain/forge/themes/holistic-metrics-onboarding.md: broken link: ../../../projects/trafficGame/docs/baselines/
+- [checkSourceLinks] brain/forge/themes/human-directed-work-as-initiatives.md: broken link: ../../../_logs/2026-05-16_trafficgame-arc-reflection/retro.md
+- [checkSourceLinks] brain/forge/themes/human-interaction-via-own-session.md: broken link: ../../../_logs/2026-05-16_trafficgame-arc-reflection/architecture.md
+- [checkSourceLinks] brain/forge/themes/merge-boundary-stacked-initiative-failure.md: broken link: ../../../_logs/2026-05-16_trafficgame-arc-reflection/retro.md
+- [checkSourceLinks] brain/forge/themes/parametric-design-search.md: broken link: ../../../projects/trafficGame/scripts/grading/runSweep.mjs
+- [checkSourceLinks] brain/forge/themes/parametric-design-search.md: broken link: ../../../projects/trafficGame/scripts/grading/README.md
+- [checkSourceLinks] brain/forge/themes/pr-as-sole-review-window.md: broken link: raw-url
+- [checkSourceLinks] brain/forge/themes/reactive-constraint-stripback-arc.md: broken link: ../../../_logs/2026-05-16_trafficgame-arc-reflection/retro.md
+- [checkSourceLinks] brain/forge/themes/review-phase-target-design.md: broken link: ../../../_logs/2026-05-16_trafficgame-arc-reflection/architecture.md
+- [checkSourceLinks] brain/forge/themes/theme-page-format.md: broken link: ../../_raw/<path>
+- [checkSourceLinks] brain/forge/themes/theme-page-format.md: broken link: ./<other-theme-slug>.md
+- [checkSourceLinks] brain/projects/trafficGame/themes/2026-05-10-campaign-mode-state.md: broken link: ../../../../projects/trafficGame/src/campaign/campaignGraphData.ts
+- [checkSourceLinks] brain/projects/trafficGame/themes/2026-05-10-campaign-mode-state.md: broken link: ../../../../projects/trafficGame/src/campaign/CampaignGraph.ts
+- [checkSourceLinks] brain/projects/trafficGame/themes/2026-05-10-campaign-mode-state.md: broken link: ../../../../projects/trafficGame/src/ui/CampaignHub.ts
+- [checkSourceLinks] brain/projects/trafficGame/themes/2026-05-10-campaign-mode-state.md: broken link: ../../../../projects/trafficGame/src/traffic/MapDefinitions.ts
+- [checkSourceLinks] brain/projects/trafficGame/themes/2026-05-10-mvp-architecture-snapshot.md: broken link: ../../../../projects/trafficGame/docs/MVP_ARCHITECTURE.md
+- [checkSourceLinks] brain/projects/trafficGame/themes/2026-05-10-mvp-architecture-snapshot.md: broken link: ../../../../projects/trafficGame/docs/LEARNINGS.md
+- [checkSourceLinks] brain/projects/trafficGame/themes/2026-05-10-mvp-architecture-snapshot.md: broken link: traffic-physics-and-flow.md
+- [checkSourceLinks] brain/projects/trafficGame/themes/2026-05-10-mvp-architecture-snapshot.md: broken link: campaign-mode-state.md
+- [checkSourceLinks] brain/projects/trafficGame/themes/2026-05-10-mvp-architecture-snapshot.md: broken link: traffic-location-data-model.md
+- [checkSourceLinks] brain/projects/trafficGame/themes/2026-05-10-mvp-architecture-snapshot.md: broken link: ui-canvas-overlay-pattern.md
+- [checkSourceLinks] brain/projects/trafficGame/themes/2026-05-10-mvp-architecture-snapshot.md: broken link: test-stack-and-gates.md
+- [checkSourceLinks] brain/projects/trafficGame/themes/2026-05-10-recent-extractions-and-tech-debt.md: broken link: ../../../../projects/trafficGame/docs/LEARNINGS.md
+- [checkSourceLinks] brain/projects/trafficGame/themes/2026-05-10-recent-extractions-and-tech-debt.md: broken link: ../../../../projects/trafficGame/docs/LEARNINGS.md
+- [checkSourceLinks] brain/projects/trafficGame/themes/2026-05-10-recent-extractions-and-tech-debt.md: broken link: ../../../../projects/trafficGame/docs/LEARNINGS.md
+- [checkSourceLinks] brain/projects/trafficGame/themes/2026-05-10-test-stack-and-gates.md: broken link: ../../../../projects/trafficGame/CLAUDE.md
+- [checkSourceLinks] brain/projects/trafficGame/themes/2026-05-10-test-stack-and-gates.md: broken link: ../../../../projects/trafficGame/CLAUDE.md
+- [checkSourceLinks] brain/projects/trafficGame/themes/2026-05-10-test-stack-and-gates.md: broken link: ../../../../projects/trafficGame/docs/LEARNINGS.md
+- [checkSourceLinks] brain/projects/trafficGame/themes/2026-05-10-traffic-location-data-model.md: broken link: ../../../../projects/trafficGame/src/traffic/TrafficPoint.ts
+- [checkSourceLinks] brain/projects/trafficGame/themes/2026-05-10-traffic-location-data-model.md: broken link: ../../../../projects/trafficGame/src/traffic/TrafficPoint.ts
+- [checkSourceLinks] brain/projects/trafficGame/themes/2026-05-10-traffic-location-data-model.md: broken link: ../../../../projects/trafficGame/src/traffic/FlowConfig.ts
+- [checkSourceLinks] brain/projects/trafficGame/themes/2026-05-10-traffic-location-data-model.md: broken link: ../../../../projects/trafficGame/docs/MVP_ARCHITECTURE.md
+- [checkSourceLinks] brain/projects/trafficGame/themes/2026-05-10-traffic-physics-and-flow.md: broken link: ../../../../projects/trafficGame/src/traffic/CarFollowing.ts
+- [checkSourceLinks] brain/projects/trafficGame/themes/2026-05-10-traffic-physics-and-flow.md: broken link: ../../../../projects/trafficGame/src/traffic/CarFollowing.ts
+- [checkSourceLinks] brain/projects/trafficGame/themes/2026-05-10-traffic-physics-and-flow.md: broken link: ../../../../projects/trafficGame/docs/LEARNINGS.md
+- [checkSourceLinks] brain/projects/trafficGame/themes/2026-05-10-traffic-physics-and-flow.md: broken link: ../../../../projects/trafficGame/CLAUDE.md
+- [checkSourceLinks] brain/projects/trafficGame/themes/2026-05-10-ui-canvas-overlay-pattern.md: broken link: ../../../../projects/trafficGame/src/ui/GameMenu.ts
+- [checkSourceLinks] brain/projects/trafficGame/themes/2026-05-10-ui-canvas-overlay-pattern.md: broken link: ../../../../projects/trafficGame/src/ui/GameMenu.ts
+- [checkSourceLinks] brain/projects/trafficGame/themes/2026-05-10-ui-canvas-overlay-pattern.md: broken link: ../../../../projects/trafficGame/src/ui/LevelCompleteOverlay.ts
+- [checkSourceLinks] brain/projects/trafficGame/themes/2026-05-16-structural-prerequisites-for-autonomy.md: broken link: ../../../../_logs/2026-05-16_trafficgame-arc-reflection/retro.md
+- [checkSourceLinks] brain/projects/trafficGame/themes/2026-05-23-binary-elevation-model.md: broken link: ../../../../projects/trafficGame/docs/decisions/adr-collision-architecture-2026-05-22.md
+- [checkSourceLinks] brain/projects/trafficGame/themes/2026-05-23-binary-elevation-model.md: broken link: ../../../../projects/trafficGame/docs/baselines/grading-frontier-cross-theories.md
+- [checkSourceLinks] brain/projects/trafficGame/themes/2026-05-23-binary-elevation-model.md: broken link: ../../../../projects/trafficGame/src/traffic/CollisionAvoidance.ts
+- [checkSourceLinks] brain/projects/trafficGame/themes/2026-05-23-binary-elevation-model.md: broken link: ../../../../projects/trafficGame/src/traffic/OverlapTracker.ts
+- [checkSourceLinks] brain/projects/trafficGame/themes/2026-05-23-binary-elevation-model.md: broken link: ../../../../projects/trafficGame/src/traffic/VehicleUpdate.ts
+- [checkSourceLinks] brain/projects/trafficGame/themes/2026-05-23-grading-frontier-infrastructure.md: broken link: ../../../../projects/trafficGame/scripts/grading/runSweep.mjs
+- [checkSourceLinks] brain/projects/trafficGame/themes/2026-05-23-grading-frontier-infrastructure.md: broken link: ../../../../projects/trafficGame/scripts/grading/README.md
+- [checkSourceLinks] brain/projects/trafficGame/themes/2026-05-23-grading-frontier-infrastructure.md: broken link: ../../../../projects/trafficGame/docs/baselines/
+- [checkLengthSoftCap] brain/forge/themes/exploration-vs-implementation-initiatives.md: theme too long: 253 lines (hard cap 100)
+- [checkLengthSoftCap] brain/forge/themes/holistic-metrics-onboarding.md: theme too long: 140 lines (hard cap 100)
+- [checkLengthSoftCap] brain/forge/themes/parametric-design-search.md: theme too long: 151 lines (hard cap 100)
+- [checkLengthSoftCap] brain/projects/trafficGame/themes/2026-05-23-binary-elevation-model.md: theme too long: 123 lines (hard cap 100)
+- [checkLengthSoftCap] brain/projects/trafficGame/themes/2026-05-23-grading-frontier-infrastructure.md: theme too long: 132 lines (hard cap 100)
+
+## FLAGS (59)
+- [checkIndexSync] brain/projects/trafficGame/themes/2026-05-10-developer-ralph-brain-skip-on-second-wi.md: not listed in category index: brain/projects/trafficGame/antipatterns.md
+- [checkIndexSync] brain/projects/trafficGame/themes/2026-05-10-minimal-utility-single-iteration-pattern.md: not listed in category index: brain/projects/trafficGame/patterns.md
+- [checkIndexSync] brain/projects/trafficGame/themes/2026-05-10-review-overhead-dominates-trivial-cycles.md: category index missing: brain/projects/trafficGame/reference.md
+- [checkIndexSync] brain/projects/trafficGame/themes/2026-05-10-traffic-physics-and-flow.md: not listed in category index: brain/projects/trafficGame/patterns.md
+- [checkIndexSync] brain/projects/trafficGame/themes/2026-05-17-demo-server-reuse-captures-stale-build.md: not listed in category index: brain/projects/trafficGame/antipatterns.md
+- [checkIndexSync] brain/projects/trafficGame/themes/2026-05-17-file-isolation-constraint-enables-single-iteration.md: not listed in category index: brain/projects/trafficGame/patterns.md
+- [checkIndexSync] brain/projects/trafficGame/themes/2026-05-17-reviewer-budget-undersized-medium-initiatives.md: not listed in category index: brain/projects/trafficGame/antipatterns.md
+- [checkIndexSync] brain/projects/trafficGame/themes/2026-05-17-stale-brain-contradicts-code-pm-failure.md: not listed in category index: brain/projects/trafficGame/antipatterns.md
+- [checkStaleness] brain/forge/themes/chained-phase-benchmarks.md: stale citation (missing): benchmarks/e2e/scoring.ts
+- [checkStaleness] brain/forge/themes/chained-phase-benchmarks.md: stale citation (missing): benchmarks/e2e/scoring.ts
+- [checkStaleness] brain/forge/themes/exploration-vs-implementation-initiatives.md: stale citation (missing): docs/baselines/grading-frontier-*.md
+- [checkStaleness] brain/forge/themes/exploration-vs-implementation-initiatives.md: stale citation (missing): docs/baselines/grading-frontier-cross-theories.md
+- [checkStaleness] brain/forge/themes/holistic-metrics-onboarding.md: stale citation (missing): docs/baselines/*.md
+- [checkStaleness] brain/forge/themes/pluggable-notifications.md: stale citation (missing): orchestrator/notify.<provider>.ts
+- [checkStaleness] brain/projects/healarr/themes/email-approvals-no-web-ui.md: stale citation (missing): docs/architecture.md
+- [checkStaleness] brain/projects/healarr/themes/tier-coded-tool-boundaries.md: stale citation (missing): docs/tools.md
+- [checkStaleness] brain/projects/healarr/themes/triage-deterministic-no-llm.md: stale citation (missing): docs/tools.md
+- [checkStaleness] brain/projects/trafficGame/themes/2026-05-10-mvp-architecture-snapshot.md: stale citation (missing): docs/MVP_ARCHITECTURE.md
+- [checkStaleness] brain/projects/trafficGame/themes/2026-05-10-mvp-architecture-snapshot.md: stale citation (missing): docs/LEARNINGS.md
+- [checkStaleness] brain/projects/trafficGame/themes/2026-05-10-recent-extractions-and-tech-debt.md: stale citation (missing): docs/LEARNINGS.md
+- [checkStaleness] brain/projects/trafficGame/themes/2026-05-10-recent-extractions-and-tech-debt.md: stale citation (missing): docs/LEARNINGS.md
+- [checkStaleness] brain/projects/trafficGame/themes/2026-05-10-recent-extractions-and-tech-debt.md: stale citation (missing): docs/LEARNINGS.md
+- [checkStaleness] brain/projects/trafficGame/themes/2026-05-10-test-stack-and-gates.md: stale citation (missing): docs/LEARNINGS.md
+- [checkStaleness] brain/projects/trafficGame/themes/2026-05-10-test-stack-and-gates.md: stale citation (missing): docs/LEARNINGS.md
+- [checkStaleness] brain/projects/trafficGame/themes/2026-05-10-test-stack-and-gates.md: stale citation (missing): docs/LEARNINGS.md
+- [checkStaleness] brain/projects/trafficGame/themes/2026-05-10-test-stack-and-gates.md: stale citation (missing): docs/LEARNINGS.md
+- [checkStaleness] brain/projects/trafficGame/themes/2026-05-10-traffic-location-data-model.md: stale citation (missing): docs/MVP_ARCHITECTURE.md
+- [checkStaleness] brain/projects/trafficGame/themes/2026-05-10-traffic-physics-and-flow.md: stale citation (missing): docs/LEARNINGS.md
+- [checkStaleness] brain/projects/trafficGame/themes/2026-05-23-binary-elevation-model.md: stale citation (missing): docs/decisions/adr-collision-architecture-2026-05-22.md
+- [checkStaleness] brain/projects/trafficGame/themes/2026-05-23-binary-elevation-model.md: stale citation (missing): docs/baselines/grading-frontier-cross-theories.md
+- [checkStaleness] brain/projects/trafficGame/themes/2026-05-23-grading-frontier-infrastructure.md: stale citation (missing): docs/baselines/screenshots/INDEX.md
+- [checkStaleness] brain/projects/trafficGame/themes/canvas-bpr-flow-tests.md: stale citation (missing): docs/MVP_ARCHITECTURE.md
+- [checkStaleness] brain/projects/trafficGame/themes/per-map-calibrated-thresholds.md: stale citation (missing): docs/LEARNINGS.md
+- [checkStaleness] brain/projects/trafficGame/themes/per-map-calibrated-thresholds.md: stale citation (missing): docs/LEARNINGS.md
+- [checkStaleness] brain/projects/trafficGame/themes/per-map-calibrated-thresholds.md: stale citation (missing): docs/LEARNINGS.md
+- [checkStaleness] brain/projects/trafficGame/themes/per-map-calibrated-thresholds.md: stale citation (missing): docs/LEARNINGS.md
+- [checkOrphans] brain/projects/trafficGame/themes/2026-05-10-campaign-mode-state.md: orphan: not linked from INDEX.md or any category/profile index
+- [checkOrphans] brain/projects/trafficGame/themes/2026-05-10-developer-ralph-brain-skip-on-second-wi.md: orphan: not linked from INDEX.md or any category/profile index
+- [checkOrphans] brain/projects/trafficGame/themes/2026-05-10-minimal-utility-single-iteration-pattern.md: orphan: not linked from INDEX.md or any category/profile index
+- [checkOrphans] brain/projects/trafficGame/themes/2026-05-10-mvp-architecture-snapshot.md: orphan: not linked from INDEX.md or any category/profile index
+- [checkOrphans] brain/projects/trafficGame/themes/2026-05-10-recent-extractions-and-tech-debt.md: orphan: not linked from INDEX.md or any category/profile index
+- [checkOrphans] brain/projects/trafficGame/themes/2026-05-10-review-overhead-dominates-trivial-cycles.md: orphan: not linked from INDEX.md or any category/profile index
+- [checkOrphans] brain/projects/trafficGame/themes/2026-05-10-test-stack-and-gates.md: orphan: not linked from INDEX.md or any category/profile index
+- [checkOrphans] brain/projects/trafficGame/themes/2026-05-10-traffic-location-data-model.md: orphan: not linked from INDEX.md or any category/profile index
+- [checkOrphans] brain/projects/trafficGame/themes/2026-05-10-traffic-physics-and-flow.md: orphan: not linked from INDEX.md or any category/profile index
+- [checkOrphans] brain/projects/trafficGame/themes/2026-05-16-structural-prerequisites-for-autonomy.md: orphan: not linked from INDEX.md or any category/profile index
+- [checkOrphans] brain/projects/trafficGame/themes/2026-05-17-demo-server-reuse-captures-stale-build.md: orphan: not linked from INDEX.md or any category/profile index
+- [checkOrphans] brain/projects/trafficGame/themes/2026-05-17-file-isolation-constraint-enables-single-iteration.md: orphan: not linked from INDEX.md or any category/profile index
+- [checkOrphans] brain/projects/trafficGame/themes/2026-05-17-reviewer-budget-undersized-medium-initiatives.md: orphan: not linked from INDEX.md or any category/profile index
+- [checkOrphans] brain/projects/trafficGame/themes/2026-05-17-stale-brain-contradicts-code-pm-failure.md: orphan: not linked from INDEX.md or any category/profile index
+- [checkLengthSoftCap] brain/forge/themes/chained-phase-benchmarks.md: theme over soft cap: 66 lines (> 60)
+- [checkLengthSoftCap] brain/projects/trafficGame/themes/2026-05-10-campaign-mode-state.md: theme over soft cap: 92 lines (> 60)
+- [checkLengthSoftCap] brain/projects/trafficGame/themes/2026-05-10-mvp-architecture-snapshot.md: theme over soft cap: 78 lines (> 60)
+- [checkLengthSoftCap] brain/projects/trafficGame/themes/2026-05-10-recent-extractions-and-tech-debt.md: theme over soft cap: 61 lines (> 60)
+- [checkLengthSoftCap] brain/projects/trafficGame/themes/2026-05-10-test-stack-and-gates.md: theme over soft cap: 71 lines (> 60)
+- [checkLengthSoftCap] brain/projects/trafficGame/themes/2026-05-10-traffic-location-data-model.md: theme over soft cap: 66 lines (> 60)
+- [checkLengthSoftCap] brain/projects/trafficGame/themes/2026-05-10-traffic-physics-and-flow.md: theme over soft cap: 75 lines (> 60)
+- [checkLengthSoftCap] brain/projects/trafficGame/themes/2026-05-10-ui-canvas-overlay-pattern.md: theme over soft cap: 81 lines (> 60)
+- [checkContradictions] brain/forge/themes/agent-stuck-no-detection.md: possible contradiction with brain/forge/themes/wedged-loop-detector.md (3 keyword overlaps: stuck, no-progress, wedged)
+
+Summary: 65 error(s), 59 flag(s), 0 auto-fix(es).
+exit=1

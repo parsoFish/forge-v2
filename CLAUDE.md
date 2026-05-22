@@ -61,6 +61,8 @@ npm run build            # compile TypeScript
 npm test                 # run scaffold smoke tests
 npm run bench:<phase>    # run a phase's benchmark suite
 forge --help             # CLI surface
+forge brain lint         # structural integrity checks on brain/ (7 checks; exit non-zero on errors)
+forge brain index --write  # regenerate brain/INDEX.md from filesystem (counts + sub-wiki listing)
 ```
 
 ## Architecture (post-scaffold)

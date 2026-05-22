@@ -173,6 +173,49 @@ test('maskLiveBrain → restoreLiveBrain leaves the live brain byte-identical an
   assert.equal(readFileSync(liveLog, 'utf8'), logBefore, 'log.md unchanged');
 });
 
+// ---------- contamination boundary (S1.2) ----------
+
+test('maskLiveBrain: contamination boundary — pre-cleans empty __chained_test_proj_* dirs and never leaves new ones', () => {
+  // Pre-seed an empty contamination dir as if a previous interrupted run had
+  // left one behind.
+  const stale = resolve(FORGE_ROOT, 'brain', 'projects', `__chained_test_proj_stale_${process.pid}`);
+  // Defensive cleanup in case of a prior run.
+  if (existsSync(stale)) rmSync(stale, { recursive: true, force: true });
+  mkdirSync(stale, { recursive: true });
+  try {
+    assert.equal(existsSync(stale), true, 'pre-seeded stale contamination');
+
+    const seed = makeSeedTree();
+    const project = `__chained_test_proj_${process.pid}_boundary`;
+    const dir = setupChainedTempdir({ ...baseSeed(seed.path), project });
+    let handle: ReturnType<typeof maskLiveBrain> | null = null;
+    try {
+      handle = maskLiveBrain(dir, project);
+
+      // After preCleanContamination ran inside maskLiveBrain, the stale dir
+      // must be gone.
+      assert.equal(
+        existsSync(stale),
+        false,
+        'stale contamination dir was pre-cleaned by maskLiveBrain',
+      );
+    } finally {
+      if (handle) restoreLiveBrain(handle);
+      cleanupTempdir(dir);
+      seed.cleanup();
+    }
+
+    // Post-restore: this run also left nothing behind.
+    const after = resolve(FORGE_ROOT, 'brain', 'projects', project);
+    assert.equal(existsSync(after), false, 'masked project dir cleaned up on restore');
+
+    // Stale dir still gone.
+    assert.equal(existsSync(stale), false, 'stale dir stays gone');
+  } finally {
+    if (existsSync(stale)) rmSync(stale, { recursive: true, force: true });
+  }
+});
+
 // ---------- pure artifact extractors ----------
 
 function eventLog(lines: object[]): { path: string; cleanup: () => void } {

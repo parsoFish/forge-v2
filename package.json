@@ -24,7 +24,10 @@
     "bench:reflection": "node --experimental-strip-types benchmarks/reflection/score.ts",
     "bench:chained": "node --experimental-strip-types benchmarks/chained/score.ts",
     "lint": "echo 'TODO: pick a linter; v2 stays minimal until a need appears'",
-    "forge": "node --experimental-strip-types orchestrator/cli.ts"
+    "forge": "node --experimental-strip-types orchestrator/cli.ts",
+    "forge:brain:lint": "node --experimental-strip-types orchestrator/brain-lint.ts",
+    "forge:brain:index": "node --experimental-strip-types orchestrator/brain-index.ts",
+    "brain:scrub": "node --experimental-strip-types scripts/brain-scrub-test-contamination.ts"
   },
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "^0.1.0",

@@ -1,0 +1,258 @@
+## ERRORS (193)
+- [checkFrontmatter] brain/projects/trafficGame/themes/2026-05-10-campaign-mode-state.md: category "snapshot" not in whitelist {pattern|antipattern|decision|operation|reference}
+- [checkFrontmatter] brain/projects/trafficGame/themes/2026-05-10-mvp-architecture-snapshot.md: category "snapshot" not in whitelist {pattern|antipattern|decision|operation|reference}
+- [checkFrontmatter] brain/projects/trafficGame/themes/2026-05-10-recent-extractions-and-tech-debt.md: category "snapshot" not in whitelist {pattern|antipattern|decision|operation|reference}
+- [checkFrontmatter] brain/projects/trafficGame/themes/2026-05-10-test-stack-and-gates.md: category "process" not in whitelist {pattern|antipattern|decision|operation|reference}
+- [checkFrontmatter] brain/projects/trafficGame/themes/2026-05-10-traffic-location-data-model.md: category "snapshot" not in whitelist {pattern|antipattern|decision|operation|reference}
+- [checkFrontmatter] brain/projects/trafficGame/themes/2026-05-10-ui-canvas-overlay-pattern.md: category "bug-candidate" not in whitelist {pattern|antipattern|decision|operation|reference}
+- [checkSourceLinks] brain/forge/themes/agent-stuck-no-detection.md: broken link: ../../loops/ralph/stop-conditions.ts
+- [checkSourceLinks] brain/forge/themes/brain-read-policy.md: broken link: ../../../_logs/2026-05-16_trafficgame-arc-reflection/architecture.md
+- [checkSourceLinks] brain/forge/themes/chained-phase-benchmarks.md: broken link: ../../../_logs/2026-05-16_trafficgame-arc-reflection/benchmark-alignment.md
+- [checkSourceLinks] brain/forge/themes/forge-current-architecture-as-built.md: broken link: ../../../_logs/2026-05-16_trafficgame-arc-reflection/retro.md
+- [checkSourceLinks] brain/forge/themes/forge-project-onboarding-contract.md: broken link: ../../../_logs/2026-05-16_trafficgame-arc-reflection/retro.md
+- [checkSourceLinks] brain/forge/themes/holistic-metrics-onboarding.md: broken link: ../../../projects/trafficGame/scripts/grading/runSweep.mjs
+- [checkSourceLinks] brain/forge/themes/holistic-metrics-onboarding.md: broken link: ../../../projects/trafficGame/docs/baselines/
+- [checkSourceLinks] brain/forge/themes/human-directed-work-as-initiatives.md: broken link: ../../../_logs/2026-05-16_trafficgame-arc-reflection/retro.md
+- [checkSourceLinks] brain/forge/themes/human-interaction-via-own-session.md: broken link: ../../../_logs/2026-05-16_trafficgame-arc-reflection/architecture.md
+- [checkSourceLinks] brain/forge/themes/merge-boundary-stacked-initiative-failure.md: broken link: ../../../_logs/2026-05-16_trafficgame-arc-reflection/retro.md
+- [checkSourceLinks] brain/forge/themes/parametric-design-search.md: broken link: ../../../projects/trafficGame/scripts/grading/runSweep.mjs
+- [checkSourceLinks] brain/forge/themes/parametric-design-search.md: broken link: ../../../projects/trafficGame/scripts/grading/README.md
+- [checkSourceLinks] brain/forge/themes/pr-as-sole-review-window.md: broken link: raw-url
+- [checkSourceLinks] brain/forge/themes/reactive-constraint-stripback-arc.md: broken link: ../../../_logs/2026-05-16_trafficgame-arc-reflection/retro.md
+- [checkSourceLinks] brain/forge/themes/review-phase-target-design.md: broken link: ../../../_logs/2026-05-16_trafficgame-arc-reflection/architecture.md
+- [checkSourceLinks] brain/forge/themes/theme-page-format.md: broken link: ../../_raw/<path>
+- [checkSourceLinks] brain/forge/themes/theme-page-format.md: broken link: ./<other-theme-slug>.md
+- [checkSourceLinks] brain/projects/trafficGame/themes/2026-05-10-campaign-mode-state.md: broken link: ../../../../projects/trafficGame/src/campaign/campaignGraphData.ts
+- [checkSourceLinks] brain/projects/trafficGame/themes/2026-05-10-campaign-mode-state.md: broken link: ../../../../projects/trafficGame/src/campaign/CampaignGraph.ts
+- [checkSourceLinks] brain/projects/trafficGame/themes/2026-05-10-campaign-mode-state.md: broken link: ../../../../projects/trafficGame/src/ui/CampaignHub.ts
+- [checkSourceLinks] brain/projects/trafficGame/themes/2026-05-10-campaign-mode-state.md: broken link: ../../../../projects/trafficGame/src/traffic/MapDefinitions.ts
+- [checkSourceLinks] brain/projects/trafficGame/themes/2026-05-10-mvp-architecture-snapshot.md: broken link: ../../../../projects/trafficGame/docs/MVP_ARCHITECTURE.md
+- [checkSourceLinks] brain/projects/trafficGame/themes/2026-05-10-mvp-architecture-snapshot.md: broken link: ../../../../projects/trafficGame/docs/LEARNINGS.md
+- [checkSourceLinks] brain/projects/trafficGame/themes/2026-05-10-mvp-architecture-snapshot.md: broken link: traffic-physics-and-flow.md
+- [checkSourceLinks] brain/projects/trafficGame/themes/2026-05-10-mvp-architecture-snapshot.md: broken link: campaign-mode-state.md
+- [checkSourceLinks] brain/projects/trafficGame/themes/2026-05-10-mvp-architecture-snapshot.md: broken link: traffic-location-data-model.md
+- [checkSourceLinks] brain/projects/trafficGame/themes/2026-05-10-mvp-architecture-snapshot.md: broken link: ui-canvas-overlay-pattern.md
+- [checkSourceLinks] brain/projects/trafficGame/themes/2026-05-10-mvp-architecture-snapshot.md: broken link: test-stack-and-gates.md
+- [checkSourceLinks] brain/projects/trafficGame/themes/2026-05-10-recent-extractions-and-tech-debt.md: broken link: ../../../../projects/trafficGame/docs/LEARNINGS.md
+- [checkSourceLinks] brain/projects/trafficGame/themes/2026-05-10-recent-extractions-and-tech-debt.md: broken link: ../../../../projects/trafficGame/docs/LEARNINGS.md
+- [checkSourceLinks] brain/projects/trafficGame/themes/2026-05-10-recent-extractions-and-tech-debt.md: broken link: ../../../../projects/trafficGame/docs/LEARNINGS.md
+- [checkSourceLinks] brain/projects/trafficGame/themes/2026-05-10-test-stack-and-gates.md: broken link: ../../../../projects/trafficGame/CLAUDE.md
+- [checkSourceLinks] brain/projects/trafficGame/themes/2026-05-10-test-stack-and-gates.md: broken link: ../../../../projects/trafficGame/CLAUDE.md
+- [checkSourceLinks] brain/projects/trafficGame/themes/2026-05-10-test-stack-and-gates.md: broken link: ../../../../projects/trafficGame/docs/LEARNINGS.md
+- [checkSourceLinks] brain/projects/trafficGame/themes/2026-05-10-traffic-location-data-model.md: broken link: ../../../../projects/trafficGame/src/traffic/TrafficPoint.ts
+- [checkSourceLinks] brain/projects/trafficGame/themes/2026-05-10-traffic-location-data-model.md: broken link: ../../../../projects/trafficGame/src/traffic/TrafficPoint.ts
+- [checkSourceLinks] brain/projects/trafficGame/themes/2026-05-10-traffic-location-data-model.md: broken link: ../../../../projects/trafficGame/src/traffic/FlowConfig.ts
+- [checkSourceLinks] brain/projects/trafficGame/themes/2026-05-10-traffic-location-data-model.md: broken link: ../../../../projects/trafficGame/docs/MVP_ARCHITECTURE.md
+- [checkSourceLinks] brain/projects/trafficGame/themes/2026-05-10-traffic-physics-and-flow.md: broken link: ../../../../projects/trafficGame/src/traffic/CarFollowing.ts
+- [checkSourceLinks] brain/projects/trafficGame/themes/2026-05-10-traffic-physics-and-flow.md: broken link: ../../../../projects/trafficGame/src/traffic/CarFollowing.ts
+- [checkSourceLinks] brain/projects/trafficGame/themes/2026-05-10-traffic-physics-and-flow.md: broken link: ../../../../projects/trafficGame/docs/LEARNINGS.md
+- [checkSourceLinks] brain/projects/trafficGame/themes/2026-05-10-traffic-physics-and-flow.md: broken link: ../../../../projects/trafficGame/CLAUDE.md
+- [checkSourceLinks] brain/projects/trafficGame/themes/2026-05-10-ui-canvas-overlay-pattern.md: broken link: ../../../../projects/trafficGame/src/ui/GameMenu.ts
+- [checkSourceLinks] brain/projects/trafficGame/themes/2026-05-10-ui-canvas-overlay-pattern.md: broken link: ../../../../projects/trafficGame/src/ui/GameMenu.ts
+- [checkSourceLinks] brain/projects/trafficGame/themes/2026-05-10-ui-canvas-overlay-pattern.md: broken link: ../../../../projects/trafficGame/src/ui/LevelCompleteOverlay.ts
+- [checkSourceLinks] brain/projects/trafficGame/themes/2026-05-16-structural-prerequisites-for-autonomy.md: broken link: ../../../../_logs/2026-05-16_trafficgame-arc-reflection/retro.md
+- [checkSourceLinks] brain/projects/trafficGame/themes/2026-05-23-binary-elevation-model.md: broken link: ../../../../projects/trafficGame/docs/decisions/adr-collision-architecture-2026-05-22.md
+- [checkSourceLinks] brain/projects/trafficGame/themes/2026-05-23-binary-elevation-model.md: broken link: ../../../../projects/trafficGame/docs/baselines/grading-frontier-cross-theories.md
+- [checkSourceLinks] brain/projects/trafficGame/themes/2026-05-23-binary-elevation-model.md: broken link: ../../../../projects/trafficGame/src/traffic/CollisionAvoidance.ts
+- [checkSourceLinks] brain/projects/trafficGame/themes/2026-05-23-binary-elevation-model.md: broken link: ../../../../projects/trafficGame/src/traffic/OverlapTracker.ts
+- [checkSourceLinks] brain/projects/trafficGame/themes/2026-05-23-binary-elevation-model.md: broken link: ../../../../projects/trafficGame/src/traffic/VehicleUpdate.ts
+- [checkSourceLinks] brain/projects/trafficGame/themes/2026-05-23-grading-frontier-infrastructure.md: broken link: ../../../../projects/trafficGame/scripts/grading/runSweep.mjs
+- [checkSourceLinks] brain/projects/trafficGame/themes/2026-05-23-grading-frontier-infrastructure.md: broken link: ../../../../projects/trafficGame/scripts/grading/README.md
+- [checkSourceLinks] brain/projects/trafficGame/themes/2026-05-23-grading-frontier-infrastructure.md: broken link: ../../../../projects/trafficGame/docs/baselines/
+- [checkLengthSoftCap] brain/forge/themes/exploration-vs-implementation-initiatives.md: theme too long: 253 lines (hard cap 100)
+- [checkLengthSoftCap] brain/forge/themes/holistic-metrics-onboarding.md: theme too long: 140 lines (hard cap 100)
+- [checkLengthSoftCap] brain/forge/themes/parametric-design-search.md: theme too long: 151 lines (hard cap 100)
+- [checkLengthSoftCap] brain/projects/trafficGame/themes/2026-05-23-binary-elevation-model.md: theme too long: 123 lines (hard cap 100)
+- [checkLengthSoftCap] brain/projects/trafficGame/themes/2026-05-23-grading-frontier-infrastructure.md: theme too long: 132 lines (hard cap 100)
+- [checkContamination] brain/projects/__chained_test_proj_1002772: contamination dir from bench: __chained_test_proj_1002772
+- [checkContamination] brain/projects/__chained_test_proj_1004813: contamination dir from bench: __chained_test_proj_1004813
+- [checkContamination] brain/projects/__chained_test_proj_1009264: contamination dir from bench: __chained_test_proj_1009264
+- [checkContamination] brain/projects/__chained_test_proj_1010649: contamination dir from bench: __chained_test_proj_1010649
+- [checkContamination] brain/projects/__chained_test_proj_1021704: contamination dir from bench: __chained_test_proj_1021704
+- [checkContamination] brain/projects/__chained_test_proj_1024390: contamination dir from bench: __chained_test_proj_1024390
+- [checkContamination] brain/projects/__chained_test_proj_1025788: contamination dir from bench: __chained_test_proj_1025788
+- [checkContamination] brain/projects/__chained_test_proj_1028226: contamination dir from bench: __chained_test_proj_1028226
+- [checkContamination] brain/projects/__chained_test_proj_1032545: contamination dir from bench: __chained_test_proj_1032545
+- [checkContamination] brain/projects/__chained_test_proj_1034435: contamination dir from bench: __chained_test_proj_1034435
+- [checkContamination] brain/projects/__chained_test_proj_1035828: contamination dir from bench: __chained_test_proj_1035828
+- [checkContamination] brain/projects/__chained_test_proj_1037238: contamination dir from bench: __chained_test_proj_1037238
+- [checkContamination] brain/projects/__chained_test_proj_1040735: contamination dir from bench: __chained_test_proj_1040735
+- [checkContamination] brain/projects/__chained_test_proj_1042133: contamination dir from bench: __chained_test_proj_1042133
+- [checkContamination] brain/projects/__chained_test_proj_1043539: contamination dir from bench: __chained_test_proj_1043539
+- [checkContamination] brain/projects/__chained_test_proj_1049867: contamination dir from bench: __chained_test_proj_1049867
+- [checkContamination] brain/projects/__chained_test_proj_1238516: contamination dir from bench: __chained_test_proj_1238516
+- [checkContamination] brain/projects/__chained_test_proj_1240411: contamination dir from bench: __chained_test_proj_1240411
+- [checkContamination] brain/projects/__chained_test_proj_1243123: contamination dir from bench: __chained_test_proj_1243123
+- [checkContamination] brain/projects/__chained_test_proj_1246985: contamination dir from bench: __chained_test_proj_1246985
+- [checkContamination] brain/projects/__chained_test_proj_1248849: contamination dir from bench: __chained_test_proj_1248849
+- [checkContamination] brain/projects/__chained_test_proj_1250265: contamination dir from bench: __chained_test_proj_1250265
+- [checkContamination] brain/projects/__chained_test_proj_1252357: contamination dir from bench: __chained_test_proj_1252357
+- [checkContamination] brain/projects/__chained_test_proj_1253765: contamination dir from bench: __chained_test_proj_1253765
+- [checkContamination] brain/projects/__chained_test_proj_1255417: contamination dir from bench: __chained_test_proj_1255417
+- [checkContamination] brain/projects/__chained_test_proj_1257036: contamination dir from bench: __chained_test_proj_1257036
+- [checkContamination] brain/projects/__chained_test_proj_1258407: contamination dir from bench: __chained_test_proj_1258407
+- [checkContamination] brain/projects/__chained_test_proj_1259773: contamination dir from bench: __chained_test_proj_1259773
+- [checkContamination] brain/projects/__chained_test_proj_1261502: contamination dir from bench: __chained_test_proj_1261502
+- [checkContamination] brain/projects/__chained_test_proj_1262874: contamination dir from bench: __chained_test_proj_1262874
+- [checkContamination] brain/projects/__chained_test_proj_1264245: contamination dir from bench: __chained_test_proj_1264245
+- [checkContamination] brain/projects/__chained_test_proj_1265614: contamination dir from bench: __chained_test_proj_1265614
+- [checkContamination] brain/projects/__chained_test_proj_1266989: contamination dir from bench: __chained_test_proj_1266989
+- [checkContamination] brain/projects/__chained_test_proj_1268342: contamination dir from bench: __chained_test_proj_1268342
+- [checkContamination] brain/projects/__chained_test_proj_1273267: contamination dir from bench: __chained_test_proj_1273267
+- [checkContamination] brain/projects/__chained_test_proj_1274852: contamination dir from bench: __chained_test_proj_1274852
+- [checkContamination] brain/projects/__chained_test_proj_1285229: contamination dir from bench: __chained_test_proj_1285229
+- [checkContamination] brain/projects/__chained_test_proj_1290835: contamination dir from bench: __chained_test_proj_1290835
+- [checkContamination] brain/projects/__chained_test_proj_1293755: contamination dir from bench: __chained_test_proj_1293755
+- [checkContamination] brain/projects/__chained_test_proj_1295984: contamination dir from bench: __chained_test_proj_1295984
+- [checkContamination] brain/projects/__chained_test_proj_1298320: contamination dir from bench: __chained_test_proj_1298320
+- [checkContamination] brain/projects/__chained_test_proj_1301021: contamination dir from bench: __chained_test_proj_1301021
+- [checkContamination] brain/projects/__chained_test_proj_1302862: contamination dir from bench: __chained_test_proj_1302862
+- [checkContamination] brain/projects/__chained_test_proj_1305767: contamination dir from bench: __chained_test_proj_1305767
+- [checkContamination] brain/projects/__chained_test_proj_1307219: contamination dir from bench: __chained_test_proj_1307219
+- [checkContamination] brain/projects/__chained_test_proj_1309234: contamination dir from bench: __chained_test_proj_1309234
+- [checkContamination] brain/projects/__chained_test_proj_1311338: contamination dir from bench: __chained_test_proj_1311338
+- [checkContamination] brain/projects/__chained_test_proj_1312791: contamination dir from bench: __chained_test_proj_1312791
+- [checkContamination] brain/projects/__chained_test_proj_1318135: contamination dir from bench: __chained_test_proj_1318135
+- [checkContamination] brain/projects/__chained_test_proj_1319940: contamination dir from bench: __chained_test_proj_1319940
+- [checkContamination] brain/projects/__chained_test_proj_1326530: contamination dir from bench: __chained_test_proj_1326530
+- [checkContamination] brain/projects/__chained_test_proj_1328201: contamination dir from bench: __chained_test_proj_1328201
+- [checkContamination] brain/projects/__chained_test_proj_1334282: contamination dir from bench: __chained_test_proj_1334282
+- [checkContamination] brain/projects/__chained_test_proj_1336932: contamination dir from bench: __chained_test_proj_1336932
+- [checkContamination] brain/projects/__chained_test_proj_1338539: contamination dir from bench: __chained_test_proj_1338539
+- [checkContamination] brain/projects/__chained_test_proj_1341209: contamination dir from bench: __chained_test_proj_1341209
+- [checkContamination] brain/projects/__chained_test_proj_1342878: contamination dir from bench: __chained_test_proj_1342878
+- [checkContamination] brain/projects/__chained_test_proj_1344488: contamination dir from bench: __chained_test_proj_1344488
+- [checkContamination] brain/projects/__chained_test_proj_1347317: contamination dir from bench: __chained_test_proj_1347317
+- [checkContamination] brain/projects/__chained_test_proj_1348764: contamination dir from bench: __chained_test_proj_1348764
+- [checkContamination] brain/projects/__chained_test_proj_1350370: contamination dir from bench: __chained_test_proj_1350370
+- [checkContamination] brain/projects/__chained_test_proj_1356311: contamination dir from bench: __chained_test_proj_1356311
+- [checkContamination] brain/projects/__chained_test_proj_1357768: contamination dir from bench: __chained_test_proj_1357768
+- [checkContamination] brain/projects/__chained_test_proj_1359368: contamination dir from bench: __chained_test_proj_1359368
+- [checkContamination] brain/projects/__chained_test_proj_1372326: contamination dir from bench: __chained_test_proj_1372326
+- [checkContamination] brain/projects/__chained_test_proj_1385967: contamination dir from bench: __chained_test_proj_1385967
+- [checkContamination] brain/projects/__chained_test_proj_1393681: contamination dir from bench: __chained_test_proj_1393681
+- [checkContamination] brain/projects/__chained_test_proj_1396705: contamination dir from bench: __chained_test_proj_1396705
+- [checkContamination] brain/projects/__chained_test_proj_1416158: contamination dir from bench: __chained_test_proj_1416158
+- [checkContamination] brain/projects/__chained_test_proj_1420772: contamination dir from bench: __chained_test_proj_1420772
+- [checkContamination] brain/projects/__chained_test_proj_1430894: contamination dir from bench: __chained_test_proj_1430894
+- [checkContamination] brain/projects/__chained_test_proj_1431359: contamination dir from bench: __chained_test_proj_1431359
+- [checkContamination] brain/projects/__chained_test_proj_1435436: contamination dir from bench: __chained_test_proj_1435436
+- [checkContamination] brain/projects/__chained_test_proj_1437618: contamination dir from bench: __chained_test_proj_1437618
+- [checkContamination] brain/projects/__chained_test_proj_1439253: contamination dir from bench: __chained_test_proj_1439253
+- [checkContamination] brain/projects/__chained_test_proj_1442131: contamination dir from bench: __chained_test_proj_1442131
+- [checkContamination] brain/projects/__chained_test_proj_1454618: contamination dir from bench: __chained_test_proj_1454618
+- [checkContamination] brain/projects/__chained_test_proj_1457277: contamination dir from bench: __chained_test_proj_1457277
+- [checkContamination] brain/projects/__chained_test_proj_1479780: contamination dir from bench: __chained_test_proj_1479780
+- [checkContamination] brain/projects/__chained_test_proj_1489140: contamination dir from bench: __chained_test_proj_1489140
+- [checkContamination] brain/projects/__chained_test_proj_1497354: contamination dir from bench: __chained_test_proj_1497354
+- [checkContamination] brain/projects/__chained_test_proj_1499158: contamination dir from bench: __chained_test_proj_1499158
+- [checkContamination] brain/projects/__chained_test_proj_1501602: contamination dir from bench: __chained_test_proj_1501602
+- [checkContamination] brain/projects/__chained_test_proj_1503944: contamination dir from bench: __chained_test_proj_1503944
+- [checkContamination] brain/projects/__chained_test_proj_1505629: contamination dir from bench: __chained_test_proj_1505629
+- [checkContamination] brain/projects/__chained_test_proj_1525003: contamination dir from bench: __chained_test_proj_1525003
+- [checkContamination] brain/projects/__chained_test_proj_1526692: contamination dir from bench: __chained_test_proj_1526692
+- [checkContamination] brain/projects/__chained_test_proj_1763387: contamination dir from bench: __chained_test_proj_1763387
+- [checkContamination] brain/projects/__chained_test_proj_1866230: contamination dir from bench: __chained_test_proj_1866230
+- [checkContamination] brain/projects/__chained_test_proj_1915323: contamination dir from bench: __chained_test_proj_1915323
+- [checkContamination] brain/projects/__chained_test_proj_2021740: contamination dir from bench: __chained_test_proj_2021740
+- [checkContamination] brain/projects/__chained_test_proj_2023640: contamination dir from bench: __chained_test_proj_2023640
+- [checkContamination] brain/projects/__chained_test_proj_2274674: contamination dir from bench: __chained_test_proj_2274674
+- [checkContamination] brain/projects/__chained_test_proj_2276338: contamination dir from bench: __chained_test_proj_2276338
+- [checkContamination] brain/projects/__chained_test_proj_2281616: contamination dir from bench: __chained_test_proj_2281616
+- [checkContamination] brain/projects/__chained_test_proj_2312706: contamination dir from bench: __chained_test_proj_2312706
+- [checkContamination] brain/projects/__chained_test_proj_2314397: contamination dir from bench: __chained_test_proj_2314397
+- [checkContamination] brain/projects/__chained_test_proj_2332072: contamination dir from bench: __chained_test_proj_2332072
+- [checkContamination] brain/projects/__chained_test_proj_2354047: contamination dir from bench: __chained_test_proj_2354047
+- [checkContamination] brain/projects/__chained_test_proj_2483373: contamination dir from bench: __chained_test_proj_2483373
+- [checkContamination] brain/projects/__chained_test_proj_2492721: contamination dir from bench: __chained_test_proj_2492721
+- [checkContamination] brain/projects/__chained_test_proj_2505374: contamination dir from bench: __chained_test_proj_2505374
+- [checkContamination] brain/projects/__chained_test_proj_2509649: contamination dir from bench: __chained_test_proj_2509649
+- [checkContamination] brain/projects/__chained_test_proj_2513982: contamination dir from bench: __chained_test_proj_2513982
+- [checkContamination] brain/projects/__chained_test_proj_3156567: contamination dir from bench: __chained_test_proj_3156567
+- [checkContamination] brain/projects/__chained_test_proj_3238935: contamination dir from bench: __chained_test_proj_3238935
+- [checkContamination] brain/projects/__chained_test_proj_3272488: contamination dir from bench: __chained_test_proj_3272488
+- [checkContamination] brain/projects/__chained_test_proj_4085496: contamination dir from bench: __chained_test_proj_4085496
+- [checkContamination] brain/projects/__chained_test_proj_4179873: contamination dir from bench: __chained_test_proj_4179873
+- [checkContamination] brain/projects/__chained_test_proj_48781: contamination dir from bench: __chained_test_proj_48781
+- [checkContamination] brain/projects/__chained_test_proj_51812: contamination dir from bench: __chained_test_proj_51812
+- [checkContamination] brain/projects/__chained_test_proj_952783: contamination dir from bench: __chained_test_proj_952783
+- [checkContamination] brain/projects/__chained_test_proj_953077: contamination dir from bench: __chained_test_proj_953077
+- [checkContamination] brain/projects/__chained_test_proj_957573: contamination dir from bench: __chained_test_proj_957573
+- [checkContamination] brain/projects/__chained_test_proj_960571: contamination dir from bench: __chained_test_proj_960571
+- [checkContamination] brain/projects/__chained_test_proj_961266: contamination dir from bench: __chained_test_proj_961266
+- [checkContamination] brain/projects/__chained_test_proj_962627: contamination dir from bench: __chained_test_proj_962627
+- [checkContamination] brain/projects/__chained_test_proj_963310: contamination dir from bench: __chained_test_proj_963310
+- [checkContamination] brain/projects/__chained_test_proj_964515: contamination dir from bench: __chained_test_proj_964515
+- [checkContamination] brain/projects/__chained_test_proj_965199: contamination dir from bench: __chained_test_proj_965199
+- [checkContamination] brain/projects/__chained_test_proj_971298: contamination dir from bench: __chained_test_proj_971298
+- [checkContamination] brain/projects/__chained_test_proj_972217: contamination dir from bench: __chained_test_proj_972217
+- [checkContamination] brain/projects/__chained_test_proj_986364: contamination dir from bench: __chained_test_proj_986364
+- [checkContamination] brain/projects/__chained_test_proj_990058: contamination dir from bench: __chained_test_proj_990058
+- [checkContamination] brain/projects/__chained_test_proj_991349: contamination dir from bench: __chained_test_proj_991349
+- [checkContamination] brain/projects/__chained_test_proj_993026: contamination dir from bench: __chained_test_proj_993026
+- [checkContamination] brain/projects/__chained_test_proj_995585: contamination dir from bench: __chained_test_proj_995585
+- [checkContamination] brain/projects/__chained_test_proj_998063: contamination dir from bench: __chained_test_proj_998063
+
+## FLAGS (59)
+- [checkIndexSync] brain/projects/trafficGame/themes/2026-05-10-developer-ralph-brain-skip-on-second-wi.md: not listed in category index: brain/projects/trafficGame/antipatterns.md
+- [checkIndexSync] brain/projects/trafficGame/themes/2026-05-10-minimal-utility-single-iteration-pattern.md: not listed in category index: brain/projects/trafficGame/patterns.md
+- [checkIndexSync] brain/projects/trafficGame/themes/2026-05-10-review-overhead-dominates-trivial-cycles.md: category index missing: brain/projects/trafficGame/reference.md
+- [checkIndexSync] brain/projects/trafficGame/themes/2026-05-10-traffic-physics-and-flow.md: not listed in category index: brain/projects/trafficGame/patterns.md
+- [checkIndexSync] brain/projects/trafficGame/themes/2026-05-17-demo-server-reuse-captures-stale-build.md: not listed in category index: brain/projects/trafficGame/antipatterns.md
+- [checkIndexSync] brain/projects/trafficGame/themes/2026-05-17-file-isolation-constraint-enables-single-iteration.md: not listed in category index: brain/projects/trafficGame/patterns.md
+- [checkIndexSync] brain/projects/trafficGame/themes/2026-05-17-reviewer-budget-undersized-medium-initiatives.md: not listed in category index: brain/projects/trafficGame/antipatterns.md
+- [checkIndexSync] brain/projects/trafficGame/themes/2026-05-17-stale-brain-contradicts-code-pm-failure.md: not listed in category index: brain/projects/trafficGame/antipatterns.md
+- [checkStaleness] brain/forge/themes/chained-phase-benchmarks.md: stale citation (missing): benchmarks/e2e/scoring.ts
+- [checkStaleness] brain/forge/themes/chained-phase-benchmarks.md: stale citation (missing): benchmarks/e2e/scoring.ts
+- [checkStaleness] brain/forge/themes/exploration-vs-implementation-initiatives.md: stale citation (missing): docs/baselines/grading-frontier-*.md
+- [checkStaleness] brain/forge/themes/exploration-vs-implementation-initiatives.md: stale citation (missing): docs/baselines/grading-frontier-cross-theories.md
+- [checkStaleness] brain/forge/themes/holistic-metrics-onboarding.md: stale citation (missing): docs/baselines/*.md
+- [checkStaleness] brain/forge/themes/pluggable-notifications.md: stale citation (missing): orchestrator/notify.<provider>.ts
+- [checkStaleness] brain/projects/healarr/themes/email-approvals-no-web-ui.md: stale citation (missing): docs/architecture.md
+- [checkStaleness] brain/projects/healarr/themes/tier-coded-tool-boundaries.md: stale citation (missing): docs/tools.md
+- [checkStaleness] brain/projects/healarr/themes/triage-deterministic-no-llm.md: stale citation (missing): docs/tools.md
+- [checkStaleness] brain/projects/trafficGame/themes/2026-05-10-mvp-architecture-snapshot.md: stale citation (missing): docs/MVP_ARCHITECTURE.md
+- [checkStaleness] brain/projects/trafficGame/themes/2026-05-10-mvp-architecture-snapshot.md: stale citation (missing): docs/LEARNINGS.md
+- [checkStaleness] brain/projects/trafficGame/themes/2026-05-10-recent-extractions-and-tech-debt.md: stale citation (missing): docs/LEARNINGS.md
+- [checkStaleness] brain/projects/trafficGame/themes/2026-05-10-recent-extractions-and-tech-debt.md: stale citation (missing): docs/LEARNINGS.md
+- [checkStaleness] brain/projects/trafficGame/themes/2026-05-10-recent-extractions-and-tech-debt.md: stale citation (missing): docs/LEARNINGS.md
+- [checkStaleness] brain/projects/trafficGame/themes/2026-05-10-test-stack-and-gates.md: stale citation (missing): docs/LEARNINGS.md
+- [checkStaleness] brain/projects/trafficGame/themes/2026-05-10-test-stack-and-gates.md: stale citation (missing): docs/LEARNINGS.md
+- [checkStaleness] brain/projects/trafficGame/themes/2026-05-10-test-stack-and-gates.md: stale citation (missing): docs/LEARNINGS.md
+- [checkStaleness] brain/projects/trafficGame/themes/2026-05-10-test-stack-and-gates.md: stale citation (missing): docs/LEARNINGS.md
+- [checkStaleness] brain/projects/trafficGame/themes/2026-05-10-traffic-location-data-model.md: stale citation (missing): docs/MVP_ARCHITECTURE.md
+- [checkStaleness] brain/projects/trafficGame/themes/2026-05-10-traffic-physics-and-flow.md: stale citation (missing): docs/LEARNINGS.md
+- [checkStaleness] brain/projects/trafficGame/themes/2026-05-23-binary-elevation-model.md: stale citation (missing): docs/decisions/adr-collision-architecture-2026-05-22.md
+- [checkStaleness] brain/projects/trafficGame/themes/2026-05-23-binary-elevation-model.md: stale citation (missing): docs/baselines/grading-frontier-cross-theories.md
+- [checkStaleness] brain/projects/trafficGame/themes/2026-05-23-grading-frontier-infrastructure.md: stale citation (missing): docs/baselines/screenshots/INDEX.md
+- [checkStaleness] brain/projects/trafficGame/themes/canvas-bpr-flow-tests.md: stale citation (missing): docs/MVP_ARCHITECTURE.md
+- [checkStaleness] brain/projects/trafficGame/themes/per-map-calibrated-thresholds.md: stale citation (missing): docs/LEARNINGS.md
+- [checkStaleness] brain/projects/trafficGame/themes/per-map-calibrated-thresholds.md: stale citation (missing): docs/LEARNINGS.md
+- [checkStaleness] brain/projects/trafficGame/themes/per-map-calibrated-thresholds.md: stale citation (missing): docs/LEARNINGS.md
+- [checkStaleness] brain/projects/trafficGame/themes/per-map-calibrated-thresholds.md: stale citation (missing): docs/LEARNINGS.md
+- [checkOrphans] brain/projects/trafficGame/themes/2026-05-10-campaign-mode-state.md: orphan: not linked from INDEX.md or any category/profile index
+- [checkOrphans] brain/projects/trafficGame/themes/2026-05-10-developer-ralph-brain-skip-on-second-wi.md: orphan: not linked from INDEX.md or any category/profile index
+- [checkOrphans] brain/projects/trafficGame/themes/2026-05-10-minimal-utility-single-iteration-pattern.md: orphan: not linked from INDEX.md or any category/profile index
+- [checkOrphans] brain/projects/trafficGame/themes/2026-05-10-mvp-architecture-snapshot.md: orphan: not linked from INDEX.md or any category/profile index
+- [checkOrphans] brain/projects/trafficGame/themes/2026-05-10-recent-extractions-and-tech-debt.md: orphan: not linked from INDEX.md or any category/profile index
+- [checkOrphans] brain/projects/trafficGame/themes/2026-05-10-review-overhead-dominates-trivial-cycles.md: orphan: not linked from INDEX.md or any category/profile index
+- [checkOrphans] brain/projects/trafficGame/themes/2026-05-10-test-stack-and-gates.md: orphan: not linked from INDEX.md or any category/profile index
+- [checkOrphans] brain/projects/trafficGame/themes/2026-05-10-traffic-location-data-model.md: orphan: not linked from INDEX.md or any category/profile index
+- [checkOrphans] brain/projects/trafficGame/themes/2026-05-10-traffic-physics-and-flow.md: orphan: not linked from INDEX.md or any category/profile index
+- [checkOrphans] brain/projects/trafficGame/themes/2026-05-16-structural-prerequisites-for-autonomy.md: orphan: not linked from INDEX.md or any category/profile index
+- [checkOrphans] brain/projects/trafficGame/themes/2026-05-17-demo-server-reuse-captures-stale-build.md: orphan: not linked from INDEX.md or any category/profile index
+- [checkOrphans] brain/projects/trafficGame/themes/2026-05-17-file-isolation-constraint-enables-single-iteration.md: orphan: not linked from INDEX.md or any category/profile index
+- [checkOrphans] brain/projects/trafficGame/themes/2026-05-17-reviewer-budget-undersized-medium-initiatives.md: orphan: not linked from INDEX.md or any category/profile index
+- [checkOrphans] brain/projects/trafficGame/themes/2026-05-17-stale-brain-contradicts-code-pm-failure.md: orphan: not linked from INDEX.md or any category/profile index
+- [checkLengthSoftCap] brain/forge/themes/chained-phase-benchmarks.md: theme over soft cap: 66 lines (> 60)
+- [checkLengthSoftCap] brain/projects/trafficGame/themes/2026-05-10-campaign-mode-state.md: theme over soft cap: 92 lines (> 60)
+- [checkLengthSoftCap] brain/projects/trafficGame/themes/2026-05-10-mvp-architecture-snapshot.md: theme over soft cap: 78 lines (> 60)
+- [checkLengthSoftCap] brain/projects/trafficGame/themes/2026-05-10-recent-extractions-and-tech-debt.md: theme over soft cap: 61 lines (> 60)
+- [checkLengthSoftCap] brain/projects/trafficGame/themes/2026-05-10-test-stack-and-gates.md: theme over soft cap: 71 lines (> 60)
+- [checkLengthSoftCap] brain/projects/trafficGame/themes/2026-05-10-traffic-location-data-model.md: theme over soft cap: 66 lines (> 60)
+- [checkLengthSoftCap] brain/projects/trafficGame/themes/2026-05-10-traffic-physics-and-flow.md: theme over soft cap: 75 lines (> 60)
+- [checkLengthSoftCap] brain/projects/trafficGame/themes/2026-05-10-ui-canvas-overlay-pattern.md: theme over soft cap: 81 lines (> 60)
+- [checkContradictions] brain/forge/themes/agent-stuck-no-detection.md: possible contradiction with brain/forge/themes/wedged-loop-detector.md (3 keyword overlaps: stuck, no-progress, wedged)
+
+Summary: 193 error(s), 59 flag(s), 0 auto-fix(es).
+exit=1

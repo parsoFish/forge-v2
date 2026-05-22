@@ -1,6 +1,6 @@
 ---
 name: brain-lint
-description: Structural integrity checks on the brain — orphans, malformed frontmatter, conflicting claims, broken source links, oversized theme pages.
+description: Structural integrity checks on the brain — frontmatter, index sync, source links, staleness, orphans, length cap, contamination, contradictions. Thin invoker of `forge brain lint`.
 phase: brain
 surface: unattended
 model: claude-haiku-4-5
@@ -8,57 +8,80 @@ model: claude-haiku-4-5
 
 # Brain — Lint
 
+> The single source of truth for what brain-lint does is the executable
+> `orchestrator/brain-lint.ts` (CLI: `forge brain lint`). This skill is a
+> **thin invoker** — it runs the CLI, parses the output, and writes the
+> cycle-scoped report. The rules live in [`brain/LINT.md`](../../brain/LINT.md);
+> the implementation lives in `orchestrator/brain-lint.ts`.
+
 ## Single responsibility
 
-Apply the rules in [`brain/LINT.md`](../../brain/LINT.md) to the wiki. Auto-fix what's safe; surface what isn't.
+Run `forge brain lint` against the brain corpus, write the cycle-scoped
+report `_logs/<cycle-id>/brain-lint.md`, and emit the lint event-log
+entries below. Do not re-derive checks — the executable owns them.
 
 ## Required first action
 
-Invoke `brain-query` with:
+Invoke the executable. From the forge root:
 
-- "What lint rules has the brain captured as nuanced — i.e. cases where the literal rule has known exceptions?"
+```bash
+forge brain lint --scope <scope> [--project <name>] [--file <path>] [--cycle <id>]
+```
 
-(This catches cases where a strict rule should yield to a documented exception.)
+Scopes (per CONTRACTS.md C7): `full | forge-only | project-only |
+single-file | cycle-touched-themes | cleanup-dry-run`. Default is `full`.
 
 ## Inputs
 
-- The current state of `brain/`.
-- Optional: a scope flag — full / forge-only / project-only / single-file.
+- `brain/` filesystem state.
+- Scope flag selecting how much of the corpus to walk.
 
 ## Outputs
 
-- `_logs/<cycle-id>/brain-lint.md` — report categorised as `auto-fixed`, `flagged`, `errors`.
-- Direct edits to brain files for auto-fixes (filename normalisation, frontmatter ordering, category-index sync).
-- Append to `brain/log.md`.
+- stdout from `forge brain lint` — ERRORS / FLAGS / AUTO-FIXES sections + a one-line summary.
+- `_logs/<cycle-id>/brain-lint.md` — categorised report (the skill writes this from the executable's output).
+- Append a one-line summary entry to `brain/log.md` per the cleanup playbook in plan 01.
 
 ## Event-log entries to emit
 
 - `brain-lint.start` — with scope.
-- `brain-lint.auto-fix` — one event per auto-fix applied.
+- `brain-lint.auto-fix` — one event per auto-fix applied (currently a stub — `--fix` mode is conservative).
 - `brain-lint.flag` — one event per ambiguity flagged for human review.
 - `brain-lint.error` — one event per rule violation that can't be auto-fixed.
-- `brain-lint.end` — summary counts.
+- `brain-lint.end` — summary counts + exit code.
 
 ## Benchmark suite
 
 Shared with `brain-ingest` and `brain-query` under [`benchmarks/brain/`](../../benchmarks/brain/).
 
+The 7 checks implemented in `orchestrator/brain-lint.ts` each have unit
+tests in `orchestrator/brain-lint.test.ts` (23 tests on the seven
+checks + the contradictions stretch-goal + scope filtering).
+
+## The 7 checks (defined in `orchestrator/brain-lint.ts`)
+
+| Check | What it catches |
+|---|---|
+| `checkFrontmatter` | Missing required fields; category outside whitelist (`pattern\|antipattern\|decision\|operation\|reference`); `created_at > updated_at`. |
+| `checkIndexSync` | Theme with `category: X` not listed in `<X>s.md`, or listed multiple times. |
+| `checkSourceLinks` | Broken relative links + wikilinks in theme bodies. |
+| `checkStaleness` | Cited paths missing from the project repo (resolved via `brain/projects/<n>/profile.md` → `<forgeRoot>/projects/<n>/`). Per council 01 staleness-mechanism fix: NOT against the forge root. |
+| `checkOrphans` | Themes not reachable from `INDEX.md` → category index → theme. |
+| `checkLengthSoftCap` | > 60 lines warn; > 100 lines error (per `brain/LINT.md` rule 3). |
+| `checkContamination` | Directories matching `__chained_test_proj_*` or `__bench_*` under `brain/projects/`. |
+| `checkContradictions` (warn-only) | Stretch: pattern + antipattern with ≥3 keyword overlaps. Per plan 01 downgrade — staleness is the load-bearing contradiction defence. |
+
 ## Process
 
-1. **Brain query first** for nuance / exceptions.
-2. Walk the brain file tree. For each:
-   - Validate frontmatter against `brain/LINT.md` rules.
-   - Check source-link targets exist.
-   - Check category-index sync.
-   - Check page length.
-3. For each issue:
-   - **Auto-fixable** (filename, frontmatter ordering, missing index entry): apply the fix.
-   - **Flagged** (conflicting claims, possible duplicate, drift): write to the report under `flagged`.
-   - **Error** (frontmatter missing, broken source link, orphan): write to the report under `errors`.
-4. Append summary to `brain/log.md`.
+1. **Invoke the CLI** with the appropriate `--scope`.
+2. **Capture stdout** + exit code.
+3. **Write the cycle-scoped report** at `_logs/<cycle-id>/brain-lint.md` mirroring the stdout sections.
+4. **Append one line** to `brain/log.md` per the cleanup playbook: `## [<date>] lint pass — N error, M flag, K auto-fix; bench: X/N → Y/N (if a bench was run)`.
+5. **Emit the event-log entries** above so the operator can grep cycle logs.
 
 ## Constraints
 
-- **Never delete content.** Lint may move, normalise, or flag — never delete. Deletion is an explicit `brain-ingest` operation.
-- **Conservative on auto-fix.** When in doubt, flag rather than fix. The cost of a wrong auto-fix outweighs the cost of a flagged item.
-- **Idempotent.** Running lint twice in a row produces the same report (modulo the new lint event itself).
+- **Single source of truth.** Do not reimplement any of the 7 checks. If a check needs improving, change `orchestrator/brain-lint.ts` (with a test added first per the test-first discipline used to build it).
+- **Never delete content.** Lint may flag or auto-fix structurally (index sync). Deletion is `brain-ingest` territory; contamination cleanup is the separate `scripts/brain-scrub-test-contamination.ts` one-shot script.
+- **Conservative on auto-fix.** When in doubt, flag rather than fix. `--fix` mode is intentionally limited (Tier B remappings stay with the operator per the standing destructive-instruction rule).
+- **Idempotent.** Running lint twice in a row produces the same exit code and the same findings (modulo new lint events emitted by the run itself).

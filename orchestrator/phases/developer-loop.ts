@@ -228,6 +228,19 @@ export async function runDeveloperLoop(input: CycleInput, logger: EventLogger): 
                 input.worktreePath,
                 input.qualityGateCmd,
                 (gateInfo) => emitGateEvent(logger, input.initiativeId, wiStart.event_id, wi.work_item_id, gateInfo),
+                // Tightening (post-2026-05-23 dogfood, per
+                // [[quality-gate-cmd-must-assert-new-work]]): when the WI
+                // declares `creates` (C5) or `verification_artifact` (C5),
+                // require ≥1 of those paths in `git diff main...HEAD`
+                // before declaring gate-pass. Catches the dogfood
+                // false-pass where `go test -run TestX` exits 0 because
+                // TestX was never written.
+                {
+                  requiredPaths: [
+                    ...(wi.creates ?? []),
+                    ...(wi.verification_artifact ? [wi.verification_artifact] : []),
+                  ],
+                },
               )
             : undefined,
           // F-14: emit per-iteration events so metrics (cycle.ts:metrics.ts)

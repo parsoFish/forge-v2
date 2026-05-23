@@ -106,9 +106,57 @@ export type GateRunInfo = {
   stderrTail: string;
   /** The command that was run, for grep-ability in the event log. */
   command: string;
+  /**
+   * Set when the gate failed despite exit 0 — surfaces *which* tightening
+   * rejected the run. Empty when the gate's outcome was determined by exit
+   * code alone (the pre-tightening behaviour).
+   */
+  rejectReason?: 'no-work-indicator' | 'required-paths-missing';
 };
 
 const GATE_OUTPUT_MAX = 4096;
+
+/**
+ * Strings that, when present in gate stdout/stderr, indicate **the test
+ * runner exited 0 without actually running any tests**. Catches the
+ * classic false-pass surfaced by the 2026-05-23 betterado dogfood — see
+ * [[quality-gate-cmd-must-assert-new-work]].
+ *
+ * Match is case-insensitive substring. Lines added here MUST be specific
+ * enough that they can't appear in legitimate passing output.
+ */
+const NO_WORK_INDICATORS: readonly string[] = [
+  '[no tests to run]',     // go test (with -run filter that matches nothing)
+  'no tests to run',       // go test (other forms)
+  'no test files found',   // vitest / jest (matchPattern misses)
+  'no tests ran',          // pytest (`pytest tests/` with empty collection)
+  'running 0 tests',       // cargo test (no #[test] in scope)
+  'collected 0 items',     // pytest verbose summary
+  '0 passing, 0 failing',  // mocha (no specs matched)
+  'no specs found',        // jasmine
+];
+
+/**
+ * Tightening options for `makeQualityGateFromCmd`. When all are absent the
+ * gate's pass/fail is the exit-code alone (pre-tightening behaviour); when
+ * present each layer adds a fail-closed check on top of exit 0.
+ */
+export type GateTighteningOptions = {
+  /**
+   * Paths the WI is declared to produce (`creates` per C5) or that the dev-loop
+   * must verify exist post-gate (`verification_artifact` per C5). When set,
+   * the gate is treated as passed only if `git diff --name-only main...HEAD`
+   * (run in the worktree) lists at least one of these paths. Empty array
+   * disables the check.
+   */
+  requiredPaths?: readonly string[];
+  /**
+   * Override the default no-work-indicator scan with a project-specific set.
+   * `null` disables the check entirely (e.g. for projects whose runners
+   * print legitimately matching substrings on PASS).
+   */
+  noWorkIndicators?: readonly string[] | null;
+};
 
 /** Default quality-gates implementation: shells to `npm test` in the worktree. */
 export function defaultQualityGates(
@@ -125,27 +173,44 @@ export function defaultQualityGates(
  * Ralph runner — eliminating the F-04 hardcoded `npm test` problem.
  *
  * Returns a sync closure suitable for `LoopInput.qualityGate`. Returns true
- * iff the command exits 0 in the worktree.
+ * iff the command exits 0 **and** any tightening checks pass — the
+ * dogfood-driven `NO_WORK_INDICATORS` scan + an optional `requiredPaths`
+ * git-diff inclusion check (see [[quality-gate-cmd-must-assert-new-work]]).
  *
- * F-23: optional `onRun` callback receives stdout/stderr/exit details after
- * each invocation so the orchestrator can emit a `gate` event with context.
+ * F-23: optional `onRun` callback receives stdout/stderr/exit + reject
+ * reason after each invocation so the orchestrator can emit a `gate` event
+ * with full context (not just the boolean pass/fail).
  */
 export function makeQualityGateFromCmd(
   worktreePath: string,
   cmd: readonly string[],
   onRun?: (info: GateRunInfo) => void,
+  options?: GateTighteningOptions,
 ): () => boolean {
-  return () => runGateCapturing(worktreePath, cmd, onRun);
+  return () => runGateCapturing(worktreePath, cmd, onRun, options);
 }
 
 /**
  * Shared gate-runner: capture stdout/stderr/exit + duration, deliver them via
  * the optional callback, return the boolean the runner expects.
+ *
+ * Tightening layered on top of exit-0:
+ *  1. Scan output for `NO_WORK_INDICATORS` — e.g. `go test` exits 0 with
+ *     "[no tests to run]" when `-run TestX` matches nothing. Catches the
+ *     2026-05-23 betterado dogfood pattern.
+ *  2. If `requiredPaths` supplied, run `git diff --name-only main...HEAD`
+ *     in the worktree and require ≥1 of those paths in the diff. Catches
+ *     "agent wrote nothing the manifest declared as `creates` /
+ *     `verification_artifact`".
+ *
+ * Either rejection sets `passed: false` + a `rejectReason` on the
+ * GateRunInfo so post-mortems can see which layer caught it.
  */
 function runGateCapturing(
   worktreePath: string,
   cmd: readonly string[],
   onRun: ((info: GateRunInfo) => void) | undefined,
+  options?: GateTighteningOptions,
 ): boolean {
   if (cmd.length === 0) {
     onRun?.({ passed: false, exitCode: -1, durationMs: 0, stdoutTail: '', stderrTail: '', command: '' });
@@ -173,6 +238,48 @@ function runGateCapturing(
     if (e.stderr) stderr = typeof e.stderr === 'string' ? e.stderr : e.stderr.toString('utf8');
     passed = false;
   }
+
+  // Tightening: only relevant when exit-code already said "pass". A non-zero
+  // exit is a clear fail regardless of indicators / paths.
+  let rejectReason: GateRunInfo['rejectReason'];
+  if (passed) {
+    // 1. No-work indicator scan.
+    const indicators =
+      options?.noWorkIndicators === null
+        ? []
+        : options?.noWorkIndicators ?? NO_WORK_INDICATORS;
+    if (indicators.length > 0) {
+      const combined = (stdout + ' ' + stderr).toLowerCase();
+      for (const ind of indicators) {
+        if (combined.includes(ind.toLowerCase())) {
+          passed = false;
+          exitCode = -2; // synthetic — distinguishes tightening rejection from a real non-zero exit
+          rejectReason = 'no-work-indicator';
+          stderr =
+            stderr +
+            (stderr.endsWith('\n') ? '' : '\n') +
+            `[forge gate-tightening] rejected: stdout/stderr contains no-work indicator "${ind}" — the runner exited 0 without executing any tests.`;
+          break;
+        }
+      }
+    }
+
+    // 2. requiredPaths diff inclusion check (skipped if step 1 already rejected).
+    if (passed && options?.requiredPaths && options.requiredPaths.length > 0) {
+      const diffPaths = gitDiffPathsAgainstMain(worktreePath);
+      const matched = options.requiredPaths.some((p) => diffPaths.has(p));
+      if (!matched) {
+        passed = false;
+        exitCode = -3;
+        rejectReason = 'required-paths-missing';
+        stderr =
+          stderr +
+          (stderr.endsWith('\n') ? '' : '\n') +
+          `[forge gate-tightening] rejected: none of the WI's required paths appear in 'git diff --name-only main...HEAD'. Required: ${JSON.stringify(options.requiredPaths)}.`;
+      }
+    }
+  }
+
   onRun?.({
     passed,
     exitCode,
@@ -180,8 +287,32 @@ function runGateCapturing(
     stdoutTail: tail(stdout, GATE_OUTPUT_MAX),
     stderrTail: tail(stderr, GATE_OUTPUT_MAX),
     command,
+    ...(rejectReason ? { rejectReason } : {}),
   });
   return passed;
+}
+
+/**
+ * Returns the set of paths different on this branch vs the merge base with
+ * `main`. Used by the requiredPaths tightening; failures (no git, no main,
+ * etc.) return an empty set so the tightening fails-closed only when paths
+ * are present-and-required but absent.
+ */
+function gitDiffPathsAgainstMain(worktreePath: string): Set<string> {
+  try {
+    const out = execFileSync('git', ['diff', '--name-only', 'main...HEAD'], {
+      cwd: worktreePath,
+      stdio: 'pipe',
+    });
+    const lines = out.toString('utf8').split('\n').map((s) => s.trim()).filter((s) => s.length > 0);
+    return new Set(lines);
+  } catch {
+    // No git repo / no main / detached HEAD: caller's tightening intent is
+    // "fail on missing paths"; an empty set causes the .some() check above
+    // to fail and reject the gate. That's the safe default — better to
+    // false-reject in a degraded git state than to false-pass.
+    return new Set();
+  }
 }
 
 function tail(s: string, max: number): string {

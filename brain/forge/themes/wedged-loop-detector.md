@@ -18,7 +18,7 @@ Ralph runs until a stop condition fires. Three conditions ship in `loops/ralph/s
 
 The wedged-detector is the safety valve for "Ralph never converges." Without it, an agent can iterate indefinitely on a problem it can't solve, burning tokens with each pass. With it, the orchestrator detects no-op iterations early and moves the manifest to `_queue/failed/` for human triage.
 
-Cost budget per initiative (`cost_budget_usd`) is the harder cap — even a non-wedged loop will stop when the budget is exhausted.
+Per [CONTRACTS.md C19](../../../docs/planning/2026-05-20-refinement/CONTRACTS.md) (2026-05-23), the iteration cap is the sole bound — `cost_budget_usd` was removed entirely. A wedged loop is now caught exclusively by the no-progress detector + the iteration-budget guard.
 
 The wedge rate (≤5% of work items target) is one of the developer-loop benchmark's success signals.
 

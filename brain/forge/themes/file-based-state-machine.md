@@ -21,7 +21,7 @@ _queue/
 └── failed/              # exceeded retry/iteration budget; needs human triage
 ```
 
-Each directory holds initiative manifests — markdown files with YAML frontmatter (`initiative_id`, `project`, `created_at`, `claimed_at`, `claimed_by`, `iteration_budget`, `cost_budget_usd`).
+Each directory holds initiative manifests — markdown files with YAML frontmatter (`initiative_id`, `project`, `created_at`, `claimed_at`, `claimed_by`, `iteration_budget`). The `cost_budget_usd` field was removed by CONTRACTS.md C19 (2026-05-23).
 
 State transitions are atomic file moves: `mv pending/<id>.md in-flight/<id>.md`. On a single filesystem, `mv` is atomic — that *is* the entire claim mechanism. No DB, no IPC, no daemon protocol.
 

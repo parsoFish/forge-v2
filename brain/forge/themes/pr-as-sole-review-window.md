@@ -77,8 +77,10 @@ The pattern is now the **default mechanism**, not an aspiration:
   `ensurePullRequest`.
 - `orchestrator/pr-verdict.ts` — `makePrCommentVerdict`,
   `parseVerdictComment`.
-- `orchestrator/reviewer-stage2.ts` — gate step 2.7 (ensure PR + select
-  provider) + `detectFalselyCompleteWorkItems` (P2).
+- `orchestrator/unifier-invocation.ts` + `orchestrator/file-verdict.ts` —
+  gate ensure-PR step + provider selection + `detectFalselyCompleteWorkItems` (P2).
+  (Previously `orchestrator/reviewer-stage2.ts`; archived 2026-05-23 in S4
+  when the reviewer collapsed into the developer-loop unifier.)
 - `orchestrator/daemon.ts` + `orchestrator/cli.ts` — P4 daemon control.
 - trafficGame PR #54 — 4 review rounds on the PR; demo committed under
   `demo/world-map/`.

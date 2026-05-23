@@ -43,7 +43,7 @@ Take a work item and drive it to "complete" (quality gates pass + acceptance cri
 [`benchmarks/developer-loop/`](../../benchmarks/developer-loop/) — five fixtures, one per managed project.
 - `fixtures/<id>/` — seed worktree (source files + tests) plus `.forge/work-items/WI-1.md` (the WI spec) plus a failing acceptance test.
 - `cases.json` — catalogue with per-fixture `quality_gate_cmd` + `pre_existing_tests_cmd` + budgets.
-- `scoring.ts` — pure rubric (gate `terminated_cleanly`; weighted criteria for `loop_completed`, `iteration_budget_respected`, `cost_budget_respected`, `files_in_scope_respected`, `no_regression`; pass threshold 0.7).
+- `scoring.ts` — pure rubric (gate `terminated_cleanly`; weighted criteria for `loop_completed`, `iteration_budget_respected`, `files_in_scope_respected`, `no_regression`; pass threshold 0.7). `cost_budget_respected` was dropped per [CONTRACTS.md C19](../planning/2026-05-20-refinement/CONTRACTS.md) (all $-budgets removed).
 - `sdk.ts` — per-fixture tempdir + runDevLoop entrypoint (shared with the live cycle via `orchestrator/dev-invocation.ts`).
 - `score.ts` — runs the Ralph loop against each fixture, scores, writes `results/<iso>.json`.
 

@@ -3,17 +3,19 @@
  *
  * CLI: `forge brain lint [--scope <s>] [--project <name>] [--file <path>] [--cycle <id>] [--fix]`
  *
- * Implements the 7 checks from `docs/planning/2026-05-20-refinement/01-brain.md`
+ * Implements the 9 checks from `docs/planning/2026-05-20-refinement/01-brain.md`
  * §"Brain-lint design", per `brain/LINT.md`:
  *
- *   1. checkFrontmatter      — required fields + category whitelist
- *   2. checkIndexSync        — themes appear in their category index exactly once
- *   3. checkSourceLinks      — every link in `## Sources` and every wikilink resolves
- *   4. checkStaleness        — cited *project* paths still exist (resolved via project profile)
- *   5. checkOrphans          — themes reachable from INDEX.md → category index → theme
- *   6. checkLengthSoftCap    — > 60 lines warn; > 100 lines error
- *   7. checkContamination    — `__chained_test_proj_*` and `__bench_*` dirs error
- *   8. checkContradictions   — warn-only stretch: pattern+antipattern with overlapping keywords
+ *   1. checkFrontmatter        — required fields + category whitelist
+ *   2. checkIndexSync          — themes appear in their category index exactly once
+ *   3. checkSourceLinks        — every link in `## Sources` and every wikilink resolves
+ *   4. checkStaleness          — cited *project* paths still exist (resolved via project profile)
+ *   5. checkOrphans            — themes reachable from INDEX.md → category index → theme
+ *   6. checkLengthSoftCap      — > 60 lines warn; > 100 lines error
+ *   7. checkContamination      — `__chained_test_proj_*` and `__bench_*` dirs error
+ *   8. checkContradictions     — warn-only stretch: pattern+antipattern with overlapping keywords
+ *   9. checkCleanupCandidates  — retention frontmatter triage (archived/stale themes)
+ *  (+ checkGraphFreshness per C21 — flags when graph.json's build SHA lags HEAD)
  *
  * Each check is a pure function `(forgeRoot) => Finding[]`. The CLI aggregates,
  * prints a human-readable report, and exits non-zero iff ≥1 error.

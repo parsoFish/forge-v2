@@ -18,7 +18,7 @@ Forge's load-bearing requirement is **unattended operation between human interac
 - **Bounded worktree pool** — up to `scheduler.maxConcurrentInitiatives` (default 2) `git worktree add` instances at any time.
 - **Atomic claim** — `mv pending/<id>.md in-flight/<id>.md` on a single filesystem is atomic. That is the entire claim mechanism.
 - **Heartbeat** — each in-flight initiative writes `<id>.heartbeat` every 30s.
-- **Per-initiative budgets** — `iteration_budget` and `cost_budget_usd` in manifest frontmatter cap runaway loops.
+- **Per-initiative iteration cap** — `iteration_budget` in manifest frontmatter bounds runaway loops. (The prior `cost_budget_usd` was removed by CONTRACTS.md C19 on 2026-05-23.)
 
 CLI surface: `forge serve`, `forge serve --once`, `forge enqueue`, `forge status`. Total scheduler code ≈ 300 LOC vs v1's ~6,000 LOC equivalent.
 

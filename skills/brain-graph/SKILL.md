@@ -27,9 +27,10 @@ and falls back to keyword scan over themes.
 
 ## Inputs
 
-- A subcommand mapped to a graphify operation:
-  `update | query | path | explain | report | hook-install`.
-- For `query` and friends: the question/node id (see below).
+- A subcommand mapped to a graphify build/maintenance operation:
+  `update | report | hook-install | diagnose`.
+- (Query operations — `query | path | explain | affected` — are owned by
+  the `brain-query` skill, not this one.)
 
 ## Outputs
 
@@ -43,8 +44,8 @@ and falls back to keyword scan over themes.
 
 - `brain-graph.update.start` — corpus root.
 - `brain-graph.update.end` — node + edge counts, communities, elapsed.
-- `brain-graph.query` — one event per query with op + result count.
 - `brain-graph.stale` — when freshness check fails.
+- (Query events are emitted by `brain-query`, not this skill.)
 
 ## Benchmark suite
 
@@ -82,26 +83,10 @@ GRAPH_REPORT.md, manifest.json}`. Idempotent. No API cost.
 Use `graphify update . --force` after a refactor that DELETES content
 (otherwise graphify guards against shrinking the graph).
 
-### `query` — semantic / structural search
-
-```bash
-cd brain && graphify query "what connects pr-as-review-window to reviewer-stage2?"
-```
-
-BFS traversal of `graphify-out/graph.json` for the question. Returns a
-token-efficient subset of relevant nodes + edges.
-
-### `path` — shortest connection between two nodes
-
-```bash
-cd brain && graphify path "pr-as-sole-review-window" "reviewer-stage2"
-```
-
-### `explain` — describe a node and its neighbourhood
-
-```bash
-cd brain && graphify explain "karpathy-three-layer-wiki"
-```
+> **Query operations live in `brain-query`.** This skill owns BUILD +
+> MAINTENANCE; querying the resulting `graph.json` (`graphify query` /
+> `path` / `explain` / `affected`) is the `brain-query` skill's
+> responsibility. See [`../brain-query/SKILL.md`](../brain-query/SKILL.md).
 
 ### `report` — regenerate the markdown report
 
@@ -142,12 +127,9 @@ The output schema is identical — `brain-query` works unchanged.
 ## Process
 
 1. **`update`** is the default; emits a node + edge + community summary.
-2. **`query`** assumes `graphify-out/graph.json` exists; the
-   `brain-query` SKILL handles the missing-graph case (falls back to
-   keyword scan).
-3. **Idempotency:** running `update` twice in a row reproduces the same
+2. **Idempotency:** running `update` twice in a row reproduces the same
    `graph.json` save for the `generated_at` line.
-4. **No reinvention.** forge does NOT carry its own graph walker. The
+3. **No reinvention.** forge does NOT carry its own graph walker. The
    real `graphify` CLI is the single source of truth. The S1.4
    deterministic walker (`orchestrator/brain-graph.ts`) is REMOVED —
    the archived output lives at `brain/_archive/2026-05-23/graph.json.s1.4-deterministic-walker.json`

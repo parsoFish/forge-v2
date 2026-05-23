@@ -138,7 +138,7 @@ Responsibility: closeout of an initiative back to main.
 
 **Unified Ralph runner** (post-pass-1 design — earlier drafts had this split into two phases; the implementation collapsed them after the e2e bench surfaced redundant state shuffling). One Ralph loop on the initiative branch, parameterised by a reviewer system prompt + a verdict-aware quality gate. Iteration 1 prepares the demo + PR draft from scratch; iterations 2+ react to send-back feedback the verdict gate appends to `fix_plan.md`.
 
-The verdict gate (`orchestrator/reviewer-stage2.ts`) runs between iterations and:
+The verdict gate (the developer-loop unifier sub-phase's quality gate in [`orchestrator/unifier-invocation.ts`](./orchestrator/unifier-invocation.ts) + verdict providers in [`orchestrator/file-verdict.ts`](./orchestrator/file-verdict.ts) / [`orchestrator/pr-verdict.ts`](./orchestrator/pr-verdict.ts)) runs between iterations and:
 
 1. **Re-runs the project quality gate** (orchestrator-verified — never trusts the agent's claim).
 2. **Asks the verdict provider** — production: file-based handoff written by the operator via the **`/forge-review <id>`** slash command (the operator's own Claude session). Bench: simulator agent.

@@ -34,7 +34,7 @@ Collaborate with the user during ideation sessions to update the project's roadm
   project: <project-name>
   created_at: <ISO-8601>
   iteration_budget: 50           # max Ralph iterations across the whole initiative
-  cost_budget_usd: 25.00         # initiative-level cap
+  # cost_budget_usd: removed per CONTRACTS.md C19 (2026-05-23) — iteration cap is the sole bound.
   features:
     - feature_id: FEAT-1
       title: ...

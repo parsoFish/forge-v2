@@ -1,12 +1,21 @@
 ---
 title: trafficGame — reviewer per-iteration budget undersized for medium-complexity initiatives
-description: REVIEWER_LIVE_MAX_BUDGET_USD_PER_ITERATION = $0.60 cut off all 3 reviewer iterations (~$0.61 each) before a verdict could be emitted; the loop exhausted its send-back cap with zero verdicts, requiring manual operator merge. The dev-loop's budgets were appropriate — only the reviewer's was mismatched.
+description: HISTORICAL — REVIEWER_LIVE_MAX_BUDGET_USD_PER_ITERATION = $0.60 cut off all 3 reviewer iterations before a verdict could be emitted. This evidence motivated CONTRACTS.md C19 (2026-05-23), which removed all $-budgets entirely; the mechanism this theme documents no longer exists.
 category: antipattern
-keywords: [trafficgame, reviewer, budget, per-iteration, send-back-cap, verdict, medium-initiative, forge-config]
+keywords: [trafficgame, reviewer, budget, per-iteration, send-back-cap, verdict, medium-initiative, forge-config, historical, c19]
 created_at: 2026-05-17T14:30:00Z
-updated_at: 2026-05-17T14:30:00Z
+updated_at: 2026-05-23T00:00:00Z
+retention: archived
+supersedes_by: CONTRACTS.md C19
 related_themes: []
 ---
+
+> **Historical (C19 superseded).** The per-iteration $/turn budget guard
+> documented here was removed on 2026-05-18 and ratified by
+> [CONTRACTS.md C19](../../../../docs/planning/2026-05-20-refinement/CONTRACTS.md)
+> on 2026-05-23. All $-budgets are gone; the iteration cap is the sole
+> bound. This theme is retained as the evidence that motivated C19, not
+> as current guidance.
 
 # trafficGame — reviewer per-iteration budget undersized for medium-complexity initiatives
 

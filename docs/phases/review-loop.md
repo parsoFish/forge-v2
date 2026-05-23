@@ -48,7 +48,8 @@ Two stages, unified as one **review-Ralph** loop (Phase-6 redesign):
 
 ## Skills
 
-- [`skills/reviewer/SKILL.md`](../../skills/reviewer/SKILL.md) — review-prep + human-facing reviewer skill.
+- [`skills/developer-unifier/SKILL.md`](../../skills/developer-unifier/SKILL.md) — the unifier sub-phase that owns the review-prep iteration (post-S4 collapse; the dedicated `skills/reviewer/` was archived 2026-05-23).
+- [`orchestrator/review-router.ts`](../../orchestrator/review-router.ts) — non-LLM PR-comment poller that routes operator verdicts back into `fix_plan.md`.
 
 ## Success signals
 
@@ -59,9 +60,11 @@ Two stages, unified as one **review-Ralph** loop (Phase-6 redesign):
 
 ## Benchmark suite
 
-[`benchmarks/review-loop/`](../../benchmarks/review-loop/)
-- `prs/` — initiative branch fixtures → expected demo + verdict.
-- `score.ts` — invokes the reviewer skill, scores demo-correctness and PR-description quality.
+The per-phase `benchmarks/review-loop/` was archived 2026-05-23 (S4) when the reviewer collapsed into the developer-loop unifier. Review behaviour is now regressed via:
+
+- [`benchmarks/e2e/`](../../benchmarks/e2e/) — full cycle (PM → dev-loop → unifier → merge) with a human-simulator providing verdicts.
+- [`benchmarks/developer-loop/`](../../benchmarks/developer-loop/) — extended with unifier criteria (`artifact`/`harness` fixtures).
+- [`benchmarks/review-router/`](../../benchmarks/review-router/) — 6 deterministic mock-`gh` fixtures for the PR-comment poller.
 
 ## Known failure modes (to defend against)
 
@@ -76,8 +79,8 @@ Two stages, unified as one **review-Ralph** loop (Phase-6 redesign):
 Closed end-to-end. The send-back loop, demo-embedded self-contained PR,
 visibility-aware demo commit, and closure-as-single-mover are all
 implemented (Phase-6 redesign + the 2026-05-18 operator-review
-reliability pass). Bench: [`benchmarks/review-loop/`](../../benchmarks/review-loop/)
-(per-phase) + the chained seed bench exercise the loop.
+reliability pass + the 2026-05-23 S4 unifier collapse). Bench: the e2e
++ developer-loop benches (see *Benchmark suite* above) exercise the loop.
 
 **2026-05-18 P2/P3 (unit-tested; not yet exercised against a live cycle):**
 - **PR at end of review iteration 1, not on approve.** The gate ensures

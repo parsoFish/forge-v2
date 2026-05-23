@@ -934,3 +934,39 @@ New skill `skills/brain-graph/SKILL.md` (hand-authored per C22) wraps four opera
 Karpathy gist re-ingested as canonical text at `brain/_raw/web/karpathy-llm-wiki.md`; the Pass-A synthesis archived under `brain/_archive/2026-05-23/karpathy-llm-wiki.chat.md` per `feedback_destructive_instruction_preserve_intent`. Three forge themes updated to cite the canonical URL.
 
 Bench not executed during the stage (operator asleep; OAuth token doesn't authenticate the direct API). Operator's wake task: `npm run bench:brain` ≥ 94.4%. See `_worktrees/s1.4-graphify/S1.4-DECISIONS.md` for the full decisions log.
+
+---
+
+## [2026-05-23] correction | S1.4 migration to real `safishamsi/graphify` Python CLI
+
+**Operator caught the misidentification:** the S1.4 agent had installed
+the unrelated NPM package `graphifyy` and shipped a deterministic
+TypeScript walker emitting graphify-shape JSON without ever invoking
+the real tool. The canonical graphify is `safishamsi/graphify` (Python,
+MIT, YC S26) — not `rhanka/graphify` or the NPM lookalike.
+
+Migration:
+
+- Uninstalled NPM `graphifyy` (`npm uninstall graphifyy`).
+- Installed real Python graphify (`uv tool install graphifyy`).
+- Ran `cd brain && graphify update .` — wrote
+  `brain/graphify-out/{graph.json, graph.html, GRAPH_REPORT.md, manifest.json, cache/}`.
+  **757 nodes · 635 edges · 122 communities** from tree-sitter local
+  extraction (zero API cost).
+- Moved old deterministic `brain/graph.json` → `brain/_archive/2026-05-23/graph.json.s1.4-deterministic-walker.json`.
+- Deleted `orchestrator/brain-graph.ts` + `skills/brain-graph/brain-graph.test.ts`
+  (the walker becomes redundant — real graphify is the source of truth).
+- Removed `forge brain graph` CLI subcommands; the help text points the
+  operator at `cd brain && graphify {update,query,path,explain} ...`.
+- Rewrote `skills/brain-graph/SKILL.md` as a thin operator runbook over
+  the real CLI (5 ops: `update | query | path | explain | report`).
+- Rewrote `skills/brain-query/SKILL.md` to call real `graphify query` /
+  `graphify path` / `graphify explain` for the graph-first lookup.
+- Updated `.gitignore`: track `brain/graphify-out/graph.json`, gitignore
+  every other artefact under `graphify-out/`.
+- Updated CONTRACTS.md C20-C22, plan 01, S1-SUMMARY.md, and the
+  EXECUTION-PLAN.md headline row.
+
+The forge brain is now **fully on graphify's actual mechanism** — no
+stop-gap walker, no schema-only-compatibility layer, no per-cycle
+fragmentation between the basic LLM wiki and graphify.

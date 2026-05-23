@@ -1,6 +1,6 @@
 ---
 name: brain-query
-description: Efficient lookup against the brain. Mandated as the first action of every other skill. Consults the structural graph (brain/graph.json) first, then falls back to keyword scan over themes. Logs gaps so the next ingest pass can fill them.
+description: Efficient lookup against the brain. Mandated as the first action of every other skill. Consults the structural graph (brain/graphify-out/graph.json via real safishamsi/graphify) first, then falls back to keyword scan over themes. Logs gaps so the next ingest pass can fill them.
 phase: brain
 surface: unattended
 model: claude-haiku-4-5
@@ -18,7 +18,7 @@ This skill is invoked **first** by every other skill, per [ADR 010](../../docs/d
 
 Per C20 (dual-index), it consults **two** layers in order:
 
-1. **Structural graph** (`brain/graph.json`, owned by `brain-graph`) — answers questions about relationships, bridges, and cross-file connections.
+1. **Structural graph** (`brain/graphify-out/graph.json`, owned by `brain-graph`, built by real `safishamsi/graphify` Python CLI) — answers questions about relationships, bridges, and cross-file connections via `graphify query` / `graphify path` / `graphify explain`.
 2. **Narrative wiki** (theme pages + category indexes) — answers questions about *content*. Keyword + frontmatter scan.
 
 The graph fills the gap forge has been carrying manually via `related_themes` frontmatter (low-rigour, error-prone). When a question is structural in nature ("which theme bridges X and Y?", "what are the neighbours of theme Z?", "what's two hops from this antipattern?"), the graph answers it directly. When the question is content-bearing ("how does forge handle stacked PRs?"), the keyword scan over themes is still the load-bearing path; the graph contributes by surfacing additional structurally-related themes the scan would miss.
@@ -64,13 +64,12 @@ The question is fielded in two passes; the second is conditional on the first be
 
 1. **Parse the question.** Identify keywords + likely category + whether the phrasing is structural ("which theme bridges …", "what's connected to …", "two hops from …", "what's the longest dependency chain in …"). Record this for the graph-vs-narrative routing.
 
-2. **Graph-first lookup** (`brain/graph.json` via the `brain-graph` skill / `forge brain graph query`).
+2. **Graph-first lookup** via the real `graphify` CLI against `brain/graphify-out/graph.json`. Always run from inside `brain/` (graphify resolves the graph relative to cwd):
    - For structural phrasings, pick the operation:
-     - bridge questions → `forge brain graph query bridges <a> <b>`
-     - "what's near …" → `forge brain graph query neighbours <id>`
-     - "what reaches …" → `forge brain graph query reachable <id> <hops>`
-     - "tell me about node …" → `forge brain graph query node <id>`
-   - For non-structural questions, still extract candidate theme ids by keyword (step 3a) and then run `neighbours` on each top candidate to widen the recall set with structurally-adjacent themes the keyword scan would miss.
+     - "what bridges A and B" / shortest connection → `cd brain && graphify path "<node-a>" "<node-b>"`
+     - "what's near <node>" / "describe <node>" → `cd brain && graphify explain "<node>"`
+     - free-form structural question → `cd brain && graphify query "<the-question>"` (BFS traversal, token-efficient)
+   - For non-structural questions, still extract candidate theme ids by keyword (step 3a) and then run `graphify explain <id>` on each top candidate to widen the recall set with structurally-adjacent themes the keyword scan would miss.
    - The graph contributes node ids (paths), not synthesised text. Treat returned ids as additional source candidates for step 4.
 
 3. **Narrative scan** (when graph alone insufficient — almost always, for content-bearing questions):
@@ -115,5 +114,5 @@ If you don't know the exact slug, use the navigation indexes (`forge brain index
 
 ## Sources
 
-- See [`brain/graph.json`](../../brain/graph.json) for the structural index this skill consults first.
-- See [`skills/brain-graph/SKILL.md`](../brain-graph/SKILL.md) for how the graph is built and queried.
+- See [`brain/graphify-out/graph.json`](../../brain/graphify-out/graph.json) for the structural index this skill consults first.
+- See [`skills/brain-graph/SKILL.md`](../brain-graph/SKILL.md) for how the graph is built and queried (wraps real `safishamsi/graphify` Python CLI).

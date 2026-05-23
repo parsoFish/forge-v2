@@ -149,9 +149,9 @@ For the full text (rationale, schema, "Affects plans"), see
 | C17 | `_aliases.json` mints use `proper-lockfile` |
 | C18 | Plan splits: 01→01a/01b, 02→S2A/S2B, 06→S6A/S6B, 07→07a/07b |
 | C19 | **Remove budget mechanisms entirely** (operator override Q2): no aggregate-budget gate, no $ caps in unifier, existing per-WI $1.0 cap removed, `cost_budget_respected` bench criterion removed. Iteration caps stay; `cost_usd` per-event logging stays. Operator: "We haven't seen instances of runaway spend and churn." |
-| C20 | Brain has **two indexes**: Karpathy markdown wiki (narrative) + Graphify knowledge graph (structural). `brain-query` consults both. |
-| C21 | `brain/graph.json` is canonical structural index (committed). Render artefacts (`graph.html`, `GRAPH_REPORT.md`) are gitignored. `brain-lint` flags stale graph. |
-| C22 | New hand-authored `skills/brain-graph/SKILL.md` owns the graphify integration (4 ops: `update | query | report | install-hook`). |
+| C20 | Brain has **two indexes**: Karpathy markdown wiki (narrative) + real `safishamsi/graphify` knowledge graph (structural — Python CLI, tree-sitter local, no API key). `brain-query` consults both. |
+| C21 | `brain/graphify-out/graph.json` is canonical structural index (committed). Sibling artefacts (`graph.html`, `GRAPH_REPORT.md`, `cache/`, `manifest.json`) gitignored. `brain-lint` flags stale graph (older commit than HEAD). |
+| C22 | Hand-authored `skills/brain-graph/SKILL.md` is the forge runbook over the real graphify CLI. Forge does NOT carry a graph shim (the S1.4 deterministic walker was deleted 2026-05-23 when the real CLI was installed). Forge does NOT install graphify's auto-skill globally. |
 | C23 | Prompt caching default-on at every SDK call site (`cache_control: ephemeral`). 5-min default; PM brain index gets 1-hour. |
 | C24 | Council uses **Haiku by default**, Sonnet for `eng` critic only. |
 | C25 | Output style is **per-phase**: reflector (and pre-deletion reviewer) emit micro-caveman terse; dev-loop / architect / PM speak normally. NOT installed globally. |

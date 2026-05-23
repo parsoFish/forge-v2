@@ -64,11 +64,12 @@ forge.config.json
 # Obsidian vault config (per-user)
 brain/.obsidian/
 
-# Graphify render artefacts — `brain/graph.json` is the canonical structural
-# index and IS committed (per C21); `graph.html` and `GRAPH_REPORT.md` are
-# regenerable views and stay local.
-brain/graph.html
-brain/GRAPH_REPORT.md
+# Graphify output — real `safishamsi/graphify` writes to brain/graphify-out/.
+# Per C21: `graph.json` is the canonical structural index (committed). The
+# `graph.html`, `GRAPH_REPORT.md`, `manifest.json`, `cache/`, and
+# `.graphify_*` siblings are regenerable view + machine-local state.
+brain/graphify-out/*
+!brain/graphify-out/graph.json
 # Graphify's own working state under brain/.graphify/ is per-machine.
 brain/.graphify/
 brain/.graphify-tmp/

@@ -71,11 +71,14 @@ forge themes + 56 project themes are NOT rewritten.
 The current brain implements Karpathy's three-layer pattern correctly
 ([`brain/forge/themes/karpathy-three-layer-wiki.md`](../../../brain/forge/themes/karpathy-three-layer-wiki.md)
 references the canonical [gist](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f)).
-Graphify ([`rhanka/graphify`](https://github.com/rhanka/graphify) — npm `graphifyy`,
+Graphify ([`safishamsi/graphify`](https://github.com/safishamsi/graphify)
+— Python CLI installable via `uv tool install graphifyy`,
 51K stars, MIT, YC S26) covers a different axis: **structural relationships
-across code+docs** (god nodes, surprising cross-file connections,
-call/edit flows) that the brain's current `related_themes` frontmatter
-captures only manually and at low rigour.
+across code+docs** (god nodes, communities, shortest paths, surprising
+cross-file connections) that the brain's current `related_themes`
+frontmatter captures only manually and at low rigour. Tree-sitter
+local extraction needs no API key; LLM backends are optional for
+richer semantic edges.
 
 The community has already paired these two
 ([`sly-codechum/chum-mem`](https://github.com/sly-codechum/chum-mem),
@@ -85,9 +88,9 @@ established fusion rather than inventing one.
 
 8. **Re-ingest the canonical Karpathy gist.** Motivation: `brain/_raw/web/karpathy-llm-wiki.chat.md` is a Pass-A synthesis because the gist was 404 at ingest time; the gist is now reachable. Deliverable: re-ingest via `brain-ingest`, replace the synthesis with the canonical source, update any theme that references the old synthesis. Files: `brain/_raw/web/karpathy-llm-wiki.md` (replace). Acceptance: themes that cite the gist now cite the canonical URL; the synthesis file is archived under `brain/_archive/`.
 
-9. **Install graphify + add `brain-graph` skill (per C22).** Motivation: structural relationships across the brain are currently invisible to `brain-query`. Deliverable: `npm install graphifyy[mcp]` (or `uv tool install`); new `skills/brain-graph/SKILL.md` (hand-authored, wraps graphify's CLI/MCP — does NOT accept graphify's generated `.claude/skills/graphify/SKILL.md` as-is per the forge discipline); `brain/graph.json` committed (per C21 — canonical structural index); `brain/graph.html` + `brain/GRAPH_REPORT.md` gitignored as render artefacts; a `brain-lint` rule that flags stale graph (`graph.json` mtime older than any theme it indexes). Files: `skills/brain-graph/SKILL.md` (new), `brain/graph.json` (committed), `orchestrator/brain-lint.ts` (extend with graph-freshness check), `package.json` (new dep). Acceptance: `graphify .` over `brain/` produces `graph.json`; brain-lint detects when a theme changes without a graph refresh; brain-graph SKILL.md documents the four operations `update | query | report | install-hook`.
+9. **Install real graphify + add hand-authored `brain-graph` skill (per C22).** Motivation: structural relationships across the brain are currently invisible to `brain-query`. Deliverable: `uv tool install graphifyy` (or `pipx install graphifyy`); new hand-authored `skills/brain-graph/SKILL.md` (an operator runbook over the real `graphify` CLI — does NOT accept graphify's auto-installable Claude Code skill via `graphify install`); `brain/graphify-out/graph.json` committed (per C21 — canonical structural index); sibling `graph.html` / `GRAPH_REPORT.md` / `cache/` / `manifest.json` gitignored; a `brain-lint` rule that flags stale graph (older commit than HEAD). Files: `skills/brain-graph/SKILL.md` (new), `brain/graphify-out/graph.json` (committed), `orchestrator/brain-lint.ts` (extend with graph-freshness check). Acceptance: `cd brain && graphify update .` produces `graphify-out/graph.json` + `graph.html` + `GRAPH_REPORT.md`; brain-lint detects when a theme changes without a graph refresh; brain-graph SKILL.md documents the five operations `update | query | path | explain | report`.
 
-10. **Rewrite `brain-query` to consult the graph first (per C20 dual-index).** Motivation: the lucasrosati claim of 71.5× fewer tokens per session is the operator's cost target. Deliverable: `skills/brain-query/SKILL.md` updated so brain-query uses graphify's MCP `query_graph` (or CLI `graphify query`) as the first lookup; falls back to keyword scan over themes if graph returns empty. The graph holds structural relationships; the themes hold narrative. Both are consulted; the order is graph-first. Files: `skills/brain-query/SKILL.md` (rewrite), `benchmarks/brain/questions.json` (add ≥3 structural questions). Acceptance: existing 18 keyword questions still pass; 3 new structural questions (e.g. "which theme bridges PR-as-review-window and reviewer-stage2 logic?") pass; bench question count grows ~30%; per-query token count drops measurably for graph-answerable questions.
+10. **Rewrite `brain-query` to consult the graph first (per C20 dual-index).** Motivation: structural questions should hit the graph before the keyword scan. Deliverable: `skills/brain-query/SKILL.md` updated so brain-query uses real `graphify query` / `graphify path` / `graphify explain` as the first lookup; falls back to keyword scan over themes if graph returns empty. The graph holds structural relationships; the themes hold narrative. Both are consulted; the order is graph-first. Files: `skills/brain-query/SKILL.md` (rewrite), `benchmarks/brain/questions.json` (add ≥3 structural questions). Acceptance: existing 18 keyword questions still pass; 3 new structural questions (e.g. "which theme bridges PR-as-review-window and reviewer-stage2 logic?") pass; bench question count grows ~30%; per-query token count drops measurably for graph-answerable questions.
 
 ## Brain-lint design
 

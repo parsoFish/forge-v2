@@ -10,13 +10,15 @@
  *   forge metrics [<cycle-id>]              print per-cycle aggregates (or all)
  *   forge preflight <project>               check the C1–C6 forge↔project contract
  *   forge brain index [--scope <project>]   emit the brain navigation indexes (cache-friendly prefix)
- *   forge brain graph update                rebuild brain/graph.json (structural index, C21)
- *   forge brain graph check                 verify graph.json freshness vs theme mtimes
- *   forge brain graph query <op> [...args]  neighbours | reachable | bridges | node
+ *   forge brain lint  [--scope <s>]         structural integrity checks on brain/
+ *
+ * (The structural graph (per C20-C22) is owned by the real `safishamsi/graphify`
+ * Python CLI directly — `cd brain && graphify {update,query,path,explain} ...`.
+ * forge does NOT carry a graph shim. See skills/brain-graph/SKILL.md.)
  */
 
-import { writeFileSync, mkdirSync, existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
-import { execSync } from 'node:child_process';
+import { writeFileSync, mkdirSync, existsSync, readFileSync, readdirSync, statSync, openSync } from 'node:fs';
+import { execSync, spawn } from 'node:child_process';
 import { basename, join, resolve } from 'node:path';
 import { runCycle } from './cycle.ts';
 import { serve, status as schedulerStatus } from './scheduler.ts';
@@ -26,15 +28,6 @@ import { getPaths } from './queue.ts';
 import { parseManifest, validateManifest, writeManifest } from './manifest.ts';
 import { loadBrainIndex, regenerateBrainIndex } from './brain-index.ts';
 import { runBrainLint, type Scope as BrainLintScope } from './brain-lint.ts';
-import {
-  buildBrainGraph,
-  bridgesBetween,
-  checkGraphFreshness,
-  lookupNode,
-  neighbours,
-  reachable,
-  type BrainGraph,
-} from './brain-graph.ts';
 import { runPreflight, formatPreflightReport } from './preflight.ts';
 import { fileVerdictPaths } from './file-verdict.ts';
 import { assertEnv } from './config.ts';
@@ -44,6 +37,16 @@ import {
   dispatchArchitectCommit,
   ArchitectCommitError,
 } from './architect-commit.ts';
+import {
+  daemonPaths,
+  daemonState,
+  reapStalePidFile,
+  writePidFile,
+  clearPidFile,
+  readPid,
+  isAlive,
+  setPaused,
+} from './daemon.ts';
 
 const args = process.argv.slice(2);
 const cmd = args[0];
@@ -65,6 +68,14 @@ process.chdir(FORGE_ROOT);
   if (cmd && sdkVerbs.has(cmd)) assertEnv('warn');
 
   switch (cmd) {
+    case 'start':
+      return cmdStart(args.slice(1));
+    case 'stop':
+      return await cmdStop(args.slice(1));
+    case 'pause':
+      return cmdPause(args.slice(1));
+    case 'resume':
+      return cmdResume();
     case 'serve':
       return await cmdServe(args.slice(1));
     case 'cycle':
@@ -106,7 +117,11 @@ function cmdHelp(): void {
     `forge — autonomous multi-agent orchestrator
 
 Usage:
-  forge serve [--once]                    Start the unattended scheduler
+  forge start                             Start the scheduler as a detached background daemon
+  forge stop                              Stop the background daemon (drains in-flight cycles)
+  forge pause [reason]                    Stop claiming new work (in-flight cycles continue)
+  forge resume                            Resume claiming new work
+  forge serve [--once]                    Run the scheduler in the foreground (use 'start' for unattended)
   forge cycle <initiative-id>             Run one initiative end-to-end (foreground)
   forge enqueue <project> <spec>          Drop an initiative manifest into _queue/pending/
   forge enqueue --from-manifest <path>    Validate + drop a pre-formed manifest
@@ -128,9 +143,7 @@ Usage:
   forge brain index [--scope <project>]   Emit the brain navigation indexes as a single blob (cache-friendly prefix for prompts)
   forge brain index --write               Regenerate brain/INDEX.md from filesystem (counts + sub-wiki listing)
   forge brain lint [--scope <s>] [--fix]  Structural integrity checks on brain/ (7 checks, scopes: full|forge-only|project-only|single-file|cycle-touched-themes|cleanup-dry-run)
-  forge brain graph update                Rebuild brain/graph.json (structural index, C21)
-  forge brain graph check                 Verify graph.json is fresh vs every theme mtime
-  forge brain graph query neighbours <id> | reachable <id> [hops] | bridges <a> <b> | node <id>
+                                          (structural graph owned by the real safishamsi/graphify CLI — run: cd brain && graphify update .)
 
 For phase-implementation guidance see docs/phases/. For decisions see docs/decisions/.`,
   );
@@ -147,6 +160,98 @@ async function cmdServe(rest: string[]): Promise<void> {
     // ongoing visibility, so we only print this for `--once`.
     printLatestReportHint();
   }
+}
+
+/**
+ * `forge start` — spawn `forge serve` (forever) as a detached process so it
+ * survives the launching shell. Root cause of a real strand: the operator
+ * closed the terminal running a foreground `forge serve`, killing the cycle
+ * mid-review. Detached + pid-file makes the scheduler a managed daemon.
+ */
+function cmdStart(rest: string[]): void {
+  reapStalePidFile(FORGE_ROOT);
+  const queueRoot = getPaths().root;
+  const st = daemonState(FORGE_ROOT, queueRoot);
+  if (st.running) {
+    console.log(`forge already running (pid ${st.pid}, since ${st.startedAt}).`);
+    console.log(`  logs:   ${daemonPaths(FORGE_ROOT).logFile}`);
+    console.log('  stop:   forge stop');
+    return;
+  }
+  const { dir, logFile } = daemonPaths(FORGE_ROOT);
+  mkdirSync(dir, { recursive: true });
+  const logFd = openSync(logFile, 'a');
+  const cliPath = resolve(import.meta.dirname, 'cli.ts');
+  const serveArgs = ['--experimental-strip-types', cliPath, 'serve', ...rest];
+  const child = spawn(process.execPath, serveArgs, {
+    cwd: FORGE_ROOT,
+    detached: true,
+    stdio: ['ignore', logFd, logFd],
+  });
+  child.unref();
+  if (typeof child.pid !== 'number') {
+    console.error('forge start: failed to spawn the scheduler process');
+    process.exit(1);
+  }
+  writePidFile(FORGE_ROOT, child.pid);
+  console.log(`forge started (pid ${child.pid}) — detached; safe to close this terminal.`);
+  console.log(`  logs:    tail -f ${logFile}`);
+  console.log('  status:  forge status');
+  console.log('  pause:   forge pause   (stop claiming new work)');
+  console.log('  stop:    forge stop    (drain in-flight + exit)');
+}
+
+/**
+ * `forge stop` — SIGTERM the daemon. The scheduler's existing signal handler
+ * drains in-flight cycles cleanly (a second signal would force-quit, but we
+ * only send one; the operator can re-run stop). Best-effort wait so the
+ * common (idle) case reports a clean exit synchronously.
+ */
+async function cmdStop(_rest: string[]): Promise<void> {
+  const { pidFile } = daemonPaths(FORGE_ROOT);
+  const pid = readPid(pidFile);
+  if (pid === null || !isAlive(pid)) {
+    console.log('forge is not running (no live daemon).');
+    clearPidFile(FORGE_ROOT);
+    return;
+  }
+  try {
+    process.kill(pid, 'SIGTERM');
+  } catch (err) {
+    console.error(`forge stop: failed to signal pid ${pid}: ${err instanceof Error ? err.message : String(err)}`);
+    process.exit(1);
+  }
+  console.log(`forge stop: sent SIGTERM to pid ${pid} — draining in-flight cycle(s)…`);
+  for (let i = 0; i < 20 && isAlive(pid); i++) {
+    await new Promise((r) => setTimeout(r, 500));
+  }
+  if (isAlive(pid)) {
+    console.log('  still draining (in-flight cycles finishing). It will exit on its own;');
+    console.log('  re-run `forge stop` to force-quit if it hangs.');
+  } else {
+    clearPidFile(FORGE_ROOT);
+    console.log('  stopped cleanly.');
+  }
+}
+
+/** `forge pause [reason]` — stop claiming new work; in-flight cycles continue. */
+function cmdPause(rest: string[]): void {
+  const reason = rest.join(' ').trim();
+  const queueRoot = getPaths().root;
+  setPaused(true, queueRoot, reason);
+  const st = daemonState(FORGE_ROOT, queueRoot);
+  console.log(`forge paused — scheduler will not claim new initiatives${reason ? ` (${reason})` : ''}.`);
+  console.log(st.running
+    ? '  the running daemon picks this up within one poll interval; in-flight cycles keep going.'
+    : '  (no daemon running — this takes effect when one is started.)');
+  console.log('  resume: forge resume');
+}
+
+/** `forge resume` — clear the pause flag so claiming restarts. */
+function cmdResume(): void {
+  const queueRoot = getPaths().root;
+  setPaused(false, queueRoot);
+  console.log('forge resumed — scheduler will claim pending work again within one poll interval.');
 }
 
 function printLatestReportHint(): void {
@@ -292,9 +397,15 @@ ${body}`;
 
 function cmdStatus(rest: string[]): void {
   const watch = rest.includes('--watch');
+  const queueRoot = getPaths().root;
   const print = (): void => {
     const snap = snapshot();
     if (watch) console.clear();
+    const d = daemonState(FORGE_ROOT, queueRoot);
+    const daemonLine = d.running
+      ? `daemon: RUNNING (pid ${d.pid}, since ${d.startedAt})${d.paused ? ' · PAUSED (not claiming new work)' : ''}`
+      : `daemon: stopped${d.paused ? ' · paused flag set (forge resume to clear)' : ''} — start with: forge start`;
+    console.log(daemonLine);
     console.log(render(snap));
     if (!watch) {
       const c = schedulerStatus().counts;
@@ -659,8 +770,22 @@ function cmdBrain(rest: string[]): void {
   const sub = rest[0];
   if (sub === 'index') return cmdBrainIndex(rest.slice(1));
   if (sub === 'lint') return cmdBrainLint(rest.slice(1));
-  if (sub === 'graph') return cmdBrainGraph(rest.slice(1));
-  console.error('forge brain: subcommands: index | lint | graph');
+  if (sub === 'graph') {
+    // Per C20-C22 + post-S1.4 migration: the structural graph is owned by
+    // the real `safishamsi/graphify` Python CLI, not by an orchestrator shim.
+    // Pass through to `graphify` for any sub-op the operator wants; forge
+    // does NOT carry its own graph walker.
+    console.error(
+      `forge brain graph: this surface is owned by the real graphify CLI. Use it directly:
+  cd brain && graphify update .          # rebuild brain/graphify-out/graph.json
+  cd brain && graphify query "<q>"        # token-efficient BFS over the graph
+  cd brain && graphify path "<a>" "<b>"   # shortest connection
+  cd brain && graphify explain "<node>"   # describe a node + neighbours
+See skills/brain-graph/SKILL.md for the operator runbook.`,
+    );
+    process.exit(2);
+  }
+  console.error('forge brain: subcommands: index | lint');
   process.exit(2);
 }
 
@@ -744,83 +869,10 @@ function cmdBrainLint(rest: string[]): void {
   process.exit(result.exitCode);
 }
 
-function cmdBrainGraph(rest: string[]): void {
-  const sub = rest[0];
-  if (sub === 'update' || sub === undefined) return cmdBrainGraphUpdate();
-  if (sub === 'check') return cmdBrainGraphCheck();
-  if (sub === 'query') return cmdBrainGraphQuery(rest.slice(1));
-  console.error('forge brain graph: subcommands: update (default) | check | query');
-  process.exit(2);
-}
-
-function cmdBrainGraphUpdate(): void {
-  const graph = buildBrainGraph({ cwd: FORGE_ROOT });
-  const out = join(FORGE_ROOT, 'brain', 'graph.json');
-  writeFileSync(out, JSON.stringify(graph, null, 2) + '\n');
-  process.stdout.write(
-    `wrote ${out} — ${graph.node_count} nodes, ${graph.edge_count} edges\n`,
-  );
-}
-
-function cmdBrainGraphCheck(): void {
-  const check = checkGraphFreshness({
-    cwd: FORGE_ROOT,
-    graphPath: 'brain/graph.json',
-  });
-  if (check.fresh) {
-    process.stdout.write('brain/graph.json is fresh\n');
-    return;
-  }
-  if (check.graph_mtime === null) {
-    process.stderr.write(
-      'brain/graph.json is missing — run `forge brain graph update`\n',
-    );
-    process.exit(1);
-  }
-  process.stderr.write(
-    `brain/graph.json is stale (${check.stale_files.length} newer themes):\n  - ${check.stale_files.join(
-      '\n  - ',
-    )}\nRun \`forge brain graph update\` to refresh.\n`,
-  );
-  process.exit(1);
-}
-
-function cmdBrainGraphQuery(rest: string[]): void {
-  const graphPath = join(FORGE_ROOT, 'brain', 'graph.json');
-  if (!existsSync(graphPath)) {
-    process.stderr.write(
-      'brain/graph.json missing — run `forge brain graph update` first\n',
-    );
-    process.exit(1);
-  }
-  const graph = JSON.parse(readFileSync(graphPath, 'utf8')) as BrainGraph;
-  const op = rest[0];
-  if (op === 'neighbours' && rest[1]) {
-    const nbs = neighbours(graph, rest[1]);
-    process.stdout.write(JSON.stringify(nbs, null, 2) + '\n');
-    return;
-  }
-  if (op === 'reachable' && rest[1]) {
-    const hops = Number.parseInt(rest[2] ?? '2', 10);
-    const r = reachable(graph, rest[1], hops);
-    process.stdout.write(JSON.stringify(r, null, 2) + '\n');
-    return;
-  }
-  if (op === 'bridges' && rest[1] && rest[2]) {
-    const b = bridgesBetween(graph, rest[1], rest[2]);
-    process.stdout.write(JSON.stringify(b, null, 2) + '\n');
-    return;
-  }
-  if (op === 'node' && rest[1]) {
-    const n = lookupNode(graph, rest[1]);
-    process.stdout.write(JSON.stringify(n ?? null, null, 2) + '\n');
-    return;
-  }
-  process.stderr.write(
-    'forge brain graph query: ops: neighbours <id> | reachable <id> [hops] | bridges <a> <b> | node <id>\n',
-  );
-  process.exit(2);
-}
+// `cmdBrainGraph*` removed 2026-05-23 — the structural graph is owned by the
+// real `safishamsi/graphify` Python CLI (per C20-C22). The S1.4 deterministic
+// walker (`orchestrator/brain-graph.ts`) was a stop-gap; the migration to the
+// real tool lives in `skills/brain-graph/SKILL.md`. Use `graphify` directly.
 
 // ---------------------------------------------------------------------------
 // forge architect commit <session-id>

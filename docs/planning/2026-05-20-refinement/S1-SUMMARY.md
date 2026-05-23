@@ -50,22 +50,55 @@ Small targeted bug-fix: dev-loop close now asserts local↔remote sync and emits
 - **Decisions:** [`S1.3-DECISIONS.md`](../../S1.3-DECISIONS.md)
 - **Operator-pending:** none.
 
-### S1.4 — Graphify additive brain layer (plan 01 #8-#10) ✓
+### S1.4 — Graphify additive brain layer (plan 01 #8-#10) ✓ — REVISED 2026-05-23
 
-`brain/graph.json` as the canonical structural index alongside the existing markdown wiki; brain-query consults graph-first.
+**Migrated from S1.4's stop-gap to the real `safishamsi/graphify` Python CLI per operator correction.**
 
-- **Branch:** `s1.4-graphify` (3 commits, merged)
-- **New code:** `orchestrator/brain-graph.ts` (deterministic graph builder + queries), `skills/brain-graph/SKILL.md` (hand-authored, 4 ops)
-- **Tests:** 5 brain-graph unit tests
-- **Graph:** 168 nodes, 627 edges. Built deterministically from frontmatter `related_themes` + Obsidian `[[wikilinks]]` + `## Sources` citations. Render artefacts (`brain/graph.html`, `GRAPH_REPORT.md`) gitignored.
-- **Karpathy gist re-ingested** as canonical at `brain/_raw/web/karpathy-llm-wiki.md`; synthesis archived to `brain/_archive/2026-05-23/` per preserve-intent.
-- **Brain bench:** grew 18 → 21 questions (3 new structural: Q19 bridges, Q20 neighbours, Q21 connected antipatterns). Existing 18 keyword questions unchanged.
-- **Decisions:** [`S1.4-DECISIONS.md`](../../S1.4-DECISIONS.md)
-- **Operator-pending:**
-  - `npm run bench:brain` — not run during stage (operator OAuth token doesn't authenticate direct Anthropic API). On wake: target ≥ 94.4% on the full 21.
-  - **Plan 01 was wrong about the graphify repo** — fixed in `237d886`: canonical is [`rhanka/graphify`](https://github.com/rhanka/graphify) (npm `graphifyy`), NOT `safishamsi/graphify`. Plan 01 + LEARNINGS-trafficgame links updated.
-  - `.claude/skills/graphify-disabled/` blocked by sandbox; placeholder at `skills/graphify-disabled/README.md`. Operator can rename on wake.
-  - The deterministic walker emits in the `graphifyy` schema (`GraphNode` + `GraphEdge`). An operator with `ANTHROPIC_API_KEY` set can run `npx graphify update brain/ --backend anthropic --all` to overlay LLM-derived semantic edges at the same path — schema compatible, no consumer changes needed.
+The S1.4 agent had picked the wrong tool (an unrelated NPM package
+named `graphifyy`) and shipped a deterministic TypeScript walker that
+emitted graphify-shape JSON without invoking graphify. The operator
+corrected on review — pointed at the actual
+[`safishamsi/graphify`](https://github.com/safishamsi/graphify)
+(Python, MIT, YC S26, 51K★) — and we migrated.
+
+**Post-migration state (`safishamsi/graphify` Python CLI):**
+
+- Installed via `uv tool install graphifyy` (Python tool).
+- `cd brain && graphify update .` is the build command. Output dir:
+  `brain/graphify-out/` containing:
+  - `graph.json` (487KB, **committed** — canonical per C21)
+  - `graph.html` (548KB, interactive view, gitignored)
+  - `GRAPH_REPORT.md` (29KB, text report, gitignored)
+  - `manifest.json`, `cache/`, `.graphify_*` (gitignored)
+- **757 nodes · 635 edges · 122 communities** from the real
+  AST/tree-sitter extractor over 122 brain files. Zero API cost (code/markdown
+  extraction is local-only).
+- `skills/brain-graph/SKILL.md` — hand-authored operator runbook over
+  the real `graphify` CLI (5 ops: `update | query | path | explain | report`).
+- `skills/brain-query/SKILL.md` — graph-first via real `graphify query`
+  / `path` / `explain`, with keyword-scan fallback.
+- `orchestrator/brain-graph.ts` — **deleted** (the deterministic walker
+  is replaced by the real tool).
+- `forge brain graph` CLI subcommand — **removed** (use real `graphify`
+  CLI directly per skills/brain-graph/SKILL.md).
+- `brain/_archive/2026-05-23/graph.json.s1.4-deterministic-walker.json`
+  — the S1.4 output preserved per `feedback_destructive_instruction_preserve_intent`.
+- **Karpathy gist re-ingested** as canonical at
+  `brain/_raw/web/karpathy-llm-wiki.md`; synthesis archived to
+  `brain/_archive/2026-05-23/`.
+- **Brain bench:** grew 18 → 21 questions (3 new structural: Q19, Q20,
+  Q21). Existing 18 keyword questions unchanged.
+
+**Operator-pending:**
+
+- `npm run bench:brain` — not run during stage (OAuth token doesn't
+  authenticate direct Anthropic API). On wake: target ≥ 94.4% on the
+  full 21.
+- Optional: `graphify hook install` to auto-rebuild the graph on every
+  git commit.
+- Optional: run `graphify update . --backend anthropic --all` (with
+  `ANTHROPIC_API_KEY` set) to overlay richer LLM-derived semantic edges
+  at the same `graphify-out/graph.json` path — schema-compatible.
 
 ## Verification
 

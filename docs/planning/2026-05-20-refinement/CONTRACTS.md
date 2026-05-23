@@ -505,46 +505,54 @@ C1–C19. Numbering continues from C20.
 **Decision:** Brain carries **two indexes**:
 - The Karpathy markdown wiki (themes + categories + INDEX.md) — narrative
   knowledge layer, owned by the planner / reflector phases.
-- The Graphify knowledge graph (`brain/graph.json`) — structural
-  relationships across code + docs (god nodes, cross-file links,
-  call/edit flow).
+- The Graphify knowledge graph (`brain/graphify-out/graph.json`) — structural
+  relationships built by the real [`safishamsi/graphify`](https://github.com/safishamsi/graphify)
+  Python CLI (tree-sitter local extraction; no API key required; LLM
+  backend optional via `ANTHROPIC_API_KEY` / etc.).
 
-`brain-query` consults both: graph-first for structural questions,
+`brain-query` consults both: graph-first via real `graphify query` /
+`graphify path` / `graphify explain` for structural questions,
 narrative-first for keyword / category questions. The two are
 complementary; neither replaces the other.
 
 **Rationale:** The current brain already implements Karpathy correctly.
 Graphify fills a gap forge has been carrying manually via
-`related_themes` frontmatter (low-rigour, error-prone). Community has
-proven the pairing (`sly-codechum/chum-mem`,
-`lucasrosati/claude-code-memory-setup` claims 71.5× fewer tokens per
-session). Battle-tested: 51K stars, MIT, YC S26.
+`related_themes` frontmatter (low-rigour, error-prone). Battle-tested:
+51K stars, MIT, YC S26. **Migrated 2026-05-23** from a misidentified
+NPM package + S1.4 deterministic-walker stop-gap to the real Python
+CLI per operator correction.
 
-**Affects plans:** 01 (new refinements #8-#10 ship in S1.4 alongside
-S1.2 hygiene).
+**Affects plans:** 01 (refinements #8-#10 ship in S1.4 alongside S1.2 hygiene).
 
-## C21 — `brain/graph.json` is the canonical structural index
+## C21 — `brain/graphify-out/graph.json` is the canonical structural index
 
-**Decision:** `brain/graph.json` is committed; it is the
-machine-readable structural index. Render artefacts (`brain/graph.html`,
-`brain/GRAPH_REPORT.md`) are **gitignored** and regenerable. `brain-lint`
-flags a stale `graph.json` (older than any theme it indexes) as an
-error.
+**Decision:** `brain/graphify-out/graph.json` is committed; it is the
+machine-readable structural index, written by `graphify update .` (run
+from `brain/`). Sibling render + cache artefacts (`graph.html`,
+`GRAPH_REPORT.md`, `cache/`, `manifest.json`, `.graphify_*`) are
+**gitignored** under the same directory. `brain-lint` flags a stale
+graph (built against an older commit than HEAD) as an error.
 
-**Affects plans:** 01 (refinement #9), `.gitignore`.
+The graph is rebuilt by running `cd brain && graphify update .`. With
+graphify's `hook install`, every git commit auto-rebuilds.
+
+**Affects plans:** 01 (refinement #9), `.gitignore` (carves
+`!brain/graphify-out/graph.json` against the rest of `graphify-out/`).
 
 ## C22 — `brain-graph` skill owns the graphify integration
 
-**Decision:** A new hand-authored `skills/brain-graph/SKILL.md` wraps
-graphify's CLI/MCP. Forge does NOT accept graphify's generated
-`.claude/skills/graphify/SKILL.md` as-is — forge skills are
-hand-authored to maintain consistency with `brain-query`, `brain-lint`,
-`brain-ingest`. The `brain-graph` skill exposes 4 operations:
-`update | query | report | install-hook`.
+**Decision:** A hand-authored `skills/brain-graph/SKILL.md` documents
+the operations forge actually uses against the brain (a thin operator
+runbook over real graphify). Forge does **NOT** carry its own graph
+walker — `orchestrator/brain-graph.ts` (S1.4 deterministic stop-gap)
+was deleted 2026-05-23 when the real CLI was installed. Forge does
+**NOT** install graphify's auto-skill globally (`graphify install`
+would write a `CLAUDE.md` section + PreToolUse hook); the hand-authored
+SKILL.md is the single forge-internal surface.
 
-`brain-ingest` continues to own raw + themes. `brain-lint` extends with
-the graph-freshness check from C21. `brain-query` is rewritten (per
-plan 01 refinement #10) to consult graphify's `query_graph` first.
+The operations forge uses: `update | query | path | explain | report`.
+`brain-ingest` continues to own raw + themes; `brain-lint` carries the
+graph-freshness check from C21; `brain-query` is graph-first.
 
 **Affects plans:** 01 (refinement #9), 02/03/06 (consumers of
 `brain-query` get the new graph-first behaviour transparently).

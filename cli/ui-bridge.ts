@@ -91,59 +91,89 @@ export function startBridge(opts: BridgeOptions): { url: string; close: () => Pr
   };
 
   const scanCycles = opts.scanCycles ?? ((): { live: Cycle[]; recent: Cycle[] } => {
+    // The cycle ID is the _logs/<dir> name (timestamp + initiative ID); the
+    // queue dirs only carry status. This scan walks _logs/ first to build
+    // a list of cycles (most-recent per initiative), then cross-references
+    // queue dirs to label each with its current status.
     const live: Cycle[] = [];
     const recent: Cycle[] = [];
 
-    // Live = in-flight + ready-for-review.
-    for (const name of listInFlight(queuePaths)) {
-      const id = name.replace(/\.md$/, '');
-      const manifestPath = join(queuePaths.inFlight, name);
-      let project: string | undefined;
-      try { project = parseManifest(readFileSync(manifestPath, 'utf8')).project; } catch { /* ignore */ }
-      // listInFlight returns filenames; the in-flight manifest's name
-      // carries the initiative ID. The actual cycle ID (a timestamp+id
-      // string) lives under _logs/<cycleId>/. The UI resolves the active
-      // cycle for an initiative through the live event stream
-      // (initiative_id is in every event).
-      live.push({ cycleId: id, initiativeId: id, project, status: 'in-flight' });
-    }
-    if (existsSync(queuePaths.readyForReview)) {
-      for (const name of readdirSync(queuePaths.readyForReview)) {
-        if (!name.endsWith('.md')) continue;
-        const id = name.replace(/\.md$/, '');
-        const manifestPath = join(queuePaths.readyForReview, name);
-        let project: string | undefined;
-        try { project = parseManifest(readFileSync(manifestPath, 'utf8')).project; } catch { /* ignore */ }
-        live.push({ cycleId: id, initiativeId: id, project, status: 'ready-for-review' });
+    type LogDirInfo = { cycleId: string; initiativeId: string; mtime: number };
+    const latestPerInit = new Map<string, LogDirInfo>();
+    if (existsSync(logsRoot)) {
+      for (const name of readdirSync(logsRoot)) {
+        const dir = join(logsRoot, name);
+        let mtime = 0;
+        try {
+          if (!statSync(dir).isDirectory()) continue;
+          mtime = statSync(dir).mtimeMs;
+        } catch { continue; }
+        // Cycle ID format: `<ISO-ish-timestamp>_<INIT-…>`.
+        const m = name.match(/_(INIT-.+)$/);
+        if (!m) continue;
+        const initId = m[1];
+        const cur = latestPerInit.get(initId);
+        if (!cur || cur.mtime < mtime) {
+          latestPerInit.set(initId, { cycleId: name, initiativeId: initId, mtime });
+        }
       }
     }
 
-    // Recent = last RECENT_CYCLES_MAX of done/ + failed/ by mtime.
-    const recentCandidates: Array<{ cycle: Cycle; mtime: number }> = [];
-    for (const [dir, status] of [
-      [queuePaths.done, 'done' as const],
-      [queuePaths.failed, 'failed' as const],
-    ] as const) {
-      if (!existsSync(dir)) continue;
-      for (const name of readdirSync(dir)) {
-        if (!name.endsWith('.md')) continue;
-        const fullPath = join(dir, name);
-        let mtime = 0;
-        let project: string | undefined;
-        try {
-          mtime = statSync(fullPath).mtimeMs;
-          project = parseManifest(readFileSync(fullPath, 'utf8')).project;
-        } catch { /* ignore */ }
-        const id = name.replace(/\.md$/, '');
-        recentCandidates.push({
-          cycle: { cycleId: id, initiativeId: id, project, status },
-          mtime,
-        });
+    const queueStatusFor = (initId: string): { status: Cycle['status']; project?: string } | null => {
+      const fn = `${initId}.md`;
+      const lookups: Array<[string, Cycle['status']]> = [
+        [queuePaths.inFlight, 'in-flight'],
+        [queuePaths.readyForReview, 'ready-for-review'],
+        [queuePaths.done, 'done'],
+        [queuePaths.failed, 'failed'],
+        [queuePaths.pending, 'pending'],
+      ];
+      for (const [dir, status] of lookups) {
+        const fp = join(dir, fn);
+        if (existsSync(fp)) {
+          let project: string | undefined;
+          try { project = parseManifest(readFileSync(fp, 'utf8')).project; } catch { /* ignore */ }
+          return { status, project };
+        }
       }
+      return null;
+    };
+
+    const candidates: Array<{ cycle: Cycle; mtime: number }> = [];
+    for (const info of latestPerInit.values()) {
+      const q = queueStatusFor(info.initiativeId);
+      if (!q) continue; // log dir exists but the queue manifest is gone — orphan, skip
+      candidates.push({
+        cycle: {
+          cycleId: info.cycleId,
+          initiativeId: info.initiativeId,
+          project: q.project,
+          status: q.status,
+        },
+        mtime: info.mtime,
+      });
     }
-    recentCandidates.sort((a, b) => b.mtime - a.mtime);
-    for (const { cycle } of recentCandidates.slice(0, RECENT_CYCLES_MAX)) {
-      recent.push(cycle);
+    // Also surface in-flight / ready-for-review manifests that don't yet
+    // have a log dir (just-claimed, pre-first-event).
+    const seenInits = new Set([...candidates.map((c) => c.cycle.initiativeId)]);
+    for (const name of listInFlight(queuePaths)) {
+      const id = name.replace(/\.md$/, '');
+      if (seenInits.has(id)) continue;
+      let project: string | undefined;
+      try { project = parseManifest(readFileSync(join(queuePaths.inFlight, name), 'utf8')).project; } catch { /* */ }
+      candidates.push({
+        cycle: { cycleId: id, initiativeId: id, project, status: 'in-flight' },
+        mtime: Date.now(),
+      });
+    }
+
+    candidates.sort((a, b) => b.mtime - a.mtime);
+    for (const { cycle } of candidates) {
+      if (cycle.status === 'in-flight' || cycle.status === 'ready-for-review') {
+        live.push(cycle);
+      } else if (recent.length < RECENT_CYCLES_MAX) {
+        recent.push(cycle);
+      }
     }
     return { live, recent };
   });
@@ -260,6 +290,21 @@ function handleHttp(
         try { events.push(JSON.parse(line)); } catch { /* skip malformed */ }
       }
       sendJson(res, 200, { cycleId, events });
+    } catch (err) {
+      sendJson(res, 500, { error: String(err) });
+    }
+    return;
+  }
+  if (url.startsWith('/api/graph/')) {
+    const cycleId = decodeURIComponent(url.slice('/api/graph/'.length));
+    const filePath = join(ctx.logsRoot, cycleId, 'work-items-snapshot', '_graph.md');
+    if (!existsSync(filePath)) {
+      sendJson(res, 404, { error: 'no _graph.md for cycle', cycleId });
+      return;
+    }
+    try {
+      const raw = readFileSync(filePath, 'utf8');
+      sendJson(res, 200, { cycleId, mermaid: raw });
     } catch (err) {
       sendJson(res, 500, { error: String(err) });
     }

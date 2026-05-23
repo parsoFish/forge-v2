@@ -13,6 +13,7 @@ import {
 import { derivePhaseStates, PHASE_ORDER, type PhaseState } from '@/lib/phases';
 import { Sidebar } from '@/components/Sidebar';
 import { CycleToasts } from '@/components/Toasts';
+import { WiGraphPanel } from '@/components/WiGraph';
 
 export default function Page() {
   const [snapshot, setSnapshot] = useState<CycleListSnapshot>({ live: [], recent: [] });
@@ -82,7 +83,8 @@ export default function Page() {
         <Sidebar events={events} />
       </section>
 
-      <section style={{ marginTop: 24 }}>
+      <section style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24, marginTop: 24 }}>
+        <WiGraphPanel cycleId={activeCycleId} />
         <EventTail events={events} />
       </section>
 

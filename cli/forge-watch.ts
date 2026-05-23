@@ -14,6 +14,7 @@
 
 import { spawn, type ChildProcess } from 'node:child_process';
 import { existsSync } from 'node:fs';
+import { createServer as createNetServer } from 'node:net';
 import { resolve } from 'node:path';
 
 import { startBridge } from './ui-bridge.ts';
@@ -34,7 +35,6 @@ export type WatchOptions = {
 export async function runWatch(opts: WatchOptions): Promise<void> {
   const { forgeRoot } = opts;
   const uiDir = resolve(forgeRoot, 'forge-ui');
-  const uiPort = opts.uiPort ?? 3000;
 
   // 1. Start the bridge.
   const bridge = startBridge({ forgeRoot, port: opts.bridgePort ?? 0 });
@@ -42,20 +42,38 @@ export async function runWatch(opts: WatchOptions): Promise<void> {
 
   // 2. Start Next.js dev (unless --bridge-only or forge-ui not installed).
   let uiProc: ChildProcess | null = null;
+  let uiPort = 0;
   if (!opts.bridgeOnly) {
     if (!existsSync(resolve(uiDir, 'package.json'))) {
       console.log('[forge watch] forge-ui workspace not present yet (forge-ui/package.json missing).');
       console.log('[forge watch] running bridge-only — install the workspace then re-run.');
     } else {
-      uiProc = spawn('npm', ['run', 'dev', '--workspace', 'forge-ui'], {
-        cwd: forgeRoot,
-        env: {
-          ...process.env,
-          FORGE_BRIDGE_URL: bridge.url,
-          PORT: String(uiPort),
+      // Probe for a free port starting at the explicit / default 3000, so an
+      // existing dev server on 3000 doesn't EADDRINUSE the spawn. Next.js
+      // itself doesn't search — `next dev -p <n>` just fails if <n> is taken.
+      uiPort = await findFreePort(opts.uiPort ?? 3000);
+      if (uiPort === 0) {
+        console.error('[forge watch] no free port found near the requested ui port — pass --ui-port <n>.');
+        await bridge.close();
+        process.exit(1);
+      }
+      if (opts.uiPort !== undefined && uiPort !== opts.uiPort) {
+        console.warn(`[forge watch] requested ui-port ${opts.uiPort} is in use; falling back to ${uiPort}.`);
+      }
+      console.log(`[forge watch] ui at http://localhost:${uiPort} (starting next dev…)`);
+
+      uiProc = spawn(
+        'npm',
+        ['run', 'dev', '--workspace', 'forge-ui', '--', '-p', String(uiPort)],
+        {
+          cwd: forgeRoot,
+          env: {
+            ...process.env,
+            FORGE_BRIDGE_URL: bridge.url,
+          },
+          stdio: 'inherit',
         },
-        stdio: 'inherit',
-      });
+      );
       uiProc.on('error', (err) => {
         console.error(`[forge watch] forge-ui dev server failed to start: ${err.message}`);
       });
@@ -91,6 +109,36 @@ export async function runWatch(opts: WatchOptions): Promise<void> {
   // 5. Block forever (children own the foreground).
   await new Promise<void>(() => {
     // intentionally never resolves; SIGINT path handles exit.
+  });
+}
+
+/**
+ * Find a free TCP port starting at `start`, walking up by 1 for up to
+ * `range` attempts. Returns 0 if none free (caller should treat as
+ * fatal). Uses node:net to bind+close — same mechanism Next.js / Vite
+ * use internally; avoids any race-free guarantee but is good enough for
+ * a foreground operator command.
+ */
+export async function findFreePort(start: number, range = 50): Promise<number> {
+  for (let p = start; p < start + range; p += 1) {
+    if (await isPortFree(p)) return p;
+  }
+  return 0;
+}
+
+function isPortFree(port: number): Promise<boolean> {
+  return new Promise((res) => {
+    const srv = createNetServer();
+    let settled = false;
+    const done = (free: boolean): void => {
+      if (settled) return;
+      settled = true;
+      try { srv.close(); } catch { /* ignore */ }
+      res(free);
+    };
+    srv.once('error', () => done(false));
+    srv.once('listening', () => done(true));
+    try { srv.listen(port, '127.0.0.1'); } catch { done(false); }
   });
 }
 

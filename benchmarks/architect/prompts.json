@@ -46,5 +46,17 @@
     "user_prompt": "GitWeave has no public docs site. Set up a docusaurus site under `docs/` that pulls from the existing markdown files in the repo (architecture.md, contributing.md, the ADRs). Auto-deploy to GitHub Pages on merge to main. No custom theming yet — the default is fine. Goal is a browsable, search-indexable view of the existing docs without copying content.",
     "project": "GitWeave",
     "expected": { "min_features": 2, "max_features": 4 }
+  },
+  {
+    "id": "B1-betterado-substrate-only",
+    "user_prompt": "terraform-provider-betterado is a Go fork of microsoft/terraform-provider-azuredevops that targets the ADO 7.1 createable surface. The substrate I want queued THIS session is narrow: only INIT-01 (release_definition test substrate + deployment_gates). `azuredevops/internal/service/release/resource_release_definition.go` EXISTS but has zero unit tests; add a `release_sdk_mock`/gomock substrate, then add `pre_deployment_gates` and `post_deployment_gates` schema blocks with expand/flatten + tests + docs. Quality gate: `go test ./azuredevops/internal/service/release/...` passes + `go build -mod=vendor ./...` exits 0. Do NOT queue the other 18 betterado initiatives — they are out of scope for this brief.",
+    "project": "terraform-provider-betterado",
+    "expected": { "min_features": 3, "max_features": 5 }
+  },
+  {
+    "id": "B2-betterado-full-program",
+    "user_prompt": "Queue the entire ADO 7.1 createable surface for terraform-provider-betterado as a 20-initiative program: substrate (release_definition, task_group, test plan core) plus 17 dependent initiatives (servicehook subscriptions, notification subscriptions, audit streams, pipelines API, git PR, dashboard widgets, secure files, env/VM resources, build retention, feed views, workitem collaboration, serviceendpoint longtail, PAT token mgmt, etc). Each initiative ships its own gomock test substrate + docs + example. Share project-level constraints (gate command, fixture rules, scope-guard) across initiatives — don't copy-paste them. Aggregate-cost footprint is informational; the operator decides whether to split the queue after seeing PLAN.md.",
+    "project": "terraform-provider-betterado",
+    "expected": { "min_features": 2, "max_features": 5 }
   }
 ]

@@ -7,11 +7,19 @@
  * produced, writes results/<iso>.json. Bounded concurrency + session cost
  * cap mirror the brain bench.
  *
+ * S2B additions:
+ *   - Each fixture also writes a per-run handoff dir at
+ *     `benchmarks/architect/results/<iso>/<fixtureId>/{manifest.md, plan-doc.md,
+ *     council-transcript.md}` so the PM bench can consume it via
+ *     `benchmarks/_lib/handoff.ts:loadArchitectHandoff` (per CONTRACTS.md C10).
+ *   - The per-fixture result entry carries `bench_handoff` paths so callers
+ *     can pin to this run.
+ *
  * Event-log emission is deliberately not wired here — benchmarks run outside
  * cycles per ADR 005. The result JSON is the audit trail.
  */
 
-import { readFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 
 import { writeResults } from '../_lib/results.ts';
@@ -34,6 +42,13 @@ type Case = {
   expected: ArchitectExpected;
 };
 
+type BenchHandoff = {
+  fixture_id: string;
+  manifest_path: string;
+  plan_doc_path: string;
+  council_transcript_path: string;
+};
+
 type CaseResult = {
   id: string;
   score: number;
@@ -46,6 +61,7 @@ type CaseResult = {
   tool_use: ToolUseSummary;
   elapsed_ms: number;
   cost_usd: number;
+  bench_handoff?: BenchHandoff;
   runner_error?: { kind: string; message: string };
 };
 
@@ -56,9 +72,37 @@ const here = import.meta.dirname;
 const promptsPath = join(here, 'prompts.json');
 const cases: Case[] = JSON.parse(readFileSync(promptsPath, 'utf8'));
 const ranAt = new Date().toISOString();
+const ranAtSlug = ranAt.replace(/[:.]/g, '-');
 
 let totalCostUsd = 0;
 let aborted = false;
+
+function emptyCriteria(): ArchitectCriteria {
+  return {
+    manifest_valid: 0,
+    project_context_lifted: 0,
+    escalations_resolved: 0,
+    downstream_pm_score: 0,
+    specs_concrete_per_feature: 0,
+    brain_consulted_qualified: 0,
+  };
+}
+
+function writeHandoff(fixtureId: string, r: RunArchitectResult): BenchHandoff {
+  const handoffDir = resolve(here, 'results', ranAtSlug, fixtureId);
+  mkdirSync(handoffDir, { recursive: true });
+  if (r.manifestText !== null) {
+    writeFileSync(join(handoffDir, 'manifest.md'), r.manifestText);
+  }
+  writeFileSync(join(handoffDir, 'plan-doc.md'), r.planDoc);
+  writeFileSync(join(handoffDir, 'council-transcript.md'), r.councilTranscript);
+  return {
+    fixture_id: fixtureId,
+    manifest_path: join('results', ranAtSlug, fixtureId, 'manifest.md'),
+    plan_doc_path: join('results', ranAtSlug, fixtureId, 'plan-doc.md'),
+    council_transcript_path: join('results', ranAtSlug, fixtureId, 'council-transcript.md'),
+  };
+}
 
 const results = await mapConcurrent(cases, CONCURRENCY, async (c): Promise<CaseResult> => {
   if (aborted || totalCostUsd >= SESSION_BUDGET_USD) {
@@ -67,7 +111,7 @@ const results = await mapConcurrent(cases, CONCURRENCY, async (c): Promise<CaseR
       id: c.id,
       score: 0,
       passed: false,
-      criteria: { manifest_valid: 0, scope_right_sized: 0, specs_concrete: 0, brain_consulted: 0 },
+      criteria: emptyCriteria(),
       manifest_errors: [],
       feature_count: 0,
       manifest_text: null,
@@ -97,7 +141,7 @@ const results = await mapConcurrent(cases, CONCURRENCY, async (c): Promise<CaseR
       id: c.id,
       score: 0,
       passed: false,
-      criteria: { manifest_valid: 0, scope_right_sized: 0, specs_concrete: 0, brain_consulted: 0 },
+      criteria: emptyCriteria(),
       manifest_errors: [],
       feature_count: 0,
       manifest_text: null,
@@ -115,11 +159,22 @@ const results = await mapConcurrent(cases, CONCURRENCY, async (c): Promise<CaseR
     ? {
         score: 0,
         passed: false,
-        criteria: { manifest_valid: 0, scope_right_sized: 0, specs_concrete: 0, brain_consulted: 0 },
+        criteria: emptyCriteria(),
         manifest_errors: [] as string[],
         feature_count: 0,
       }
-    : caseScore({ manifestText: r.manifestText, expected: c.expected });
+    : caseScore({
+        manifestText: r.manifestText,
+        siblingManifests: r.siblingManifestTexts,
+        planDoc: r.planDoc === '' ? undefined : r.planDoc,
+        councilTranscript: r.councilTranscript === '' ? undefined : r.councilTranscript,
+        expected: c.expected,
+      });
+
+  // Always write a handoff dir so the PM bench can consume it — even when
+  // the architect produced no manifest, the empty plan-doc/council-transcript
+  // surface tells downstream "this fixture failed upstream".
+  const bench_handoff = writeHandoff(c.id, r);
 
   const result: CaseResult = {
     id: c.id,
@@ -133,6 +188,7 @@ const results = await mapConcurrent(cases, CONCURRENCY, async (c): Promise<CaseR
     tool_use: r.toolUseSummary,
     elapsed_ms: r.durationMs,
     cost_usd: r.costUsd,
+    bench_handoff,
     ...(r.runnerError ? { runner_error: r.runnerError } : {}),
   };
 
@@ -143,6 +199,13 @@ const results = await mapConcurrent(cases, CONCURRENCY, async (c): Promise<CaseR
 const passed = results.filter((r) => r.passed).length;
 const elapsed = results.map((r) => r.elapsed_ms).filter((n) => n > 0);
 const noManifest = results.filter((r) => r.manifest_text === null).length;
+
+function meanCriterion(key: keyof ArchitectCriteria): number {
+  if (results.length === 0) return 0;
+  let sum = 0;
+  for (const r of results) sum += r.criteria[key];
+  return sum / results.length;
+}
 
 const summary = {
   phase: 'architect',
@@ -159,10 +222,12 @@ const summary = {
     total_cost_usd: totalCostUsd,
     aborted_on_budget: aborted,
     criterion_pass_rates: {
-      manifest_valid: cases.length === 0 ? 0 : results.filter((r) => r.criteria.manifest_valid === 1).length / cases.length,
-      scope_right_sized: cases.length === 0 ? 0 : results.filter((r) => r.criteria.scope_right_sized === 1).length / cases.length,
-      specs_concrete: cases.length === 0 ? 0 : results.filter((r) => r.criteria.specs_concrete === 1).length / cases.length,
-      brain_consulted: cases.length === 0 ? 0 : results.filter((r) => r.criteria.brain_consulted === 1).length / cases.length,
+      manifest_valid: meanCriterion('manifest_valid'),
+      project_context_lifted: meanCriterion('project_context_lifted'),
+      escalations_resolved: meanCriterion('escalations_resolved'),
+      downstream_pm_score: meanCriterion('downstream_pm_score'),
+      specs_concrete_per_feature: meanCriterion('specs_concrete_per_feature'),
+      brain_consulted_qualified: meanCriterion('brain_consulted_qualified'),
     },
   },
 };
@@ -172,5 +237,7 @@ process.stdout.write(JSON.stringify(summary, null, 2));
 process.stdout.write(`\n\n${passed}/${cases.length} cases passed (accuracy ${(summary.summary.accuracy * 100).toFixed(1)}%, threshold ${PASS_THRESHOLD})\n`);
 process.stdout.write(`p95 latency: ${summary.summary.p95_ms.toFixed(0)}ms — no-manifest rate: ${(summary.summary.no_manifest_rate * 100).toFixed(1)}% — cost $${totalCostUsd.toFixed(4)}\n`);
 const cpr = summary.summary.criterion_pass_rates;
-process.stdout.write(`criteria: valid=${(cpr.manifest_valid * 100).toFixed(0)}% scope=${(cpr.scope_right_sized * 100).toFixed(0)}% specs=${(cpr.specs_concrete * 100).toFixed(0)}% brain=${(cpr.brain_consulted * 100).toFixed(0)}%\n`);
+process.stdout.write(
+  `criteria: valid=${(cpr.manifest_valid * 100).toFixed(0)}% lifted=${(cpr.project_context_lifted * 100).toFixed(0)}% escalations=${(cpr.escalations_resolved * 100).toFixed(0)}% pm=${(cpr.downstream_pm_score * 100).toFixed(0)}% specs=${(cpr.specs_concrete_per_feature * 100).toFixed(0)}% brain=${(cpr.brain_consulted_qualified * 100).toFixed(0)}%\n`,
+);
 process.stdout.write(`results: ${outPath}\n`);

@@ -28,6 +28,7 @@ import {
   readdirSync,
   readFileSync,
   rmSync,
+  statSync,
   symlinkSync,
   writeFileSync,
 } from 'node:fs';
@@ -75,6 +76,15 @@ export type RunArchitectResult = {
   manifestText: string | null;
   /** Path to the manifest, relative to `tempdir`. */
   manifestPath: string | null;
+  /**
+   * Other manifests the architect wrote in the same session (B2 multi-initiative
+   * sessions). Empty for single-manifest fixtures (A1..A8 + B1).
+   */
+  siblingManifestTexts: string[];
+  /** PLAN.md content if the architect wrote one under projects/<project>/_architect/<session-id>/. */
+  planDoc: string;
+  /** Council transcript content if the architect wrote one alongside PLAN.md. */
+  councilTranscript: string;
   tempdir: string;
   durationMs: number;
   costUsd: number;
@@ -207,12 +217,48 @@ function findManifest(tempdir: string): { text: string; relPath: string } | null
   if (!existsSync(pendingDir)) return null;
   const files = readdirSync(pendingDir).filter((f) => f.endsWith('.md'));
   if (files.length === 0) return null;
-  // Multiple manifests written → take the first lexicographically and let the
-  // caller surface the error. The renderer told the agent to write exactly one.
+  // Multiple manifests written → take the first lexicographically. For
+  // single-manifest fixtures (A1..A8 + B1) the multi-manifest case is
+  // still surfaced as a runner_error. For B2 (multi-initiative session)
+  // siblings are collected separately via `collectSiblings`.
   const file = [...files].sort()[0];
   return {
     text: readFileSync(resolve(pendingDir, file), 'utf8'),
     relPath: join('_queue/pending', file),
+  };
+}
+
+function collectSiblings(tempdir: string, primaryRelPath: string | null): string[] {
+  const pendingDir = resolve(tempdir, '_queue', 'pending');
+  if (!existsSync(pendingDir)) return [];
+  const files = readdirSync(pendingDir).filter((f) => f.endsWith('.md')).sort();
+  const primaryFile = primaryRelPath ? primaryRelPath.split('/').pop() : null;
+  return files
+    .filter((f) => f !== primaryFile)
+    .map((f) => readFileSync(resolve(pendingDir, f), 'utf8'));
+}
+
+function findPlanArtifacts(
+  tempdir: string,
+  projectName: string,
+): { planDoc: string; councilTranscript: string } {
+  const archDir = resolve(tempdir, 'projects', projectName, '_architect');
+  if (!existsSync(archDir)) return { planDoc: '', councilTranscript: '' };
+  // Latest session by lexicographic order.
+  const sessions = readdirSync(archDir).filter((name) => {
+    try {
+      return statSync(resolve(archDir, name)).isDirectory();
+    } catch {
+      return false;
+    }
+  }).sort();
+  if (sessions.length === 0) return { planDoc: '', councilTranscript: '' };
+  const sessionDir = resolve(archDir, sessions[sessions.length - 1]!);
+  const planPath = resolve(sessionDir, 'PLAN.md');
+  const transcriptPath = resolve(sessionDir, 'council-transcript.md');
+  return {
+    planDoc: existsSync(planPath) ? readFileSync(planPath, 'utf8') : '',
+    councilTranscript: existsSync(transcriptPath) ? readFileSync(transcriptPath, 'utf8') : '',
   };
 }
 
@@ -263,9 +309,11 @@ export async function runArchitect(input: RunArchitectInput): Promise<RunArchite
 
   let manifestText: string | null = null;
   let manifestPath: string | null = null;
+  let siblingManifestTexts: string[] = [];
   if (manifest) {
     manifestText = manifest.text;
     manifestPath = manifest.relPath;
+    siblingManifestTexts = collectSiblings(tempdir, manifest.relPath);
     // Detect the multi-manifest case
     const pendingDir = resolve(tempdir, '_queue', 'pending');
     const fileCount = readdirSync(pendingDir).filter((f) => f.endsWith('.md')).length;
@@ -282,5 +330,18 @@ export async function runArchitect(input: RunArchitectInput): Promise<RunArchite
     };
   }
 
-  return { manifestText, manifestPath, tempdir, durationMs, costUsd, runnerError, toolUseSummary };
+  const { planDoc, councilTranscript } = findPlanArtifacts(tempdir, input.projectName);
+
+  return {
+    manifestText,
+    manifestPath,
+    siblingManifestTexts,
+    planDoc,
+    councilTranscript,
+    tempdir,
+    durationMs,
+    costUsd,
+    runnerError,
+    toolUseSummary,
+  };
 }

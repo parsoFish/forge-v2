@@ -109,6 +109,8 @@ process.chdir(FORGE_ROOT);
       return cmdBrain(args.slice(1));
     case 'architect':
       return await cmdArchitect(args.slice(1));
+    case 'watch':
+      return await cmdWatch(args.slice(1));
     case '--help':
     case '-h':
     case undefined:
@@ -164,6 +166,9 @@ Usage:
                                           (structural graph owned by the real safishamsi/graphify CLI — run: cd brain && graphify update .)
   forge brain bench:promote --cycle <id>  Walk reflector-emitted brain-bench candidates past the operator; promote into benchmarks/brain/questions.json
                                           Caps: ≤1 per cycle, ≤4 per calendar month. Accuracy floor 94.4%; promotion reverted on regression.
+  forge watch [--bridge-only] [--no-open] [--bridge-port <n>] [--ui-port <n>]
+                                          Bring up the forge operator UI (foreground; Ctrl-C quits).
+                                          Starts the WebSocket bridge + Next.js dev server, opens the browser.
 
 For phase-implementation guidance see docs/phases/. For decisions see docs/decisions/.`,
   );
@@ -1073,6 +1078,31 @@ async function cmdArchitect(rest: string[]): Promise<void> {
   console.error('forge architect: subcommands: commit <session-id>');
   console.error('  forge architect commit <session-id> [--project <name>] [--via-pr]');
   process.exit(2);
+}
+
+async function cmdWatch(rest: string[]): Promise<void> {
+  const { runWatch } = await import('../cli/forge-watch.ts');
+  const opts: { bridgeOnly?: boolean; bridgePort?: number; uiPort?: number; noOpen?: boolean } = {};
+  for (let i = 0; i < rest.length; i += 1) {
+    const a = rest[i];
+    if (a === '--bridge-only') opts.bridgeOnly = true;
+    else if (a === '--no-open') opts.noOpen = true;
+    else if (a === '--bridge-port') opts.bridgePort = Number(rest[++i]);
+    else if (a === '--ui-port') opts.uiPort = Number(rest[++i]);
+    else if (a === '--help' || a === '-h') {
+      console.log(`forge watch [--bridge-only] [--no-open] [--bridge-port <n>] [--ui-port <n>]
+  Bring up the forge operator UI.
+    --bridge-only  Run only the WebSocket bridge (no Next.js dev server).
+    --no-open      Skip launching the browser.
+    --bridge-port  HTTP/WS port for the bridge (default: OS-assigned).
+    --ui-port      Port for the Next.js dev server (default: 3000).`);
+      return;
+    } else {
+      console.error(`forge watch: unknown option ${a}`);
+      process.exit(2);
+    }
+  }
+  await runWatch({ forgeRoot: FORGE_ROOT, ...opts });
 }
 
 async function cmdArchitectCommit(rest: string[]): Promise<void> {

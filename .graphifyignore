@@ -13,7 +13,13 @@ _logs/
 _queue/
 _worktrees/
 _review/
-projects/
+# Excludes /projects/* (managed projects), NOT brain/projects/<name>/themes/
+# (per-project sub-wikis — load-bearing). Graphify's matcher tests every
+# path COMPONENT against the pattern, so a bare `projects/` would catch
+# both `/projects` AND `/brain/projects` — a real bug. The `*` suffix
+# anchors the pattern by requiring a slash-and-something following,
+# which only matches the top-level `projects/<name>` form.
+projects/*
 benchmarks/*/results/
 benchmarks/*/results-negatives/
 benchmarks/*/results-judged/

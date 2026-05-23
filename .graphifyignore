@@ -77,6 +77,8 @@ docs/planning/*/*.council.md
 docs/planning/*/EXECUTION-PLAN.md
 docs/planning/*/INDEX.md
 docs/planning/*/S*-SUMMARY.md
+docs/planning/*/S*-DECISIONS.md
+docs/planning/*/S*-PROPOSALS.md
 
 # Forge-root operator-pending stage decision scratch from the 2026-05-20
 # batch — transitional artifacts pending operator cleanup. Excluded per the

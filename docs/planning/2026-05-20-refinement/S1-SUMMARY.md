@@ -21,7 +21,7 @@ Dual-handle scheme: `<proj4>#<seq>` (e.g. `traf#7`) alongside canonical `INIT-�
 - **New code:** `orchestrator/initiative-id.ts` (~360 LOC), `scripts/backfill-aliases.ts`
 - **Tests:** 16 new (init-id) + 2 (backfill); full suite passing
 - **Concurrency:** `proper-lockfile@^4.1.2` ensures atomic mints
-- **Decisions:** [`S1.1-DECISIONS.md`](../../S1.1-DECISIONS.md) (11 numbered judgement calls)
+- **Decisions:** [`S1.1-DECISIONS.md`](./S1.1-DECISIONS.md) (11 numbered judgement calls)
 - **Operator-pending:** none (the `.claude/` argument-hint blocker was unblocked on merge and committed in `237d886`).
 
 ### S1.2 — Brain hygiene 01a (plan 01 #1-#5) ✓
@@ -33,9 +33,9 @@ Dual-handle scheme: `<proj4>#<seq>` (e.g. `traf#7`) alongside canonical `INIT-�
 - **Tests:** 23 brain-lint, 10 brain-index, 4 scrubber, 1 boundary regression
 - **Root cause found:** `restoreLiveBrain`'s `rmSync(recursive: false)` silently raised EISDIR on empty dirs — fixed + boundary test added
 - **Lint counts:** before 193 errors (incl. 128 contamination) → after 65 errors (54 broken `_logs/`/`projects/` links + 6 Tier-B frontmatter + 5 length errors, all pre-existing)
-- **Decisions:** [`S1.2-DECISIONS.md`](../../S1.2-DECISIONS.md)
+- **Decisions:** [`S1.2-DECISIONS.md`](./S1.2-DECISIONS.md)
 - **Operator-pending:**
-  - [`S1.2-TIER-B-PROPOSALS.md`](../../S1.2-TIER-B-PROPOSALS.md) — 6 frontmatter category violations held for manual ratification (per `feedback_destructive_instruction_preserve_intent`). Sed-ready apply commands included.
+  - [`S1.2-TIER-B-PROPOSALS.md`](./S1.2-TIER-B-PROPOSALS.md) — 6 frontmatter category violations held for manual ratification (per `feedback_destructive_instruction_preserve_intent`). Sed-ready apply commands included.
   - `npm run bench:brain` — not run during stage (cost). Per plan 01 §"Cleanup playbook" #4, structural changes should not move the score; running on wake is the AC7 confirmation.
 
 ### S1.3 — `assertLocalRemoteSynced` at dev-loop close ✓
@@ -47,7 +47,7 @@ Small targeted bug-fix: dev-loop close now asserts local↔remote sync and emits
 - **Tests:** 3 (divergence-throws + unpushed-commit-throws + clean-passes-silently)
 - **Event shape:** `event_type: 'error'` with `message: 'dev-loop.branch-divergence'` on fail, `'log'` with `'dev-loop.branch-sync-ok'` on pass
 - **Preserve-intent:** existing `cycle.ts:enforceDevLoopCloseInvariant` kept intact — new call is additional, phase-scoped, fires before the cycle-level check
-- **Decisions:** [`S1.3-DECISIONS.md`](../../S1.3-DECISIONS.md)
+- **Decisions:** [`S1.3-DECISIONS.md`](./S1.3-DECISIONS.md)
 - **Operator-pending:** none.
 
 ### S1.4 — Graphify additive brain layer (plan 01 #8-#10) ✓ — REVISED 2026-05-23

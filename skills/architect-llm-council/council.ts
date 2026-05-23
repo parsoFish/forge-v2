@@ -420,11 +420,24 @@ function renderCriticPrompt(
   ].filter((s) => s !== '').join('\n');
 }
 
+/**
+ * S8 / C24 — Council uses Haiku by default; Sonnet by exception.
+ *
+ * - `ceo`, `design`, `dx` → `'haiku'`. These critics do structured-JSON
+ *   classification of a draft against a stable rubric. Haiku is 90% of
+ *   Sonnet quality on classification at ~1/3 the per-token cost.
+ * - `eng` → `'sonnet'`. The engineering critic needs code-reading depth
+ *   (checks acceptance-criteria verifiability, atomicity of WIs, rollback
+ *   paths) — Sonnet's reasoning-on-code edge matters here.
+ *
+ * Combined with C23's prompt caching (shared projectContext block reused
+ * across all 4 critics), the council's natural cost floor drops ~50-60%.
+ */
 export function defaultCritics(): Critic[] {
   return [
     {
       name: 'ceo',
-      model: 'sonnet',
+      model: 'haiku',
       prompt: [
         'You are the CEO critic. Evaluate strategic alignment.',
         '- Does this initiative align with the project\'s stated direction?',
@@ -446,7 +459,7 @@ export function defaultCritics(): Critic[] {
     },
     {
       name: 'design',
-      model: 'sonnet',
+      model: 'haiku',
       prompt: [
         'You are the design critic. Evaluate user experience.',
         '- For user-facing initiatives: is the experience considered (states, edge cases, accessibility)?',
@@ -456,7 +469,7 @@ export function defaultCritics(): Critic[] {
     },
     {
       name: 'dx',
-      model: 'sonnet',
+      model: 'haiku',
       prompt: [
         'You are the developer-experience critic. Evaluate maintainability.',
         '- Does this make the project easier or harder to work on next month?',

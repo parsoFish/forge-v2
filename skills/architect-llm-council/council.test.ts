@@ -274,6 +274,51 @@ test('runCouncil: respects maxDraftChars by truncating long drafts before invoki
   );
 });
 
+test('defaultCritics: routes ceo/design/dx to haiku and eng to sonnet (C24)', () => {
+  // S8 / C24: cost-floor lever. ceo/design/dx do structured-JSON
+  // classification of a draft against a stable rubric — Haiku-grade work.
+  // eng needs code-reading depth, stays on Sonnet.
+  const critics = defaultCritics();
+  const byName = Object.fromEntries(critics.map((c) => [c.name, c.model]));
+  assert.equal(byName.ceo, 'haiku', 'ceo on haiku');
+  assert.equal(byName.design, 'haiku', 'design on haiku');
+  assert.equal(byName.dx, 'haiku', 'dx on haiku');
+  assert.equal(byName.eng, 'sonnet', 'eng stays on sonnet (code-reading depth)');
+});
+
+test('runCouncil: passes per-critic model through to the SDK options (verifies live routing)', async () => {
+  // S8 / C24: prove the routing is wired end-to-end — flipping
+  // `Critic.model` actually changes what the SDK sees, so the cost
+  // benefit lands in production not just in the typescript types.
+  const observedModels: Record<string, unknown> = {};
+  const queryFn: CouncilQueryFn = ({ options }) => {
+    const opts = (options ?? {}) as Record<string, unknown>;
+    const name = String(opts._criticName ?? '<unknown>');
+    observedModels[name] = opts.model;
+    async function* gen() {
+      yield {
+        type: 'result',
+        subtype: 'success',
+        total_cost_usd: 0.01,
+        num_turns: 1,
+        structured_output: { flags: [], escalations: [] },
+      };
+    }
+    return gen();
+  };
+
+  await runCouncil({
+    draft: DRAFT,
+    critics: defaultCritics(),
+    queryFn,
+  });
+
+  assert.equal(observedModels.ceo, 'haiku');
+  assert.equal(observedModels.design, 'haiku');
+  assert.equal(observedModels.dx, 'haiku');
+  assert.equal(observedModels.eng, 'sonnet');
+});
+
 test('runCouncil: a synthetic 20k-char draft does not throw (default maxDraftChars 50_000 accommodates it)', async () => {
   const critics: Critic[] = [{ name: 'ceo', prompt: 'CEO', model: 'sonnet' }];
   const draft = '# huge\n' + 'y'.repeat(20_000);

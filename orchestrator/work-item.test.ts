@@ -221,3 +221,91 @@ test('parseWorkItem: throws on missing required field', () => {
   const md = `---\nfeature_id: FEAT-1\n---\n\nbody`;
   assert.throws(() => parseWorkItem(md), /work_item_id/);
 });
+
+// ----- S3 refinement (2026-05-20): new optional WI fields per C5 -----
+// quality_gate_cmd, non_goals, verification_artifact, creates.
+// All omit-on-undefined; round-trip preservation is load-bearing.
+
+test('round-trip: a pre-amendment WI (no new fields) serialises byte-identically', () => {
+  const w = fixture();
+  // First serialise → parse → re-serialise. Without any new fields, the
+  // bytes must be identical to today's PM output shape (i.e., none of the
+  // new keys leak into frontmatter).
+  const md1 = serializeWorkItem(w);
+  const reparsed = parseWorkItem(md1);
+  const md2 = serializeWorkItem(reparsed);
+  assert.equal(md1, md2, 'round-trip must be byte-identical');
+  // Belt-and-braces: confirm no new keys leaked into frontmatter when undefined.
+  assert.ok(!md1.includes('quality_gate_cmd'), 'quality_gate_cmd must not appear when undefined');
+  assert.ok(!md1.includes('non_goals'), 'non_goals must not appear when undefined');
+  assert.ok(!md1.includes('verification_artifact'), 'verification_artifact must not appear when undefined');
+  assert.ok(!md1.includes('\ncreates:'), 'creates must not appear when undefined');
+});
+
+test('quality_gate_cmd: round-trips a valid non-empty array', () => {
+  const w = fixture({ quality_gate_cmd: ['npm', 'test', '--', 'tests/x.test.ts'] });
+  const md = serializeWorkItem(w);
+  assert.match(md, /quality_gate_cmd:/);
+  const parsed = parseWorkItem(md);
+  assert.deepEqual(parsed.quality_gate_cmd, ['npm', 'test', '--', 'tests/x.test.ts']);
+  assert.deepEqual(validateWorkItem(parsed), []);
+});
+
+test('quality_gate_cmd: empty array is rejected by validateWorkItem', () => {
+  const errors = validateWorkItem(fixture({ quality_gate_cmd: [] }));
+  assert.ok(errors.some((e) => e.includes('quality_gate_cmd')), `got ${JSON.stringify(errors)}`);
+});
+
+test('non_goals: round-trips an array of strings', () => {
+  const w = fixture({ non_goals: ['docs', 'the bar component'] });
+  const md = serializeWorkItem(w);
+  assert.match(md, /non_goals:/);
+  const parsed = parseWorkItem(md);
+  assert.deepEqual(parsed.non_goals, ['docs', 'the bar component']);
+  assert.deepEqual(validateWorkItem(parsed), []);
+});
+
+test('non_goals: empty-string entries are rejected', () => {
+  const errors = validateWorkItem(fixture({ non_goals: ['real', ''] }));
+  assert.ok(errors.some((e) => e.toLowerCase().includes('non_goals')), `got ${JSON.stringify(errors)}`);
+});
+
+test('verification_artifact: path inside files_in_scope round-trips', () => {
+  const w = fixture({
+    files_in_scope: ['src/handler.ts', 'tests/x.test.ts'],
+    verification_artifact: 'tests/x.test.ts',
+  });
+  const md = serializeWorkItem(w);
+  assert.match(md, /verification_artifact:/);
+  const parsed = parseWorkItem(md);
+  assert.equal(parsed.verification_artifact, 'tests/x.test.ts');
+  assert.deepEqual(validateWorkItem(parsed), []);
+});
+
+test('verification_artifact: path not in files_in_scope is rejected', () => {
+  const errors = validateWorkItem(fixture({
+    files_in_scope: ['src/handler.ts'],
+    verification_artifact: 'tests/x.test.ts',
+  }));
+  assert.ok(errors.some((e) => e.includes('verification_artifact')), `got ${JSON.stringify(errors)}`);
+});
+
+test('creates: subset of files_in_scope round-trips', () => {
+  const w = fixture({
+    files_in_scope: ['src/handler.ts', 'tests/x.test.ts'],
+    creates: ['tests/x.test.ts'],
+  });
+  const md = serializeWorkItem(w);
+  assert.match(md, /creates:/);
+  const parsed = parseWorkItem(md);
+  assert.deepEqual(parsed.creates, ['tests/x.test.ts']);
+  assert.deepEqual(validateWorkItem(parsed), []);
+});
+
+test('creates: entry not in files_in_scope is rejected', () => {
+  const errors = validateWorkItem(fixture({
+    files_in_scope: ['src/handler.ts'],
+    creates: ['tests/x.test.ts'],
+  }));
+  assert.ok(errors.some((e) => e.includes('creates')), `got ${JSON.stringify(errors)}`);
+});

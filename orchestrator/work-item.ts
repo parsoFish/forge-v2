@@ -32,6 +32,21 @@ export type WorkItem = {
   acceptance_criteria: AcceptanceCriterion[];
   files_in_scope: string[];        // worktree-relative
   estimated_iterations: number;    // > 0
+  /**
+   * S3 refinement (2026-05-20, ADR 015 §"Refinement 2026-05-20" + CONTRACTS.md
+   * C5). The four fields below are OPTIONAL and serialised **omit-on-undefined**
+   * — a WI without any of them produces frontmatter byte-identical to the
+   * pre-amendment shape (round-trip test in work-item.test.ts).
+   */
+
+  /** Per-WI gate command override (defaults to manifest's). Non-empty when set. */
+  quality_gate_cmd?: string[];
+  /** Explicit out-of-scope items for this WI (passed through from manifest non_goals). */
+  non_goals?: string[];
+  /** Path (must appear in files_in_scope) the dev-loop must produce that the gate exercises. */
+  verification_artifact?: string;
+  /** Structured marker — files this WI creates from scratch. Subset of files_in_scope. */
+  creates?: string[];
   body: string;
 };
 
@@ -57,7 +72,7 @@ export function parseWorkItem(content: string): WorkItem {
   const estimated_iterations = numberField(data, 'estimated_iterations', false) ?? 0;
   const acceptance_criteria = parseAcceptanceCriteria(data);
 
-  return {
+  const w: WorkItem = {
     work_item_id,
     feature_id,
     initiative_id,
@@ -68,6 +83,26 @@ export function parseWorkItem(content: string): WorkItem {
     estimated_iterations,
     body: parsed.content.replace(/^\n+/, ''),
   };
+
+  // S3 refinement (C5): omit-on-undefined optional fields. Only set the
+  // property if the frontmatter declared it.
+  if (Array.isArray(data.quality_gate_cmd)) {
+    const cmd = (data.quality_gate_cmd as unknown[]).filter((s): s is string => typeof s === 'string');
+    if (cmd.length > 0) w.quality_gate_cmd = cmd;
+  }
+  if (Array.isArray(data.non_goals)) {
+    const ng = (data.non_goals as unknown[]).filter((s): s is string => typeof s === 'string');
+    if (ng.length > 0) w.non_goals = ng;
+  }
+  if (typeof data.verification_artifact === 'string' && data.verification_artifact.length > 0) {
+    w.verification_artifact = data.verification_artifact;
+  }
+  if (Array.isArray(data.creates)) {
+    const c = (data.creates as unknown[]).filter((s): s is string => typeof s === 'string');
+    if (c.length > 0) w.creates = c;
+  }
+
+  return w;
 }
 
 export function serializeWorkItem(w: WorkItem): string {
@@ -85,6 +120,21 @@ export function serializeWorkItem(w: WorkItem): string {
     files_in_scope: w.files_in_scope,
     estimated_iterations: w.estimated_iterations,
   };
+  // S3 refinement (C5): omit-on-undefined. When a WI doesn't carry the new
+  // fields, frontmatter stays byte-identical to the pre-amendment shape
+  // (load-bearing round-trip test in work-item.test.ts).
+  if (w.quality_gate_cmd !== undefined && w.quality_gate_cmd.length > 0) {
+    data.quality_gate_cmd = w.quality_gate_cmd;
+  }
+  if (w.non_goals !== undefined && w.non_goals.length > 0) {
+    data.non_goals = w.non_goals;
+  }
+  if (w.verification_artifact !== undefined && w.verification_artifact.length > 0) {
+    data.verification_artifact = w.verification_artifact;
+  }
+  if (w.creates !== undefined && w.creates.length > 0) {
+    data.creates = w.creates;
+  }
   return matter.stringify('\n' + w.body.replace(/^\n+/, ''), data);
 }
 
@@ -163,6 +213,45 @@ export function validateWorkItem(w: WorkItem, opts: ValidateOptions = {}): strin
 
   if (!(w.estimated_iterations > 0)) {
     errors.push(`estimated_iterations must be > 0: got ${w.estimated_iterations}`);
+  }
+
+  // S3 refinement (C5): validate the new optional fields. All four are
+  // optional — but if present, they must be well-formed.
+  if (w.quality_gate_cmd !== undefined) {
+    if (!Array.isArray(w.quality_gate_cmd) || w.quality_gate_cmd.length === 0) {
+      errors.push('quality_gate_cmd must be a non-empty array of strings when set');
+    } else if (!w.quality_gate_cmd.every((s) => typeof s === 'string' && s.length > 0)) {
+      errors.push('quality_gate_cmd entries must be non-empty strings');
+    }
+  }
+  if (w.non_goals !== undefined) {
+    if (!Array.isArray(w.non_goals)) {
+      errors.push('non_goals must be an array of strings when set');
+    } else if (!w.non_goals.every((s) => typeof s === 'string' && s.length > 0)) {
+      errors.push('non_goals entries must be non-empty strings');
+    }
+  }
+  if (w.verification_artifact !== undefined) {
+    if (typeof w.verification_artifact !== 'string' || w.verification_artifact.length === 0) {
+      errors.push('verification_artifact must be a non-empty string when set');
+    } else if (!w.files_in_scope.includes(w.verification_artifact)) {
+      errors.push(
+        `verification_artifact ${w.verification_artifact} must appear in files_in_scope`,
+      );
+    }
+  }
+  if (w.creates !== undefined) {
+    if (!Array.isArray(w.creates)) {
+      errors.push('creates must be an array of strings when set');
+    } else {
+      for (const path of w.creates) {
+        if (typeof path !== 'string' || path.length === 0) {
+          errors.push('creates entries must be non-empty strings');
+        } else if (!w.files_in_scope.includes(path)) {
+          errors.push(`creates entry ${path} must appear in files_in_scope`);
+        }
+      }
+    }
   }
 
   return errors;

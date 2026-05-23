@@ -83,6 +83,28 @@ estimated_iterations: 3                         # int > 0; soft hint to the Ralp
 - `estimated_iterations` > 0.
 - Body is free-form markdown. **No code blocks containing implementations** — acceptance criteria are the contract, the developer loop writes the code. (Enforced by convention, not validator.)
 
+### 3a. Optional extension fields (added 2026-05-20 per [CONTRACTS.md C5](../planning/2026-05-20-refinement/CONTRACTS.md))
+
+Four optional fields extend the schema. **All four are omit-on-undefined: a WI without any of them produces frontmatter byte-identical to the pre-amendment shape.** A round-trip preservation test in `orchestrator/work-item.test.ts` asserts byte-equality for the pre-amendment WI; a refactor that changes the serialisation order of the existing fields would break it.
+
+```yaml
+quality_gate_cmd: ["npm", "test", "--", "tests/x.test.ts"]   # per-WI gate command override
+non_goals: ["docs", "the bar component"]                     # explicit out-of-scope items
+verification_artifact: tests/x.test.ts                       # path the dev-loop must produce
+creates: [tests/x.test.ts]                                   # files this WI creates from scratch
+```
+
+**Validation rules** (enforced by `orchestrator/work-item.ts:validateWorkItem`):
+
+- `quality_gate_cmd`, if present, is a non-empty array of non-empty strings.
+- `non_goals`, if present, is an array of non-empty strings.
+- `verification_artifact`, if present, is a non-empty string AND must appear in `files_in_scope`.
+- `creates`, if present, is an array of non-empty strings AND every entry must appear in `files_in_scope`.
+
+**Serialisation rule (load-bearing):** when a field is `undefined` OR an empty array OR an empty string, it is **omitted** from the YAML frontmatter — not serialised as `[]` / `""` / `null`. This keeps every WI written before the 2026-05-20 amendment byte-identical on round-trip.
+
+**`demo_hook` is NOT a WI field** (per C5 / C15b). It lives at the initiative level only; PM does not author demos.
+
 ### 4. File location
 
 - Work-item files: `<worktree>/.forge/work-items/<work-item-id>.md`.
@@ -120,3 +142,16 @@ estimated_iterations: 3                         # int > 0; soft hint to the Ralp
 - [`skills/project-manager/SKILL.md`](../../skills/project-manager/SKILL.md) — interactive skill that emits work items.
 - [`orchestrator/manifest.ts`](../../orchestrator/manifest.ts) — manifest schema; sibling pattern for `work-item.ts`.
 - Brain themes: `spec-driven-work-items`, `design-is-the-bottleneck`, `work-item-completion-by-domain`, `markdown-artifact-flow`, `brain/projects/env-optimiser/themes/specify-driven-features`.
+
+## Refinement 2026-05-20 (S3, batch `2026-05-20-refinement`)
+
+**Amendment** — does not replace any of §1-4. Adds §3a (optional extension fields). All four new fields (`quality_gate_cmd`, `non_goals`, `verification_artifact`, `creates`) are optional and omit-on-undefined; pre-amendment WIs round-trip byte-identically.
+
+**Why now.** The 2026-05-18 intersection-backpressure cycle surfaced a class of decomposition failures the 6-criterion bench couldn't catch: feature hallucination (WI-8 declared `FEAT-5` against a 4-feature manifest), file-creation ambiguity (multiple WIs implicitly "created" the same file), and trivially-green dev-loops (no per-WI gate ⇒ Ralph exits on iteration 0 because the whole-project test pass). These four fields make each of those failure modes deterministically scoreable.
+
+**Cross-references.**
+- [CONTRACTS.md](../planning/2026-05-20-refinement/CONTRACTS.md) C5 (the locked contract), C5a (the `knownFeatureIds` load-bearing wiring), C5b (the hallucinated-FEAT recovery flow), C11 (`initiatives.json` migration).
+- [Plan 03](../planning/2026-05-20-refinement/03-project-manager.md) §"Required WI fields", §"Bench redesign".
+- Reference implementation: `orchestrator/work-item.ts` (parser, validator, omit-on-undefined serialiser); `orchestrator/work-item.test.ts` (round-trip test); `benchmarks/project-manager/scoring.ts` (the deterministic `files_real_or_explicitly_new` and `one_creator_per_file` criteria that consume `creates`).
+
+The schema fields locked in §1-3 (`work_item_id`, `feature_id`, `initiative_id`, `status`, `depends_on`, `acceptance_criteria`, `files_in_scope`, `estimated_iterations`) remain required. The four new fields in §3a remain optional indefinitely — they tighten signal without breaking any WI that doesn't need them.

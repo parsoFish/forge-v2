@@ -35,7 +35,11 @@ graphify (additive brain layer), and a token economy plan.
    cross-phase handoff + `interview_section_present` gate) closure. Bench
    surface + scoring + fixtures + harness migration landed; LLM-driven
    bench run operator-pending (API-key blocker).
-6. Each plan + its council review below.
+6. **[S3-CLOSURE.md](./S3-CLOSURE.md)** — S3 (PM refinement: C5 WI schema,
+   knownFeatureIds wiring, hallucinated-FEAT retry, bench rubric, C11
+   migration, architect→PM handoff) closure. Plumbing wired; chained-bench
+   run operator-pending.
+7. Each plan + its council review below.
 
 ## Plans
 

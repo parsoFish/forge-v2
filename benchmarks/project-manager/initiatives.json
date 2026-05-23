@@ -53,5 +53,17 @@
       "max_work_items": 4,
       "parallel_fraction_at_least": 0.5
     }
+  },
+  {
+    "id": "P6-from-architect-B1-betterado",
+    "from_architect": "B1-betterado-substrate-only",
+    "project": "terraform-provider-betterado",
+    "expected": {}
+  },
+  {
+    "id": "P7-from-architect-A3-trafficGame-ci",
+    "from_architect": "A3-ci",
+    "project": "trafficGame",
+    "expected": {}
   }
 ]

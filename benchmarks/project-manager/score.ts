@@ -12,7 +12,7 @@
  * give the PM a real worktree to read.
  */
 
-import { readFileSync, readdirSync, statSync } from 'node:fs';
+import { mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
 import { join, relative, resolve } from 'node:path';
 
 import { writeResults } from '../_lib/results.ts';
@@ -29,8 +29,10 @@ import {
   type PmCriteria,
 } from './scoring.ts';
 import { parseManifest } from '../../orchestrator/manifest.ts';
+import { serializeWorkItem } from '../../orchestrator/work-item.ts';
 import type { PmToolUseSummary } from '../../orchestrator/pm-invocation.ts';
 import { parseSource, emitChainedSliceAndExit } from '../_lib/source-switch.ts';
+import { loadArchitectHandoff } from '../_lib/handoff.ts';
 
 // --source=chained: print this phase's slice of the latest chained run
 // (scored by the SAME caseScore below) and exit. Default golden path
@@ -52,7 +54,20 @@ type CaseExpected = {
 
 type Case = {
   id: string;
-  initiative_manifest: string;        // relative to this dir
+  /**
+   * Static fixture path (relative to this dir). Optional when `from_architect`
+   * is set — in that case the manifest is read from the architect bench's
+   * latest run via `loadArchitectHandoff`.
+   */
+  initiative_manifest?: string;
+  /**
+   * Cross-phase handoff (per C10 + plan 02 §"Cross-phase contract"). When set,
+   * the bench resolves the initiative manifest by calling
+   * `loadArchitectHandoff(<fixtureId>)` against the architect bench's latest
+   * `results/<iso>/<fixtureId>/manifest.md`. This is how the architect-bench
+   * output becomes the PM-bench input — closes the chain.
+   */
+  from_architect?: string;
   project: string;
   project_tree?: string;              // relative to this dir
   expected: CaseExpected;
@@ -83,9 +98,34 @@ const here = import.meta.dirname;
 const casesPath = join(here, 'initiatives.json');
 const cases: Case[] = JSON.parse(readFileSync(casesPath, 'utf8'));
 const ranAt = new Date().toISOString();
+const ranAtSlug = ranAt.replace(/[:.]/g, '-');
 
 let totalCostUsd = 0;
 let aborted = false;
+
+/**
+ * Write the PM handoff dir for `loadPmHandoff` consumers (dev-loop bench).
+ * Layout per `_lib/handoff.ts`:
+ *   results/<iso>/handoff/<fixtureId>/
+ *     ├── WI-<n>.md  (serialised work items)
+ *     ├── _graph.md  (the topology graph)
+ *     └── _quality-gate.json  (the manifest's gate command, used by dev-loop)
+ */
+function writePmHandoff(
+  fixtureId: string,
+  r: RunPmResult,
+  qualityGateCmd: string[],
+): void {
+  const handoffDir = resolve(here, 'results', ranAtSlug, 'handoff', fixtureId);
+  mkdirSync(handoffDir, { recursive: true });
+  for (const wi of r.workItems) {
+    writeFileSync(join(handoffDir, `${wi.work_item_id}.md`), serializeWorkItem(wi));
+  }
+  if (r.graphText !== null) {
+    writeFileSync(join(handoffDir, '_graph.md'), r.graphText);
+  }
+  writeFileSync(join(handoffDir, '_quality-gate.json'), JSON.stringify(qualityGateCmd));
+}
 
 function emptyCriteria(): PmCriteria {
   return {
@@ -198,8 +238,64 @@ const results = await mapConcurrent(cases, CONCURRENCY, async (c): Promise<CaseR
     };
   }
 
-  const manifestAbsPath = resolve(here, c.initiative_manifest);
-  const initiativeManifest = readFileSync(manifestAbsPath, 'utf8');
+  let initiativeManifest: string;
+  let manifestSource: string;
+  if (c.from_architect) {
+    // Cross-phase handoff (C10): consume the architect bench's output.
+    try {
+      const handoff = loadArchitectHandoff(c.from_architect);
+      initiativeManifest = handoff.manifestText;
+      manifestSource = `loadArchitectHandoff('${c.from_architect}')`;
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      return {
+        id: c.id,
+        score: 0,
+        passed: false,
+        criteria: emptyCriteria(),
+        set_errors: [],
+        per_item_errors: {},
+        hidden_coupling_pairs: [],
+        work_item_count: 0,
+        parallel_fraction: 0,
+        work_items_dir_rel: null,
+        parse_errors: {},
+        tool_use: { brainReads: 0, writes: 0, bashCalls: 0 },
+        elapsed_ms: 0,
+        cost_usd: 0,
+        runner_error: {
+          kind: 'no_architect_handoff',
+          message: `from_architect='${c.from_architect}' but ${message}`,
+        },
+      };
+    }
+  } else if (c.initiative_manifest) {
+    const manifestAbsPath = resolve(here, c.initiative_manifest);
+    initiativeManifest = readFileSync(manifestAbsPath, 'utf8');
+    manifestSource = c.initiative_manifest;
+  } else {
+    return {
+      id: c.id,
+      score: 0,
+      passed: false,
+      criteria: emptyCriteria(),
+      set_errors: [],
+      per_item_errors: {},
+      hidden_coupling_pairs: [],
+      work_item_count: 0,
+      parallel_fraction: 0,
+      work_items_dir_rel: null,
+      parse_errors: {},
+      tool_use: { brainReads: 0, writes: 0, bashCalls: 0 },
+      elapsed_ms: 0,
+      cost_usd: 0,
+      runner_error: {
+        kind: 'no_manifest_source',
+        message: `Case ${c.id} declares neither initiative_manifest nor from_architect`,
+      },
+    };
+  }
+  process.stderr.write(`[bench:pm] case ${c.id}: manifest from ${manifestSource}\n`);
   const parsedManifest = parseManifest(initiativeManifest);
   const initiativeId = parsedManifest.initiative_id;
   const knownFeatureIds = parsedManifest.features.map((f) => f.feature_id);
@@ -276,6 +372,31 @@ const results = await mapConcurrent(cases, CONCURRENCY, async (c): Promise<CaseR
     cost_usd: r.costUsd,
     ...(r.runnerError ? { runner_error: r.runnerError } : {}),
   };
+
+  // Cross-phase handoff write (per plan 03 §"Cross-phase contract"): the
+  // dev-loop bench consumes `{WI-N.md, _graph.md, _quality-gate.json}` via
+  // `loadPmHandoff(fixtureId)`. The quality_gate_cmd defaults to the
+  // manifest's; if the architect omitted one, dev-loop falls back to its
+  // own project default. We write the handoff for ALL fixtures so a future
+  // dev-loop bench run can pick up any case.
+  if (r.workItems.length > 0) {
+    const manifestGateCmd: string[] = [];
+    // Best-effort: parse the manifest body for `quality_gate_cmd:` line
+    // (architect's per-C4 emission). If absent, write an empty array — the
+    // dev-loop bench treats empty as "use project default".
+    const cmdMatch = initiativeManifest.match(/^quality_gate_cmd:\s*(.+)$/m);
+    if (cmdMatch) {
+      try {
+        const parsed = JSON.parse(cmdMatch[1]!);
+        if (Array.isArray(parsed) && parsed.every((s) => typeof s === 'string')) {
+          manifestGateCmd.push(...parsed);
+        }
+      } catch {
+        /* leave empty */
+      }
+    }
+    writePmHandoff(c.id, r, manifestGateCmd);
+  }
 
   cleanupTempdir(r.tempdir);
   return result;

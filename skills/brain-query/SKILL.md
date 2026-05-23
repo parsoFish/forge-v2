@@ -64,11 +64,12 @@ The question is fielded in two passes; the second is conditional on the first be
 
 1. **Parse the question.** Identify keywords + likely category + whether the phrasing is structural ("which theme bridges …", "what's connected to …", "two hops from …", "what's the longest dependency chain in …"). Record this for the graph-vs-narrative routing.
 
-2. **Graph-first lookup** via the real `graphify` CLI against `brain/graphify-out/graph.json`. Always run from inside `brain/` (graphify resolves the graph relative to cwd):
+2. **Graph-first lookup** via the real `graphify` CLI against `brain/graphify-out/graph.json` (canonical path; `./graphify-out` at forge root is a symlink to it per C21a). Always run from forge root — per C21a the graph spans the whole forge architecture (orchestrator/skills/loops/docs + brain), not just brain/:
    - For structural phrasings, pick the operation:
-     - "what bridges A and B" / shortest connection → `cd brain && graphify path "<node-a>" "<node-b>"`
-     - "what's near <node>" / "describe <node>" → `cd brain && graphify explain "<node>"`
-     - free-form structural question → `cd brain && graphify query "<the-question>"` (BFS traversal, token-efficient)
+     - "what bridges A and B" / shortest connection → `cd /home/parso/forge && graphify path "<node-a>" "<node-b>"`
+     - "what's near <node>" / "describe <node>" → `cd /home/parso/forge && graphify explain "<node>"`
+     - "what code touches this theme" / "which orchestrator module implements <pattern>" → `cd /home/parso/forge && graphify affected "<node>"` (reverse traversal — the C21a corpus widening makes this work; brain-only graphs couldn't answer cross-cluster questions)
+     - free-form structural question → `cd /home/parso/forge && graphify query "<the-question>"` (BFS traversal, token-efficient)
    - For non-structural questions, still extract candidate theme ids by keyword (step 3a) and then run `graphify explain <id>` on each top candidate to widen the recall set with structurally-adjacent themes the keyword scan would miss.
    - The graph contributes node ids (paths), not synthesised text. Treat returned ids as additional source candidates for step 4.
 

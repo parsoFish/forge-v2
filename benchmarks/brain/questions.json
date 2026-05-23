@@ -273,5 +273,43 @@
     "scope": "terraform-provider-betterado",
     "category": null,
     "source_cycle": "manual-seed-2026-05-23"
+  },
+  {
+    "id": "Q24",
+    "question": "Where in forge is the demo embedded into a PR, and which brain theme records the visibility-aware rationale?",
+    "expected_sources": [
+      "brain/forge/themes/pr-as-sole-review-window.md"
+    ],
+    "expected_keywords": ["pr.ts", "embedDemoInPr", "demo", "visibility", "DEMO.md", "raw-url", "private-repo"],
+    "scope": null,
+    "category": "pattern",
+    "source_cycle": "brain-refinement-2026-05-23",
+    "graph_dependent": true
+  },
+  {
+    "id": "Q25",
+    "question": "Which orchestrator module implements the developer-loop unifier sub-phase, and what's the canonical pattern this collapses?",
+    "expected_sources": [
+      "brain/forge/themes/six-phases-of-forge.md",
+      "brain/forge/themes/spec-driven-work-items.md"
+    ],
+    "expected_keywords": ["unifier-invocation", "developer-unifier", "review", "demo", "PR", "unify", "initiative"],
+    "scope": null,
+    "category": "pattern",
+    "source_cycle": "brain-refinement-2026-05-23",
+    "graph_dependent": true
+  },
+  {
+    "id": "Q26",
+    "question": "Show the shortest connection between the brain-read-policy theme and the developer-loop runtime — i.e. what concept bridges them?",
+    "expected_sources": [
+      "brain/forge/themes/brain-read-policy.md",
+      "brain/forge/themes/ralph-loop-pattern.md"
+    ],
+    "expected_keywords": ["brain-read-policy", "developer-loop", "ralph", "skip", "planner-encoded"],
+    "scope": null,
+    "category": null,
+    "source_cycle": "brain-refinement-2026-05-23",
+    "graph_dependent": true
   }
 ]

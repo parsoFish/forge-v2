@@ -44,18 +44,23 @@ export type ConnectionState = 'connecting' | 'open' | 'reconnecting' | 'no-bridg
 
 // ---- runtime bridge URL --------------------------------------------------
 
-let cachedBridgeUrl: string | null = null;
+// Cache the PROMISE rather than the value so concurrent callers
+// (Strict Mode double-mount, two effects running on the same tick)
+// share a single network request.
+let cachedBridgeUrl: Promise<string> | null = null;
 
-export async function resolveBridgeUrl(): Promise<string> {
-  if (cachedBridgeUrl !== null) return cachedBridgeUrl;
-  try {
-    const res = await fetch('/api/forge-config', { cache: 'no-store' });
-    if (!res.ok) throw new Error(`forge-config → ${res.status}`);
-    const body = (await res.json()) as { bridgeUrl: string };
-    cachedBridgeUrl = body.bridgeUrl;
-  } catch {
-    cachedBridgeUrl = '';
-  }
+export function resolveBridgeUrl(): Promise<string> {
+  if (cachedBridgeUrl) return cachedBridgeUrl;
+  cachedBridgeUrl = (async () => {
+    try {
+      const res = await fetch('/api/forge-config', { cache: 'no-store' });
+      if (!res.ok) throw new Error(`forge-config → ${res.status}`);
+      const body = (await res.json()) as { bridgeUrl: string };
+      return body.bridgeUrl || '';
+    } catch {
+      return '';
+    }
+  })();
   return cachedBridgeUrl;
 }
 
@@ -92,46 +97,63 @@ export type SubscribeHandlers = {
 };
 
 export function subscribe(handlers: SubscribeHandlers): Subscription {
+  // `socket` is the CURRENT live socket. `closed` flips when the
+  // consumer cancels the subscription; once true, no new sockets are
+  // created and any in-flight `connect()` aborts after its await.
   let socket: WebSocket | null = null;
   let closed = false;
   let backoff = 500;
+  let connecting = false; // serialises connect() against itself
   const setState = (s: ConnectionState): void => handlers.onState?.(s);
 
   const connect = async (): Promise<void> => {
-    if (closed) return;
-    const base = await resolveBridgeUrl();
-    if (!base) {
-      setState('no-bridge');
-      // Try again later — maybe the bridge isn't up yet.
-      setTimeout(() => { clearBridgeCache(); void connect(); }, 2000);
-      return;
-    }
-    setState('connecting');
+    if (closed || connecting) return;
+    connecting = true;
     try {
-      socket = new WebSocket(base.replace(/^http/, 'ws') + '/ws');
-    } catch {
-      setState('reconnecting');
-      setTimeout(connect, backoff);
-      backoff = Math.min(backoff * 2, 5000);
-      return;
-    }
-    socket.onopen = () => {
-      backoff = 500;
-      setState('open');
-    };
-    socket.onmessage = (ev) => {
-      try { handlers.onMessage(JSON.parse(ev.data)); } catch { /* malformed */ }
-    };
-    socket.onclose = () => {
-      socket = null;
+      const base = await resolveBridgeUrl();
+      // CRITICAL: between subscribe() returning and the await above
+      // resolving, the consumer (e.g., React Strict Mode cleanup) may
+      // have called close(). Re-check before creating a socket — without
+      // this, every dev-mode mount leaks a WS that survives the cleanup.
       if (closed) return;
-      setState('reconnecting');
-      setTimeout(() => { void connect(); }, backoff);
-      backoff = Math.min(backoff * 2, 5000);
-    };
-    socket.onerror = () => {
-      try { socket?.close(); } catch { /* already closed */ }
-    };
+      if (!base) {
+        setState('no-bridge');
+        setTimeout(() => { clearBridgeCache(); void connect(); }, 2000);
+        return;
+      }
+      setState('connecting');
+      let ws: WebSocket;
+      try {
+        ws = new WebSocket(base.replace(/^http/, 'ws') + '/ws');
+      } catch {
+        setState('reconnecting');
+        setTimeout(() => { void connect(); }, backoff);
+        backoff = Math.min(backoff * 2, 5000);
+        return;
+      }
+      socket = ws;
+      ws.onopen = () => {
+        if (closed) { try { ws.close(); } catch { /* */ } return; }
+        backoff = 500;
+        setState('open');
+      };
+      ws.onmessage = (ev) => {
+        if (closed) return;
+        try { handlers.onMessage(JSON.parse(ev.data)); } catch { /* malformed */ }
+      };
+      ws.onclose = () => {
+        if (socket === ws) socket = null;
+        if (closed) return;
+        setState('reconnecting');
+        setTimeout(() => { void connect(); }, backoff);
+        backoff = Math.min(backoff * 2, 5000);
+      };
+      ws.onerror = () => {
+        try { ws.close(); } catch { /* already closed */ }
+      };
+    } finally {
+      connecting = false;
+    }
   };
 
   void connect();
@@ -140,6 +162,7 @@ export function subscribe(handlers: SubscribeHandlers): Subscription {
     close: () => {
       closed = true;
       try { socket?.close(); } catch { /* ignore */ }
+      socket = null;
     },
   };
 }

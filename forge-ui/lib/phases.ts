@@ -4,7 +4,7 @@
  * order in `orchestrator/logging.ts`.
  */
 
-import type { EventLogEntry } from './bridge-client.ts';
+import type { EventLogEntry } from './bridge-client';
 
 export const PHASE_ORDER = [
   'architect',

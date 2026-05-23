@@ -189,10 +189,20 @@ export function startBridge(opts: BridgeOptions): { url: string; close: () => Pr
   const http = createServer((req, res) => handleHttp(req, res, { scanCycles, logsRoot }));
   const wss = new WebSocketServer({ server: http, path: '/ws' });
 
-  wss.on('connection', (ws) => {
+  const debugWs = process.env.FORGE_BRIDGE_DEBUG === '1';
+  let connectionSeq = 0;
+  wss.on('connection', (ws, req) => {
     clients.add(ws);
-    ws.on('close', () => clients.delete(ws));
-    ws.on('error', () => clients.delete(ws));
+    const id = ++connectionSeq;
+    if (debugWs) console.error(`[bridge] ws#${id} connect from ${req.socket.remoteAddress} clients=${clients.size}`);
+    ws.on('close', (code, reason) => {
+      clients.delete(ws);
+      if (debugWs) console.error(`[bridge] ws#${id} close code=${code} reason="${reason.toString()}" remaining=${clients.size}`);
+    });
+    ws.on('error', (err) => {
+      clients.delete(ws);
+      if (debugWs) console.error(`[bridge] ws#${id} error: ${err.message}`);
+    });
     // Initial snapshot.
     try {
       ws.send(JSON.stringify({ type: 'snapshot', cycles: scanCycles() } satisfies WsOutbound));

@@ -1,6 +1,11 @@
 node_modules/
 dist/
 
+# Ephemeral diagnostic scripts (e.g., one-off probes / browser drives).
+# Convention: prefix with .tmp- in scripts/ for things that are useful
+# locally but shouldn't churn the tree.
+scripts/.tmp-*
+
 # forge-ui (Next.js workspace) build artefacts
 forge-ui/.next/
 forge-ui/out/

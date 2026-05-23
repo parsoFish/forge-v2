@@ -247,5 +247,31 @@
     "expected_keywords": ["stale", "antipattern", "pm", "thrash", "campaign", "brain", "gap"],
     "scope": null,
     "category": null
+  },
+  {
+    "id": "Q22",
+    "question": "For terraform-provider-betterado, what is the operative branch model and what does the demo/quality-gate harness look like (and why is acceptance-test coverage unattended-impractical)?",
+    "expected_sources": [
+      "brain/projects/terraform-provider-betterado/profile.md",
+      "brain/projects/terraform-provider-betterado/themes/2026-05-18-branch-model-consolidated.md",
+      "brain/projects/terraform-provider-betterado/themes/2026-05-18-go-test-harness-demos.md"
+    ],
+    "expected_keywords": ["single-branch", "main", "harness", "go test", "TF_ACC", "acceptance", "unattended"],
+    "scope": "terraform-provider-betterado",
+    "category": null,
+    "source_cycle": "manual-seed-2026-05-23"
+  },
+  {
+    "id": "Q23",
+    "question": "What constraints does the betterado createable-surface impose (prefix, registration, per-resource test substrate, fixtures)?",
+    "expected_sources": [
+      "brain/projects/terraform-provider-betterado/themes/council-constraints.md",
+      "brain/projects/terraform-provider-betterado/themes/2026-05-18-stack-and-test-layout.md",
+      "brain/projects/terraform-provider-betterado/profile.md"
+    ],
+    "expected_keywords": ["betterado_", "prefix", "provider.go", "azdosdkmocks", "vendored", "make test", "roundtrip"],
+    "scope": "terraform-provider-betterado",
+    "category": null,
+    "source_cycle": "manual-seed-2026-05-23"
   }
 ]

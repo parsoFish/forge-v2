@@ -11,6 +11,7 @@
  *   forge preflight <project>               check the C1–C6 forge↔project contract
  *   forge brain index [--scope <project>]   emit the brain navigation indexes (cache-friendly prefix)
  *   forge brain lint  [--scope <s>]         structural integrity checks on brain/
+ *   forge brain bench:promote --cycle <id>  operator-gated promotion of reflector-emitted bench-growth candidates
  *
  * (The structural graph (per C20-C22) is owned by the real `safishamsi/graphify`
  * Python CLI directly — `cd brain && graphify {update,query,path,explain} ...`.
@@ -28,6 +29,14 @@ import { getPaths } from './queue.ts';
 import { parseManifest, validateManifest, writeManifest } from './manifest.ts';
 import { loadBrainIndex, regenerateBrainIndex } from './brain-index.ts';
 import { runBrainLint, type Scope as BrainLintScope } from './brain-lint.ts';
+import {
+  runPromote,
+  makeInteractivePrompter,
+  closeInteractivePrompter,
+  makeLatestResultAccuracy,
+  type PromoteDecision,
+  type PromptOperator,
+} from './brain-bench-promote.ts';
 import { runPreflight, formatPreflightReport } from './preflight.ts';
 import { fileVerdictPaths } from './file-verdict.ts';
 import { assertEnv } from './config.ts';
@@ -144,6 +153,8 @@ Usage:
   forge brain index --write               Regenerate brain/INDEX.md from filesystem (counts + sub-wiki listing)
   forge brain lint [--scope <s>] [--fix]  Structural integrity checks on brain/ (7 checks, scopes: full|forge-only|project-only|single-file|cycle-touched-themes|cleanup-dry-run)
                                           (structural graph owned by the real safishamsi/graphify CLI — run: cd brain && graphify update .)
+  forge brain bench:promote --cycle <id>  Walk reflector-emitted brain-bench candidates past the operator; promote into benchmarks/brain/questions.json
+                                          Caps: ≤1 per cycle, ≤4 per calendar month. Accuracy floor 94.4%; promotion reverted on regression.
 
 For phase-implementation guidance see docs/phases/. For decisions see docs/decisions/.`,
   );
@@ -770,6 +781,10 @@ function cmdBrain(rest: string[]): void {
   const sub = rest[0];
   if (sub === 'index') return cmdBrainIndex(rest.slice(1));
   if (sub === 'lint') return cmdBrainLint(rest.slice(1));
+  if (sub === 'bench:promote' || sub === 'bench-promote') {
+    void cmdBrainBenchPromote(rest.slice(1));
+    return;
+  }
   if (sub === 'graph') {
     // Per C20-C22 + post-S1.4 migration: the structural graph is owned by
     // the real `safishamsi/graphify` Python CLI, not by an orchestrator shim.
@@ -785,8 +800,114 @@ See skills/brain-graph/SKILL.md for the operator runbook.`,
     );
     process.exit(2);
   }
-  console.error('forge brain: subcommands: index | lint');
+  console.error('forge brain: subcommands: index | lint | bench:promote');
   process.exit(2);
+}
+
+/**
+ * `forge brain bench:promote --cycle <id>` — walks the reflector's
+ * candidate file at `_logs/<id>/brain-bench-candidates.jsonl` past the
+ * operator (keep/drop/edit per row, default drop) and lands accepted
+ * candidates in `benchmarks/brain/questions.json`. Gated by per-cycle
+ * (≤1) + monthly (≤4 excluding manual-seed-*) caps + the 94.4%
+ * accuracy floor; reverts byte-for-byte on regression.
+ *
+ * Flags:
+ *   --cycle <id>            REQUIRED. Cycle id whose candidates we promote.
+ *   --auto-keep <indexes>   1-based comma list; keep these candidates without prompting.
+ *   --auto-drop <indexes>   1-based comma list; drop these candidates without prompting.
+ *   --skip-bench            Skip the accuracy gate (operator confirms they ran it).
+ *   --help                  Show this help.
+ */
+async function cmdBrainBenchPromote(rest: string[]): Promise<void> {
+  if (rest.includes('--help') || rest.includes('-h')) {
+    console.log(`forge brain bench:promote --cycle <id> [--auto-keep <n,n>] [--auto-drop <n,n>] [--skip-bench]
+  Walks _logs/<cycle-id>/brain-bench-candidates.jsonl past the operator.
+  Kept candidates land in benchmarks/brain/questions.json with source_cycle stamped.
+  Caps: ≤1 per cycle, ≤4 per calendar month (manual-seed-* exempt).
+  Accuracy floor: 94.4% (CLAUDE.md bar) — promotion reverted on regression.`);
+    return;
+  }
+
+  let cycleId: string | undefined;
+  const autoKeep = new Set<number>();
+  const autoDrop = new Set<number>();
+  let skipBench = false;
+  for (let i = 0; i < rest.length; i++) {
+    const a = rest[i];
+    if (a === '--cycle') cycleId = rest[++i];
+    else if (a === '--auto-keep') {
+      const v = rest[++i];
+      if (v) v.split(',').forEach((n) => autoKeep.add(Number(n)));
+    } else if (a === '--auto-drop') {
+      const v = rest[++i];
+      if (v) v.split(',').forEach((n) => autoDrop.add(Number(n)));
+    } else if (a === '--skip-bench') {
+      skipBench = true;
+    }
+  }
+  if (!cycleId) {
+    console.error('forge brain bench:promote: missing --cycle <id>');
+    console.error('Usage: forge brain bench:promote --cycle <cycle-id>');
+    process.exit(2);
+  }
+  const candidatesPath = resolve(FORGE_ROOT, '_logs', cycleId, 'brain-bench-candidates.jsonl');
+  const questionsPath = resolve(FORGE_ROOT, 'benchmarks', 'brain', 'questions.json');
+
+  if (!existsSync(candidatesPath)) {
+    console.log(`(no candidates for cycle ${cycleId} — file: ${candidatesPath})`);
+    return;
+  }
+  if (!existsSync(questionsPath)) {
+    console.error(`forge brain bench:promote: questions.json missing at ${questionsPath}`);
+    process.exit(2);
+  }
+
+  // Build the prompter: prefer auto-keep/auto-drop indexes for deterministic
+  // CI runs; else interactive readline.
+  const interactivePrompter = autoKeep.size === 0 && autoDrop.size === 0
+    ? makeInteractivePrompter()
+    : null;
+  const prompter: PromptOperator = async ({ candidate, index, total }) => {
+    const oneBased = index + 1;
+    if (autoKeep.has(oneBased)) return { action: 'keep' } as PromoteDecision;
+    if (autoDrop.has(oneBased)) return { action: 'drop' } as PromoteDecision;
+    if (interactivePrompter) return interactivePrompter({ candidate, index, total });
+    return { action: 'drop' };
+  };
+
+  const result = await runPromote({
+    cycleId,
+    candidatesPath,
+    questionsPath,
+    deps: {
+      promptOperator: prompter,
+      runBenchAccuracy: skipBench
+        ? async () => 1.0 // operator vouches; gate is a noop
+        : makeLatestResultAccuracy(FORGE_ROOT),
+      nowIso: () => new Date().toISOString(),
+    },
+  });
+
+  closeInteractivePrompter();
+
+  if (result.kind === 'ok') {
+    if (result.promoted === 0) {
+      console.log(`(no promotions for cycle ${cycleId} — all candidates dropped or none present)`);
+    } else {
+      console.log(`promoted ${result.promoted} candidate(s): ${result.ids.join(', ')}`);
+      console.log(`questions.json updated. Recommend re-running: npm run bench:brain`);
+    }
+    return;
+  }
+  if (result.kind === 'cap-exceeded') {
+    console.error(`forge brain bench:promote: cap-exceeded (${result.cap}): ${result.reason}`);
+    process.exit(1);
+  }
+  // reverted
+  console.error(`forge brain bench:promote: ${result.reason}`);
+  console.error(`questions.json restored. No changes landed.`);
+  process.exit(1);
 }
 
 function cmdBrainIndex(rest: string[]): void {

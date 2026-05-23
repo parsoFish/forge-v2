@@ -25,6 +25,14 @@ type Case = {
   expected_keywords: string[];
   scope?: string | null;
   category?: string | null;
+  /**
+   * S5 / refinement #6 — origin tag carried alongside each case so the
+   * promote pipeline (and post-hoc analysis) can split bench accuracy by
+   * cohort (e.g. "did the manual-seed betterado questions hold?",
+   * "did the promotion from cycle X regress its peers?"). Parsed-but-ignored
+   * by the runner; surfaced in the per-cycle breakdown only.
+   */
+  source_cycle?: string | null;
 };
 
 type CaseResult = {
@@ -39,6 +47,7 @@ type CaseResult = {
   elapsed_ms: number;
   cost_usd: number;
   runner_error?: { kind: string; message: string };
+  source_cycle?: string | null;
 };
 
 const PASS_THRESHOLD = 0.65;
@@ -65,6 +74,7 @@ const results = await mapConcurrent(cases, CONCURRENCY, async (c): Promise<CaseR
       keyword_match: 0,
       hallucinated_paths: [],
       expected: { sources: c.expected_sources, keywords: c.expected_keywords },
+      source_cycle: c.source_cycle ?? null,
       actual: null,
       elapsed_ms: 0,
       cost_usd: 0,
@@ -88,6 +98,7 @@ const results = await mapConcurrent(cases, CONCURRENCY, async (c): Promise<CaseR
       keyword_match: 0,
       hallucinated_paths: [],
       expected: { sources: c.expected_sources, keywords: c.expected_keywords },
+      source_cycle: c.source_cycle ?? null,
       actual: null,
       elapsed_ms: 0,
       cost_usd: 0,
@@ -107,6 +118,7 @@ const results = await mapConcurrent(cases, CONCURRENCY, async (c): Promise<CaseR
       keyword_match: 0,
       hallucinated_paths: [],
       expected: { sources: c.expected_sources, keywords: c.expected_keywords },
+      source_cycle: c.source_cycle ?? null,
       actual: null,
       elapsed_ms: r.durationMs,
       cost_usd: r.costUsd,
@@ -147,6 +159,26 @@ const elapsed = results.map((r) => r.elapsed_ms).filter((n) => n > 0);
 const gaps = results.filter((r) => r.actual?.gap === true).length;
 const halls = results.filter((r) => r.hallucinated_paths.length > 0).length;
 
+/**
+ * S5 / refinement #6: aggregate accuracy per source_cycle. `null` and absent
+ * map to `"original"` (the pre-bench-growth question set). Manual seeds use
+ * the `manual-seed-<date>` prefix; promoted candidates carry the cycle id.
+ */
+function byCycleBreakdown(): Record<string, { total: number; passed: number; accuracy: number }> {
+  const buckets: Record<string, { total: number; passed: number }> = {};
+  for (const r of results) {
+    const key = r.source_cycle ?? 'original';
+    if (!buckets[key]) buckets[key] = { total: 0, passed: 0 };
+    buckets[key].total += 1;
+    if (r.score >= PASS_THRESHOLD) buckets[key].passed += 1;
+  }
+  const out: Record<string, { total: number; passed: number; accuracy: number }> = {};
+  for (const [key, v] of Object.entries(buckets)) {
+    out[key] = { ...v, accuracy: v.total === 0 ? 1 : v.passed / v.total };
+  }
+  return out;
+}
+
 const summary = {
   phase: 'brain',
   ran_at: ranAt,
@@ -162,6 +194,7 @@ const summary = {
     hallucination_rate: cases.length === 0 ? 0 : halls / cases.length,
     total_cost_usd: totalCostUsd,
     aborted_on_budget: aborted,
+    by_source_cycle: byCycleBreakdown(),
   },
 };
 

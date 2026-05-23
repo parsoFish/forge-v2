@@ -28,9 +28,11 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   existsSync,
+  mkdirSync,
   mkdtempSync,
   readFileSync,
   rmSync,
+  utimesSync,
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -335,6 +337,134 @@ test('runReflector: brain-gate failure → reflection_status:failed + lint_statu
     const events = h.events();
     assert.ok(events.find((e) => e.message === 'reflector.brain-skipped'));
     assert.equal(events.find((e) => e.message === 'reflector.lint-invoked'), undefined);
+  } finally {
+    h.cleanup();
+  }
+});
+
+test('runReflector: emits brain-bench-candidates.jsonl (one row per matched gap)', async () => {
+  // Wire up a cycle where:
+  //   - brain-gaps.jsonl has 2 gap rows (one matching, one not).
+  //   - the agent stub "writes" a project theme file matching one gap's
+  //     keywords (we pre-create it under the forge tree's brain/projects/
+  //     slugifier/themes/ to mimic what the real agent would do).
+  // Expected: candidates.jsonl has 1 row pointing at the written theme;
+  // `reflector.bench-candidates-emitted` event fires with count=1.
+  const h = setupHarness({ suffix: 'bench-cand' });
+  // Pre-write brain-gaps.jsonl with two distinct gaps. The reflector's
+  // F-12 touch is a no-op since the file already exists.
+  const gapsPath = resolve(h.cycleLogDir, 'brain-gaps.jsonl');
+  // ensure the cycle log dir exists (logger creates it but writing the
+  // gaps file before the SDK kicks off is the cleaner path).
+  try {
+    mkdirSync(h.cycleLogDir, { recursive: true });
+  } catch {
+    /* dir may already exist */
+  }
+  writeFileSync(
+    gapsPath,
+    [
+      JSON.stringify({
+        gap_id: 'GAP-001',
+        query: 'How does slugifier handle batch processing with options?',
+      }),
+      JSON.stringify({
+        gap_id: 'GAP-002',
+        query: 'Completely unrelated question about other domain xyz',
+      }),
+      '',
+    ].join('\n'),
+  );
+
+  // Pre-create the matching theme file in the forge tree so the
+  // `listFreshThemes` heuristic picks it up. The themesDir the reflector
+  // computes is `<FORGE_ROOT>/brain/projects/<project>/themes`. Project
+  // is `slugifier` (set in setupHarness). We add a uniquely-named theme
+  // so the cleanup is targeted and we don't trample real brain content.
+  const projectThemesDir = resolve(FORGE_ROOT, 'brain', 'projects', 'slugifier', 'themes');
+  const themeFile = resolve(projectThemesDir, `__test-${h.cycleId.slice(-12)}-slugifier-batch-options.md`);
+  try {
+    mkdirSync(projectThemesDir, { recursive: true });
+  } catch {
+    /* may exist */
+  }
+  writeFileSync(
+    themeFile,
+    [
+      '---',
+      'title: Slugifier batch processing options',
+      'description: How slugifier processes batches with options',
+      'category: pattern',
+      'keywords: [slugifier, batch, processing, options, helpers]',
+      'created_at: 2026-05-23T12:00:00Z',
+      'updated_at: 2026-05-23T12:00:00Z',
+      '---',
+      '',
+      '# Slugifier batch processing options',
+      '',
+      'Body...',
+    ].join('\n'),
+  );
+  // Bump the theme's mtime to slightly in the future so `listFreshThemes`
+  // (mtime >= startedAtMs) picks it up — in production the agent writes
+  // the file *during* the reflector pass, which we mimic here.
+  const futureSec = (Date.now() + 5000) / 1000;
+  utimesSync(themeFile, futureSec, futureSec);
+
+  try {
+    const result = await runReflector(makeInput(h), h.logger, {
+      sdkQuery: fakeSdkQueryClean,
+      brainLint: makeCleanLintStub(),
+    });
+    assert.equal(result.reflection_status, 'closed');
+
+    const candidatesPath = resolve(h.cycleLogDir, 'brain-bench-candidates.jsonl');
+    assert.ok(existsSync(candidatesPath), 'expected brain-bench-candidates.jsonl');
+    const body = readFileSync(candidatesPath, 'utf8').trim();
+    assert.ok(body.length > 0, 'expected non-empty candidates file');
+    const lines = body.split('\n').filter(Boolean);
+    assert.equal(lines.length, 1, 'expected exactly 1 candidate (only one gap matched)');
+    const candidate = JSON.parse(lines[0]);
+    assert.equal(candidate.gap_id, 'GAP-001');
+    assert.ok(
+      candidate.expected_sources.some((s: string) => s.includes('slugifier-batch-options')),
+      'candidate should point at the written theme',
+    );
+    assert.equal(candidate.scope, 'slugifier');
+
+    const events = h.events();
+    const emitEvent = events.find((e) => e.message === 'reflector.bench-candidates-emitted');
+    assert.ok(emitEvent, 'expected reflector.bench-candidates-emitted event');
+    assert.equal(emitEvent!.metadata?.['count'], 1);
+  } finally {
+    // Clean up the test theme so the live brain stays untouched.
+    try {
+      rmSync(themeFile, { force: true });
+    } catch {
+      /* best-effort */
+    }
+    h.cleanup();
+  }
+});
+
+test('runReflector: zero gaps → empty candidates.jsonl, no emit event', async () => {
+  const h = setupHarness({ suffix: 'no-gaps' });
+  try {
+    const result = await runReflector(makeInput(h), h.logger, {
+      sdkQuery: fakeSdkQueryClean,
+      brainLint: makeCleanLintStub(),
+    });
+    assert.equal(result.reflection_status, 'closed');
+    const candidatesPath = resolve(h.cycleLogDir, 'brain-bench-candidates.jsonl');
+    // File should exist (touched by the emit pass) but be empty.
+    assert.ok(existsSync(candidatesPath));
+    assert.equal(readFileSync(candidatesPath, 'utf8'), '');
+    // No emit event when count = 0.
+    const events = h.events();
+    assert.equal(
+      events.find((e) => e.message === 'reflector.bench-candidates-emitted'),
+      undefined,
+    );
   } finally {
     h.cleanup();
   }

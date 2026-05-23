@@ -289,6 +289,21 @@ export async function runReflector(
     brainLint: deps.brainLint,
   });
 
+  // S5 / refinement #6 — brain-bench-growth candidate emit. Best-effort:
+  // a write failure is logged but does not block close. The candidate file
+  // is the input the operator-driven `forge brain bench:promote` reads.
+  const candidateCount = emitBenchCandidates({
+    forgeRoot,
+    cycleId,
+    cycleLogDir,
+    themesDir,
+    projectName,
+    sinceMs: startedAtMs,
+    logger,
+    initiativeId: input.initiativeId,
+    parentEventId: start.event_id,
+  });
+
   logger.emit({
     initiative_id: input.initiativeId,
     parent_event_id: start.event_id,
@@ -308,6 +323,7 @@ export async function runReflector(
       tool_use: toolUseSummary,
       lint_status: lintStatus,
       retention: retention.retention,
+      bench_candidates_emitted: candidateCount,
     },
   });
   return { reflection_status: 'closed', lint_status: lintStatus };
@@ -572,6 +588,235 @@ function resolveCurrentManifestPath(originalPath: string, forgeRoot: string): st
     if (existsSync(p)) return p;
   }
   return originalPath;
+}
+
+/**
+ * S5 / refinement #6 — emit brain-bench-growth candidates.
+ *
+ * One candidate row per qualifying gap. A gap qualifies iff this cycle
+ * wrote at least one theme file (mtime >= sinceMs) under the project's
+ * themes/ dir or under brain/forge/themes/, AND the gap's question
+ * intersects (via shared keywords) with the written theme's title /
+ * frontmatter keywords. Cycles that wrote zero themes emit zero
+ * candidates; cycles whose gaps were not filled emit zero candidates.
+ *
+ * Heuristic intentionally conservative — false positives waste operator
+ * time; false negatives just mean the question never enters the
+ * promote pipeline (a future cycle hits the same gap and tries again).
+ *
+ * The output file `_logs/<cycle-id>/brain-bench-candidates.jsonl` is the
+ * single input to `forge brain bench:promote`.
+ */
+function emitBenchCandidates(opts: {
+  forgeRoot: string;
+  cycleId: string;
+  cycleLogDir: string;
+  themesDir: string;
+  projectName: string;
+  sinceMs: number;
+  logger: EventLogger;
+  initiativeId: string;
+  parentEventId?: string;
+}): number {
+  const { forgeRoot, cycleId, cycleLogDir, themesDir, projectName, sinceMs } = opts;
+  const candidatesPath = resolve(cycleLogDir, 'brain-bench-candidates.jsonl');
+
+  try {
+    const gaps = readBrainGaps(resolve(cycleLogDir, 'brain-gaps.jsonl'));
+    if (gaps.length === 0) {
+      // Nothing to consider. Touch an empty file so the operator + downstream
+      // tooling can tell "ran but no candidates" from "never ran".
+      mkdirSync(cycleLogDir, { recursive: true });
+      writeFileSync(candidatesPath, '');
+      return 0;
+    }
+    const projectThemes = listFreshThemes(themesDir, sinceMs);
+    const forgeThemes = listFreshThemes(resolve(forgeRoot, 'brain', 'forge', 'themes'), sinceMs);
+    const writtenThemes = [...projectThemes, ...forgeThemes];
+    if (writtenThemes.length === 0) {
+      // No themes this cycle ⇒ no gaps filled ⇒ no candidates.
+      mkdirSync(cycleLogDir, { recursive: true });
+      writeFileSync(candidatesPath, '');
+      return 0;
+    }
+    // Build a {theme-path -> keyword-set} lookup once per pass.
+    const themeKeywords = new Map<string, Set<string>>();
+    for (const t of writtenThemes) {
+      themeKeywords.set(t.path, extractThemeKeywords(t.path));
+    }
+
+    const lines: string[] = [];
+    for (const gap of gaps) {
+      const matched = matchGapToTheme(gap.query, themeKeywords);
+      if (matched.length === 0) continue;
+      const candidate = {
+        question: gap.query,
+        expected_sources: matched.map((p) => relativeToForge(p, forgeRoot)),
+        why_now: `this cycle wrote ${matched.length} theme(s) addressing the gap; promotion would make the question testable.`,
+        gap_id: gap.gap_id,
+        scope: projectName,
+      };
+      lines.push(JSON.stringify(candidate));
+    }
+    mkdirSync(cycleLogDir, { recursive: true });
+    writeFileSync(candidatesPath, lines.length === 0 ? '' : lines.join('\n') + '\n');
+    if (lines.length > 0) {
+      opts.logger.emit({
+        initiative_id: opts.initiativeId,
+        parent_event_id: opts.parentEventId,
+        phase: 'reflection',
+        skill: 'reflector',
+        event_type: 'log',
+        input_refs: [resolve(cycleLogDir, 'brain-gaps.jsonl')],
+        output_refs: [candidatesPath],
+        message: 'reflector.bench-candidates-emitted',
+        metadata: { count: lines.length, cycle_id: cycleId },
+      });
+    }
+    return lines.length;
+  } catch (err) {
+    // Best-effort. A failure here must not change reflection close.
+    opts.logger.emit({
+      initiative_id: opts.initiativeId,
+      parent_event_id: opts.parentEventId,
+      phase: 'reflection',
+      skill: 'reflector',
+      event_type: 'log',
+      input_refs: [],
+      output_refs: [],
+      message: 'reflector.bench-candidates-failed',
+      metadata: { error: err instanceof Error ? err.message : String(err) },
+    });
+    return 0;
+  }
+}
+
+type GapRow = { gap_id?: string; query: string };
+
+/**
+ * Parse brain-gaps.jsonl (one JSON object per line). Tolerates a missing
+ * file, empty lines, and malformed lines. Only rows with a string `query`
+ * are kept.
+ */
+function readBrainGaps(path: string): GapRow[] {
+  if (!existsSync(path)) return [];
+  let raw: string;
+  try {
+    raw = readFileSync(path, 'utf8');
+  } catch {
+    return [];
+  }
+  const out: GapRow[] = [];
+  for (const line of raw.split('\n')) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+    try {
+      const parsed = JSON.parse(trimmed) as Record<string, unknown>;
+      const query =
+        typeof parsed.query === 'string'
+          ? parsed.query
+          : typeof parsed.question === 'string'
+          ? parsed.question
+          : null;
+      if (!query) continue;
+      const gap_id = typeof parsed.gap_id === 'string' ? parsed.gap_id : undefined;
+      out.push({ gap_id, query });
+    } catch {
+      /* skip */
+    }
+  }
+  return out;
+}
+
+/**
+ * Tokenise a string for the gap-vs-theme intersection check. Mirrors the
+ * bench's keyword tokenizer at low cost: lowercase, split on non-word,
+ * drop stopwords + <3 char tokens, dedupe.
+ */
+const STOPWORDS = new Set([
+  'the', 'a', 'an', 'and', 'or', 'but', 'is', 'are', 'was', 'were',
+  'be', 'to', 'of', 'in', 'on', 'at', 'for', 'with', 'as', 'by',
+  'what', 'when', 'where', 'why', 'how', 'does', 'do', 'did', 'this',
+  'that', 'these', 'those', 'it', 'its', 'from', 'has', 'have', 'had',
+  'into', 'between', 'about', 'over', 'under', 'than', 'should', 'shall',
+  'will', 'must', 'can', 'could', 'would', 'may', 'might',
+]);
+
+function tokenise(text: string): Set<string> {
+  const out = new Set<string>();
+  for (const raw of text.toLowerCase().split(/[^a-z0-9_-]+/)) {
+    if (!raw) continue;
+    if (raw.length < 3) continue;
+    if (STOPWORDS.has(raw)) continue;
+    out.add(raw);
+  }
+  return out;
+}
+
+/**
+ * Extract a theme's keyword set from its frontmatter `keywords:` field +
+ * its title. Reads the file synchronously; on failure returns an empty
+ * set. Cheap (one file per fresh theme; typically ≤5 per cycle).
+ */
+function extractThemeKeywords(path: string): Set<string> {
+  try {
+    const raw = readFileSync(path, 'utf8');
+    const keywords = new Set<string>();
+    // Frontmatter block.
+    if (raw.startsWith('---\n') || raw.startsWith('---\r\n')) {
+      const end = raw.indexOf('\n---', 4);
+      if (end > 0) {
+        const block = raw.slice(4, end);
+        const kwLine = block.split(/\r?\n/).find((l) => /^keywords:/.test(l));
+        if (kwLine) {
+          // keywords: [a, b, c]  OR  keywords:\n  - a\n  - b
+          const inline = kwLine.match(/\[(.*)\]/);
+          if (inline) {
+            for (const t of inline[1].split(',')) {
+              const v = t.trim().replace(/^['"]|['"]$/g, '').toLowerCase();
+              if (v) keywords.add(v);
+            }
+          }
+        }
+        const titleLine = block.split(/\r?\n/).find((l) => /^title:/.test(l));
+        if (titleLine) {
+          for (const t of tokenise(titleLine.replace(/^title:\s*/, ''))) keywords.add(t);
+        }
+      }
+    }
+    // First H1 also folds in.
+    const firstH1 = raw.split(/\r?\n/).find((l) => l.startsWith('# '));
+    if (firstH1) for (const t of tokenise(firstH1.slice(2))) keywords.add(t);
+    return keywords;
+  } catch {
+    return new Set();
+  }
+}
+
+/**
+ * Return the paths of themes whose keyword set shares ≥ 2 tokens with the
+ * gap's query. Two is the minimum that meaningfully reduces false
+ * positives: a single shared "token" (e.g. "brain") matches almost every
+ * gap; two shared tokens implies a topic overlap.
+ */
+function matchGapToTheme(query: string, themeKeywords: Map<string, Set<string>>): string[] {
+  const qTokens = tokenise(query);
+  const hits: string[] = [];
+  for (const [path, kw] of themeKeywords) {
+    let shared = 0;
+    for (const t of qTokens) {
+      if (kw.has(t)) {
+        shared += 1;
+        if (shared >= 2) break;
+      }
+    }
+    if (shared >= 2) hits.push(path);
+  }
+  return hits;
+}
+
+function relativeToForge(absPath: string, forgeRoot: string): string {
+  return absPath.startsWith(forgeRoot + '/') ? absPath.slice(forgeRoot.length + 1) : absPath;
 }
 
 // Re-export the legacy ReflectionStatus type for ergonomic imports.

@@ -72,6 +72,11 @@ signal (`brain_consulted`). Useful queries:
   `project`, `ingested_at`, `ingested_by: reflector`.
 - `_logs/<cycle-id>/user-questions.md` (stage 2; optional — skip if no
   question is warranted).
+- `_logs/<cycle-id>/brain-bench-candidates.jsonl` (S5 / plan 01b #6;
+  written by the orchestrator AFTER the agent exits, not by the agent
+  itself). One row per gap whose corresponding theme this cycle wrote.
+  Schema: `{question, expected_sources, why_now, gap_id?, scope?}`.
+  Consumed by `forge brain bench:promote --cycle <id>` (operator-gated).
 
 The reflector does NOT move the manifest to `_queue/done/` — the reviewer
 already did that on merge. The reflector is post-merge log-and-continue.
@@ -86,6 +91,8 @@ already did that on merge. The reflector is post-merge log-and-continue.
 - `reflector.user-feedback-captured`
 - `reflector.theme-emitted` (per theme file written)
 - `reflector.lint-pass-clean` (after structural validation passes)
+- `reflector.bench-candidates-emitted` (S5 — count of brain-bench
+  candidate rows written; emitted only when count > 0)
 - `reflector.end`
 
 ## Benchmark suite

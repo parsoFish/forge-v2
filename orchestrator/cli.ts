@@ -99,6 +99,8 @@ process.chdir(FORGE_ROOT);
       return cmdPreflight(args.slice(1));
     case 'review':
       return cmdReview(args.slice(1));
+    case 'reflect':
+      return await cmdReflect(args.slice(1));
     case 'report':
       return cmdReport(args.slice(1));
     case 'demo':
@@ -140,6 +142,13 @@ Usage:
   forge preflight <project>               Check the C1–C6 forge↔project contract (declines, naming the failing clause)
   forge review <initiative-id-or-handle>  Print the open verdict prompt and the response file's path
                                           Accepts canonical INIT-…, handle proj#N, name alias, or unique substring.
+  forge reflect <initiative-id-or-handle> [--rerun]
+                                          S6B operator UX. Default: print the slash-command prompt the operator
+                                          would see (numbered questions + free-form prompt + context links).
+                                          --rerun: re-invoke the reflector against the closed manifest (reads
+                                          any existing _logs/<id>/user-feedback.md). Per CONTRACTS.md C9, the
+                                          slash command writes user-feedback.md AND auto-invokes --rerun;
+                                          this CLI subcommand is the terminal entry point used by both.
   forge report <cycle-id> [--regenerate]  Print (or regenerate) the human-facing cycle report
   forge demo <project> <baseRef> <changedRef> [--initiative <id-or-handle>] [--out <dir>] [--build] [--brief <file>]
                                           Generate a self-contained before/after comparison demo (HTML)
@@ -655,6 +664,52 @@ function locateInitiative(
     if (existsSync(candidate)) return { path: candidate, state };
   }
   return null;
+}
+
+/**
+ * S6B — `forge reflect <id> [--rerun]`. Two surfaces:
+ *
+ *   - Default: print the `/forge-reflect` slash-command render (numbered
+ *     questions + free-form prompt + context links) for terminal-only
+ *     operators who don't want to launch a Claude session. Read-only.
+ *   - `--rerun`: re-invoke `runReflector` against the closed manifest. The
+ *     reflector reads any existing `_logs/<id>/user-feedback.md` natively
+ *     so the operator's answers reach the brain this cycle. Per C9 the
+ *     slash command writes user-feedback.md AND auto-invokes --rerun;
+ *     this subcommand is the terminal-side entry point for the rerun path.
+ */
+async function cmdReflect(rest: string[]): Promise<void> {
+  const rawId = rest[0];
+  if (!rawId) {
+    console.error('forge reflect: missing <initiative-id-or-handle>');
+    console.error('Usage: forge reflect <initiative-id-or-handle> [--rerun]');
+    process.exit(2);
+  }
+  const initiativeId = resolveOrExit(rawId, 'reflect');
+  if (rest.includes('--rerun')) {
+    const { rerunReflector } = await import('./forge-reflect-rerun.ts');
+    try {
+      await rerunReflector({ cycleId: initiativeId });
+      console.log(`forge reflect: rerun complete for ${initiativeId}`);
+    } catch (err) {
+      console.error(`forge reflect --rerun: ${err instanceof Error ? err.message : String(err)}`);
+      process.exit(1);
+    }
+    return;
+  }
+  // Default: print the render output the slash command would show.
+  const { render } = await import('./forge-reflect-cli.ts');
+  try {
+    const out = render({ cycleId: initiativeId });
+    process.stdout.write(out);
+    if (!out.endsWith('\n')) process.stdout.write('\n');
+    console.log('---');
+    console.log(`Answer the questions, then write to: _logs/${initiativeId}/user-feedback.md`);
+    console.log(`Re-run with: forge reflect ${initiativeId} --rerun`);
+  } catch (err) {
+    console.error(`forge reflect: ${err instanceof Error ? err.message : String(err)}`);
+    process.exit(1);
+  }
 }
 
 function cmdReport(rest: string[]): void {

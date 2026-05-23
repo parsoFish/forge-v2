@@ -46,6 +46,7 @@ import {
   type ThemeMeta,
   type RetentionTag,
 } from '../cycle-retention.ts';
+import { writeCycleRecap } from '../cycle-recap.ts';
 
 /**
  * Defaults for the live reflector invocation. The reflector is a one-shot SDK
@@ -303,6 +304,41 @@ export async function runReflector(
     initiativeId: input.initiativeId,
     parentEventId: start.event_id,
   });
+
+  // S6B — write `_logs/<cycle-id>/recap.md`. Orchestrator-side, NOT agent.
+  // Always written on a successful reflector close (additive — does NOT
+  // gate reflection_status; per CONTRACTS.md C15a the PR-comment surface
+  // belongs to plan 04).
+  const themesWritten = listFreshThemes(themesDir, startedAtMs).map((t) => t.path);
+  const recapResult = writeCycleRecap({
+    forgeRoot,
+    cycleId,
+    initiativeId: input.initiativeId,
+    manifestPath,
+    projectName,
+    themesWritten,
+    cycleArchivePath,
+    lintStatus,
+    reflectorCostUsd: costUsd,
+    reflectorDurationMs: durationMs,
+  });
+  if (recapResult.written) {
+    logger.emit({
+      initiative_id: input.initiativeId,
+      parent_event_id: start.event_id,
+      phase: 'reflection',
+      skill: 'reflector',
+      event_type: 'log',
+      input_refs: [logger.logFilePath],
+      output_refs: [recapResult.recapPath],
+      message: 'reflector.recap-emitted',
+      metadata: {
+        recap_path: recapResult.recapPath,
+        themes_count: themesWritten.length,
+        lint_status: lintStatus,
+      },
+    });
+  }
 
   logger.emit({
     initiative_id: input.initiativeId,

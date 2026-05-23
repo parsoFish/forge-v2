@@ -470,6 +470,38 @@ test('runReflector: zero gaps → empty candidates.jsonl, no emit event', async 
   }
 });
 
+test('runReflector: writes _logs/<id>/recap.md on successful close (S6B)', async () => {
+  // S6B — the orchestrator writes a one-page recap after retention + lint,
+  // before reflector.end. The file must exist and contain the six sections.
+  const h = setupHarness({ suffix: 'recap' });
+  try {
+    const result = await runReflector(makeInput(h), h.logger, {
+      sdkQuery: fakeSdkQueryClean,
+      brainLint: makeCleanLintStub(),
+    });
+    assert.equal(result.reflection_status, 'closed');
+
+    const recapPath = resolve(h.cycleLogDir, 'recap.md');
+    assert.ok(existsSync(recapPath), 'expected _logs/<id>/recap.md');
+    const body = readFileSync(recapPath, 'utf8');
+    assert.match(body, /# Cycle recap/);
+    assert.match(body, /## Outcome/);
+    assert.match(body, /## Stats/);
+    assert.match(body, /## Themes written/);
+    assert.match(body, /## Brain gaps/);
+    assert.match(body, /## Lint/);
+    assert.match(body, /## Links/);
+
+    // reflector.recap-emitted event surfaced.
+    const events = h.events();
+    const recapEvent = events.find((e) => e.message === 'reflector.recap-emitted');
+    assert.ok(recapEvent, 'expected reflector.recap-emitted event');
+    assert.equal(recapEvent!.metadata?.['lint_status'], 'clean');
+  } finally {
+    h.cleanup();
+  }
+});
+
 test('runReflector: emits retention-assigned event on successful close', async () => {
   // Even when no themes are written by the stub agent, the retention
   // heuristic still runs and emits an event (defaults to 'routine' with

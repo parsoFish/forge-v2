@@ -469,6 +469,36 @@ export function retentionAssigned(archivePath: string): 0 | 1 {
 }
 
 // ---------------------------------------------------------------------------
+// S6B — recap_emitted gate. `_logs/<cycle-id>/recap.md` exists + non-empty.
+// Per plan 06 §"Bench updates" + CONTRACTS C15a: the orchestrator writes
+// the recap synchronously at the end of `runReflector`, so a successful
+// reflection close MUST produce a non-empty file. Pre-S6B fixture-frozen
+// logs (no `reflector.start`) get a backward-compatible auto-pass, same
+// pattern as `lintInvoked`.
+// ---------------------------------------------------------------------------
+
+export function recapEmitted(
+  recapPath: string,
+  lines: EventLine[],
+): 0 | 1 {
+  const sawReflectorStart = lines.some(
+    (ln) => ln.phase === 'reflection' && ln.message === 'reflector.start',
+  );
+  if (!sawReflectorStart) {
+    // Pre-S6B fixture-frozen log — backward compatible auto-pass.
+    return 1;
+  }
+  if (!existsSync(recapPath)) return 0;
+  let raw: string;
+  try {
+    raw = readFileSync(recapPath, 'utf8');
+  } catch {
+    return 0;
+  }
+  return raw.trim().length > 0 ? 1 : 0;
+}
+
+// ---------------------------------------------------------------------------
 // Top-level case scorer.
 // ---------------------------------------------------------------------------
 

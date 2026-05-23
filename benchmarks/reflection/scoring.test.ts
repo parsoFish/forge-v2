@@ -24,6 +24,7 @@ import {
   logHasWedgeOrSendBack,
   parseEventLog,
   parseFrontmatter,
+  recapEmitted,
   retentionAssigned,
   retroHasThreeSections,
   PASS_THRESHOLD,
@@ -914,6 +915,73 @@ test('retentionAssigned: 1 (backward compat) when retention key is absent', () =
 
 test('retentionAssigned: 0 when archive file missing', () => {
   assert.equal(retentionAssigned('/nonexistent/path.md'), 0);
+});
+
+// ---------- S6B — recapEmitted gate ----------
+
+test('recapEmitted: 1 when recap.md exists + non-empty + reflector fired', () => {
+  const t = setupBenchTree('CY-recap');
+  try {
+    const recapPath = join(t.cycleLogDir, 'recap.md');
+    writeFileSync(recapPath, '# Cycle recap — CY-recap\n\n## Outcome\n\nclosed.\n');
+    assert.equal(
+      recapEmitted(recapPath, [
+        { phase: 'reflection', message: 'reflector.start' },
+        { phase: 'reflection', message: 'reflector.end' },
+      ]),
+      1,
+    );
+  } finally {
+    t.cleanup();
+  }
+});
+
+test('recapEmitted: 0 when reflector fired but recap is missing', () => {
+  const t = setupBenchTree('CY-recap');
+  try {
+    const recapPath = join(t.cycleLogDir, 'recap.md');
+    // do NOT write recap.md
+    assert.equal(
+      recapEmitted(recapPath, [
+        { phase: 'reflection', message: 'reflector.start' },
+      ]),
+      0,
+    );
+  } finally {
+    t.cleanup();
+  }
+});
+
+test('recapEmitted: 0 when recap.md is empty', () => {
+  const t = setupBenchTree('CY-recap');
+  try {
+    const recapPath = join(t.cycleLogDir, 'recap.md');
+    writeFileSync(recapPath, '   \n\n');
+    assert.equal(
+      recapEmitted(recapPath, [
+        { phase: 'reflection', message: 'reflector.start' },
+      ]),
+      0,
+    );
+  } finally {
+    t.cleanup();
+  }
+});
+
+test('recapEmitted: 1 (backward compat) when reflector phase never fired', () => {
+  const t = setupBenchTree('CY-recap');
+  try {
+    const recapPath = join(t.cycleLogDir, 'recap.md');
+    assert.equal(
+      recapEmitted(recapPath, [
+        { phase: 'orchestrator', message: 'cycle.start' },
+        { phase: 'orchestrator', message: 'cycle.end' },
+      ]),
+      1,
+    );
+  } finally {
+    t.cleanup();
+  }
 });
 
 test('weights sum to 1.0', () => {

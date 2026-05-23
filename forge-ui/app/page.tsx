@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   fetchCycles,
   fetchEvents,
@@ -8,6 +8,7 @@ import {
   type Cycle,
   type CycleListSnapshot,
   type EventLogEntry,
+  type ConnectionState,
 } from '@/lib/bridge-client';
 import { derivePhaseStates, PHASE_ORDER, type PhaseState } from '@/lib/phases';
 
@@ -15,31 +16,37 @@ export default function Page() {
   const [snapshot, setSnapshot] = useState<CycleListSnapshot>({ live: [], recent: [] });
   const [activeCycleId, setActiveCycleId] = useState<string | null>(null);
   const [events, setEvents] = useState<EventLogEntry[]>([]);
-  const [connState, setConnState] = useState<'connecting' | 'open' | 'reconnecting'>('connecting');
+  const [connState, setConnState] = useState<ConnectionState>('connecting');
 
-  // Initial load + subscribe to bridge.
+  // The WS handler captures activeCycleId via a ref so we don't churn the
+  // subscription every time the operator clicks a different cycle.
+  const activeCycleIdRef = useRef<string | null>(null);
+  useEffect(() => { activeCycleIdRef.current = activeCycleId; }, [activeCycleId]);
+
+  // Open the WebSocket exactly once per mount. Cycle filtering happens
+  // inside the handler against the ref.
   useEffect(() => {
     let cancelled = false;
     fetchCycles()
       .then((s) => { if (!cancelled) setSnapshot(s); })
-      .catch(() => { /* offline */ });
+      .catch(() => { /* bridge offline — connState will report */ });
 
-    const sub = subscribe((msg) => {
-      if (msg.type === 'snapshot') {
-        setSnapshot(msg.cycles);
-        setConnState('open');
-      } else if (msg.type === 'cycle-list-changed') {
-        fetchCycles().then(setSnapshot).catch(() => { /* ignore */ });
-      } else if (msg.type === 'event' && msg.cycleId === activeCycleId) {
-        setEvents((prev) => [...prev, msg.event]);
-      }
+    const sub = subscribe({
+      onState: setConnState,
+      onMessage: (msg) => {
+        if (msg.type === 'snapshot') {
+          setSnapshot(msg.cycles);
+        } else if (msg.type === 'cycle-list-changed') {
+          fetchCycles().then(setSnapshot).catch(() => { /* ignore */ });
+        } else if (msg.type === 'event' && msg.cycleId === activeCycleIdRef.current) {
+          setEvents((prev) => [...prev, msg.event]);
+        }
+      },
     });
-    return () => { cancelled = true; sub.close(); setConnState('reconnecting'); };
-    // activeCycleId in the closure is captured intentionally per-effect-instance:
-    // when it changes we re-subscribe so the per-cycle event filter is correct.
-  }, [activeCycleId]);
+    return () => { cancelled = true; sub.close(); };
+  }, []);
 
-  // When the active cycle changes, snapshot its full event log.
+  // When the operator selects a different cycle, snapshot its full event log.
   useEffect(() => {
     if (!activeCycleId) { setEvents([]); return; }
     let cancelled = false;
@@ -48,15 +55,14 @@ export default function Page() {
   }, [activeCycleId]);
 
   const allCycles = useMemo(() => [...snapshot.live, ...snapshot.recent], [snapshot]);
-  const activeCycle = useMemo(
-    () => allCycles.find((c) => c.cycleId === activeCycleId) ?? snapshot.live[0] ?? snapshot.recent[0] ?? null,
-    [allCycles, activeCycleId, snapshot],
+  const defaultActive = useMemo(
+    () => snapshot.live[0] ?? snapshot.recent[0] ?? null,
+    [snapshot],
   );
-
-  // If no explicit selection yet, drive it from the first live cycle (or recent).
+  // Drive an initial selection once cycles are known.
   useEffect(() => {
-    if (!activeCycleId && activeCycle) setActiveCycleId(activeCycle.cycleId);
-  }, [activeCycleId, activeCycle]);
+    if (!activeCycleId && defaultActive) setActiveCycleId(defaultActive.cycleId);
+  }, [activeCycleId, defaultActive]);
 
   const phaseStates = useMemo(() => derivePhaseStates(events), [events]);
 
@@ -64,18 +70,30 @@ export default function Page() {
     <main style={{ padding: '16px 24px', minHeight: '100vh' }}>
       <header style={{ display: 'flex', alignItems: 'baseline', gap: 16, marginBottom: 18 }}>
         <h1 style={{ margin: 0, fontSize: 18, letterSpacing: 0.4 }}>forge</h1>
-        <span style={{ fontSize: 12, color: connState === 'open' ? '#7ee787' : '#8b949e' }}>
-          bridge {connState === 'open' ? '●' : '○'} {connState}
-        </span>
+        <ConnectionBadge state={connState} />
       </header>
 
-      <CyclesTab cycles={allCycles} activeId={activeCycle?.cycleId ?? null} onSelect={setActiveCycleId} />
+      <CyclesTab cycles={allCycles} activeId={activeCycleId} onSelect={setActiveCycleId} />
 
       <section style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24, marginTop: 24 }}>
         <StateMachine phaseStates={phaseStates} />
         <EventTail events={events} />
       </section>
     </main>
+  );
+}
+
+function ConnectionBadge({ state }: { state: ConnectionState }) {
+  const colour =
+    state === 'open' ? '#7ee787' :
+    state === 'connecting' ? '#d29922' :
+    state === 'reconnecting' ? '#f85149' :
+    '#8b949e';
+  const glyph = state === 'open' ? '●' : state === 'connecting' ? '◐' : state === 'reconnecting' ? '◌' : '○';
+  return (
+    <span style={{ fontSize: 12, color: colour }}>
+      bridge {glyph} {state}
+    </span>
   );
 }
 

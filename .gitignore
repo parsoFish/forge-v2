@@ -1,6 +1,12 @@
 node_modules/
 dist/
 
+# forge-ui (Next.js workspace) build artefacts
+forge-ui/.next/
+forge-ui/out/
+forge-ui/tsconfig.tsbuildinfo
+forge-ui/next-env.d.ts
+
 # Runtime state — not source. Ignore contents but keep .gitkeep so structure
 # is preserved in git.
 _logs/*

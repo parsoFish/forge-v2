@@ -75,7 +75,9 @@ forge/
 ├── brain/              # the wiki (Karpathy three-layer)
 ├── skills/             # Claude Code skills (the agent surface)
 ├── loops/              # agentic loop runtimes (default: Ralph)
-├── orchestrator/       # scheduler, cycle runner, logging
+├── orchestrator/       # scheduler, cycle runner, logging (hot path)
+├── cli/                # operator utilities + forge subcommand handlers (post-2026-05-24 Move 1)
+├── forge-ui/           # Next.js operator UI; launched by `forge watch` (M2-A, in progress)
 ├── _queue/             # initiative queue (gitignored)
 ├── benchmarks/         # per-phase eval harnesses
 ├── monitor/            # tmux + Obsidian + log-tail visualisation

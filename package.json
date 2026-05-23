@@ -10,8 +10,13 @@
   "engines": {
     "node": ">=20"
   },
+  "workspaces": [
+    "forge-ui"
+  ],
   "scripts": {
-    "build": "tsc",
+    "build": "tsc && npm run build --workspace=forge-ui",
+    "build:orchestrator": "tsc",
+    "build:ui": "npm run build --workspace=forge-ui",
     "build:watch": "tsc --watch",
     "test": "node --test --experimental-strip-types orchestrator/*.test.ts orchestrator/phases/*.test.ts cli/*.test.ts loops/ralph/*.test.ts skills/*/*.test.ts benchmarks/_lib/*.test.ts benchmarks/*/*.test.ts scripts/*.test.ts",
     "bench:brain": "node --experimental-strip-types benchmarks/brain/score.ts",
@@ -35,11 +40,13 @@
     "globby": "^14.1.0",
     "gray-matter": "^4.0.3",
     "pino-pretty": "^11.3.0",
-    "proper-lockfile": "^4.1.2"
+    "proper-lockfile": "^4.1.2",
+    "ws": "^8.21.0"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
     "@types/proper-lockfile": "^4.1.4",
+    "@types/ws": "^8.18.1",
     "typescript": "^5.6.0"
   }
 }

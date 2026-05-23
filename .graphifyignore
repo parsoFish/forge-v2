@@ -1,0 +1,58 @@
+# Graphify exclusion list — per C21a (2026-05-23).
+#
+# graphify reads ONLY this file at the scan root (not nested .graphifyignore
+# files); when this file exists, .gitignore at the same level is NOT read
+# by graphify. So this file enumerates everything we want excluded from the
+# structural graph — both the git-noise patterns (mirrored from .gitignore)
+# and the graphify-specific extras.
+
+# ---- mirrored from .gitignore (keep in sync) ----
+node_modules/
+dist/
+_logs/
+_queue/
+_worktrees/
+_review/
+projects/
+benchmarks/*/results/
+benchmarks/*/results-negatives/
+benchmarks/*/results-judged/
+benchmarks/*/fixtures/**/__pycache__/
+benchmarks/*/fixtures/**/.pytest_cache/
+benchmarks/*/fixtures/**/AGENT.md
+benchmarks/*/fixtures/**/fix_plan.md
+benchmarks/*/fixtures/**/PROMPT.md
+benchmarks/*/fixtures/**/.forge/
+forge.config.json
+.DS_Store
+.vscode/
+.idea/
+.claude/*
+!.claude/commands/
+*.swp
+*.swo
+*~
+brain/.obsidian/
+*.log
+npm-debug.log*
+
+# ---- graphify-specific additions ----
+# Frozen historical state — deliberately retained as evidence, not part of
+# forge's live architecture.
+brain/_archive/
+
+# Bench fixtures are test inputs, not forge architecture. The fixture
+# source trees would dominate the graph with low-signal nodes. Bench
+# harness code (cases.json, score.ts, scoring.ts, sdk.ts at each bench
+# root) IS in scope — only the fixtures/ subtree is excluded.
+benchmarks/*/fixtures/
+
+# Graphify's own output. The committed graph.json must not be re-walked
+# into itself (would create huge JSON noise + self-references). The root
+# symlink and the canonical path are both excluded.
+graphify-out/
+brain/graphify-out/
+# (S*-DECISIONS.md / S*-PROPOSALS.md operator-pending scratch at forge
+# root are deliberately INCLUDED — they're tracked content that documents
+# the 2026-05-20 batch decisions and contributes real edges to the graph.
+# They'll be cleaned up via normal git lifecycle when the operator decides.)

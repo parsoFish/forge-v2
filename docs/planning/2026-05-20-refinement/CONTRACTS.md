@@ -536,8 +536,63 @@ graph (built against an older commit than HEAD) as an error.
 The graph is rebuilt by running `cd brain && graphify update .`. With
 graphify's `hook install`, every git commit auto-rebuilds.
 
+**Amended by C21a (2026-05-23 brain-refinement Stage 3):** the corpus
+the graph is BUILT against widens from `brain/` only → forge root tree
+walk, while the output canonical path stays unchanged.
+
 **Affects plans:** 01 (refinement #9), `.gitignore` (carves
 `!brain/graphify-out/graph.json` against the rest of `graphify-out/`).
+
+## C21a — Graph corpus is the forge-root tree walk; output stays in `brain/graphify-out/`
+
+**Decision (2026-05-23 brain-refinement Stage 3):** `graphify update .`
+runs from `/home/parso/forge` (not `brain/`) so the structural index
+captures the whole forge architecture — `orchestrator/`, `skills/`,
+`loops/`, `docs/`, `benchmarks/` (harness only), `brain/`, plus the
+root-level `ARCHITECTURE.md` / `CLAUDE.md` / `PRINCIPLES.md`. The
+brain themes that reference code modules now get auto-edges to the
+actual code nodes, eliminating the all-edges-are-intra-file
+"disconnected pockets" pathology observed under C21.
+
+Output routing is unchanged: the graph still lives at
+`brain/graphify-out/graph.json` (committed, canonical). The mechanism
+is a checked-in directory symlink at the forge root:
+
+```
+/home/parso/forge/graphify-out → brain/graphify-out  (symlink)
+```
+
+`graphify update .` from forge root resolves output through the
+symlink and writes into `brain/graphify-out/`. The committed canonical
+path under C21 is preserved.
+
+**Exclusions** (via per-directory `.graphifyignore`, which override
+`.gitignore` only in the directories they live in):
+
+- `brain/_archive/.graphifyignore` = `*` — frozen historical state.
+- `brain/graphify-out/.graphifyignore` = `*` — graphify's own output
+  must not be re-walked into the graph.
+- `benchmarks/.graphifyignore` = `*/fixtures/` — bench fixture trees
+  are test inputs, not architecture. Bench harness code (`cases.json`,
+  `score.ts`, `scoring.ts`, `sdk.ts` at each bench root) IS in scope.
+
+Other excludes flow through `.gitignore` as the default fallback:
+`node_modules/`, `dist/`, `_logs/`, `_queue/`, `_worktrees/`,
+`projects/`, `_review/`, `benchmarks/*/results*/`, etc.
+
+**Rationale:** under C21's brain-only corpus, the graph had 757 nodes
+across 122 communities with **zero cross-file edges** — every cluster
+was literally one file. The brain themes that reference orchestrator
+modules / skills / docs had no machinery to express that connection
+to graphify's tree-sitter extractor. Widening the corpus to the forge
+root gives those references first-class edge representation for free,
+without disturbing the narrative wiki's structure or its committed
+output location.
+
+**Affects plans:** 01 (Stage 3 of the brain-refinement-2026-05-23
+follow-up sweep), `.gitignore` (untouched — exclusion logic flows
+through `.graphifyignore` files in subdirectories instead),
+`skills/brain-graph/SKILL.md` (updated to reflect root-corpus runs).
 
 ## C22 — `brain-graph` skill owns the graphify integration
 

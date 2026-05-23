@@ -11,16 +11,18 @@ model: claude-haiku-4-5
 ## Single responsibility
 
 Maintain `brain/graphify-out/graph.json` — the canonical structural
-index of the brain wiki (C21) — using the real **graphify** CLI
-(`safishamsi/graphify`, Python, MIT, YC S26). Answer structural
-queries against it.
+index built by the real **graphify** CLI (`safishamsi/graphify`,
+Python, MIT, YC S26) over the **forge-root tree walk**
+(C20-C22 + C21a).
 
 Sits **alongside** the narrative wiki, not replacing it. Per C20:
 
 - The Karpathy markdown wiki (themes + categories + INDEX.md) holds
   narrative knowledge.
 - This graph holds structural relationships (god nodes, communities,
-  shortest paths, surprising cross-file connections).
+  shortest paths, surprising cross-file connections) — and per C21a,
+  spans the whole forge architecture (code + skills + docs + brain),
+  so themes that reference a module get a real edge to its code.
 
 `brain-query` consults the graph **first** for structural questions
 and falls back to keyword scan over themes.
@@ -73,15 +75,32 @@ etc. is set.)
 ### `update` — rebuild the graph
 
 ```bash
-cd /home/parso/forge/brain && graphify update .
+cd /home/parso/forge && graphify update .
 ```
 
-Walks the brain corpus, extracts AST + frontmatter + markdown links via
-tree-sitter, writes `graphify-out/{graph.json, graph.html,
-GRAPH_REPORT.md, manifest.json}`. Idempotent. No API cost.
+Walks the **forge root** corpus (C21a, 2026-05-23):
+`orchestrator/`, `skills/`, `loops/`, `docs/`, `benchmarks/` (harness
+only — fixtures excluded), `brain/`, plus root-level `ARCHITECTURE.md`
+/ `CLAUDE.md` / `PRINCIPLES.md`. Output is routed through the
+`graphify-out → brain/graphify-out` symlink at forge root, so the
+canonical `graph.json` still lives at `brain/graphify-out/graph.json`
+(per C21).
+
+Extracts AST + frontmatter + markdown links via tree-sitter, writes
+`brain/graphify-out/{graph.json, graph.html, GRAPH_REPORT.md,
+manifest.json}`. Idempotent. No API cost.
 
 Use `graphify update . --force` after a refactor that DELETES content
 (otherwise graphify guards against shrinking the graph).
+
+**Exclusions** (declared via `.graphifyignore` files in subdirectories
+where they're needed; everything else flows through `.gitignore`):
+
+- `brain/_archive/.graphifyignore` — frozen historical state.
+- `brain/graphify-out/.graphifyignore` — graphify's own output (no
+  self-recursion).
+- `benchmarks/.graphifyignore` — `*/fixtures/` (test inputs, not
+  architecture).
 
 > **Query operations live in `brain-query`.** This skill owns BUILD +
 > MAINTENANCE; querying the resulting `graph.json` (`graphify query` /
@@ -136,14 +155,18 @@ The build records the commit SHA at graph-build time. Run
 
 ## Operator escalation: LLM backends
 
-For richer semantic edges over docs/images/PDFs, set an API key and run:
+For richer semantic edges over docs/images/PDFs that pure tree-sitter
+extraction can't infer, set an API key and run from forge root:
 
 ```bash
 export ANTHROPIC_API_KEY=...    # or GOOGLE_API_KEY, OPENAI_API_KEY, etc.
-cd brain && graphify update . --backend anthropic --all
+cd /home/parso/forge && graphify update . --backend anthropic --all
 ```
 
 The output schema is identical — `brain-query` works unchanged.
+Operator-triggered only (not in hooks); ~$5-15 over the forge-root
+corpus. Run after major restructures or when structural queries
+return thin results.
 
 ## Process
 

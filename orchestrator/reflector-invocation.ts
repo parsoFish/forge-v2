@@ -67,6 +67,27 @@ function loadBrainNavigation(cwd: string): string {
 }
 
 /**
+ * S8 / C23 — prompt caching intent.
+ *
+ * Reflector is a **one-shot** call per cycle (not a Ralph loop). The
+ * caching win here is across CYCLES, not within a single call: the SKILL.md
+ * contract block + the brain navigation index are stable from one cycle to
+ * the next. With the Claude Code CLI's server-side caching (which the SDK
+ * uses transparently), the second reflector call within the TTL window
+ * reads from cache.
+ *
+ * The Claude Agent SDK v0.1.0 does NOT expose explicit
+ * `cache_control: { type: 'ephemeral' }` markers — see `S8-DECISIONS.md` D1
+ * for the gap analysis. The work this file does to make caching effective:
+ * KEEP the system prompt stable. Per-cycle data (cycle id, manifest paths,
+ * worktree paths) goes in the USER prompt — never mid system prompt —
+ * exactly so the cache key holds.
+ *
+ * TTL: 5-min ephemeral. Reflector calls are spaced apart by full
+ * cycles (typically > 5 min), so a longer TTL would just inflate the write
+ * premium without enough hits to amortise. Cycles that fire back-to-back DO
+ * still benefit from the within-window cache hit.
+ *
  * Build the reflector system prompt: brain navigation index + the SKILL.md
  * contract + reflector-specific discipline notes (file-based handoff,
  * direct-write themes, evidence-grounding requirement).

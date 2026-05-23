@@ -317,12 +317,21 @@ async function invokeCritic(
     criticName: string;
   },
 ): Promise<InvokeResult> {
+  // S8 / C23 — prompt caching. The shared `projectContext` block plus this
+  // critic's stable system prompt are identical across all 4 critics in a
+  // council run; the Claude Code CLI's server-side caching keys on prompt
+  // stability so the 2nd/3rd/4th critic in the chain reads from cache. The
+  // explicit cache_control: { type: 'ephemeral' } marker is not exposed on
+  // the SDK's public surface today (see S8-DECISIONS D1) — `cacheable: true`
+  // carries forge's intent forward + future-proofs the wiring. TTL: 5-min
+  // (default ephemeral) covers the council's <1-min total runtime.
   const options: Record<string, unknown> = {
     systemPrompt: params.systemPrompt,
     model: params.model,
     maxTurns: params.maxTurns,
     permissionMode: 'plan',
     allowedTools: [],
+    cacheable: true,
     _criticName: params.criticName,
   };
   if (params.outputFormat) options.outputFormat = params.outputFormat;

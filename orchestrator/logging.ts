@@ -33,6 +33,19 @@ export type EventLogEntry = {
   cost_usd?: number;
   tokens_in?: number;
   tokens_out?: number;
+  /**
+   * S8 / C23 — prompt-cache read hits on this event's API call. Sourced
+   * from the SDK result message's `usage.cache_read_input_tokens`.
+   * Optional; absent on non-SDK events (orchestrator-internal `log` /
+   * `start` / `end` rows, stub-agent test runs).
+   */
+  cache_read_tokens?: number;
+  /**
+   * S8 / C23 — prompt-cache write tokens (cache MISSES that populated the
+   * cache for future calls). Sourced from
+   * `usage.cache_creation_input_tokens`. Optional.
+   */
+  cache_creation_tokens?: number;
   duration_ms?: number;
   started_at: string;
   finished_at?: string;

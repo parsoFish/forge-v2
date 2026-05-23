@@ -71,6 +71,18 @@ export type AgentIterationInfo = {
   lastAssistantText?: string;
   tokensIn?: number;
   tokensOut?: number;
+  /**
+   * S8 / C23 — prompt-cache hit telemetry. Populated by `createClaudeAgent`
+   * from the SDK's `result.usage.cache_read_input_tokens`. Stub / test
+   * agents may omit; consumers treat as optional and default to 0.
+   */
+  cacheReadTokens?: number;
+  /**
+   * S8 / C23 — prompt-cache write telemetry. Populated by
+   * `createClaudeAgent` from the SDK's
+   * `result.usage.cache_creation_input_tokens`. Optional; defaults to 0.
+   */
+  cacheCreationTokens?: number;
 };
 
 export type ToolUseDetail = {

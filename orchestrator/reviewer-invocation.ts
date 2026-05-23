@@ -63,6 +63,28 @@ function loadSkillText(): string {
  *
  * @param _brainCwd - kept for signature compat with the bench harness;
  *   no longer used since the brain navigation index isn't loaded.
+ *
+ * S8 / C23 — prompt caching intent.
+ *
+ * Reviewer is a Ralph loop on the initiative branch (max 3 iterations).
+ * Across those iterations, the SKILL.md contract + this discipline block
+ * are byte-identical — the Claude Code CLI's server-side cache (which the
+ * SDK uses transparently) hits naturally on iterations 2 and 3.
+ *
+ * The Claude Agent SDK v0.1.0 does NOT expose explicit
+ * `cache_control: { type: 'ephemeral' }` markers — see `S8-DECISIONS.md`
+ * D1. The work this builder does to make caching effective: KEEP the
+ * system prompt stable across iterations (no iteration counter mid-prompt,
+ * no round-number string interpolation). All per-iteration data lives in
+ * PROMPT.md (user prompt) which Ralph re-reads each iteration, OR in
+ * fix_plan.md (tool-read by the agent).
+ *
+ * TTL: 5-min ephemeral. Reviewer iterations cluster within ~10 minutes;
+ * 5-min covers the hot loop, write premium amortises across the cap-3
+ * iterations.
+ *
+ * (S4 deletes the reviewer SKILL.md eventually — this comment becomes
+ * moot when that lands; nothing to maintain.)
  */
 export function buildReviewerSystemPrompt(_brainCwd: string): string {
   return [

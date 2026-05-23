@@ -50,6 +50,27 @@ function loadBrainNavigation(cwd: string): string {
 }
 
 /**
+ * S8 / C23 — prompt caching intent.
+ *
+ * The PM system prompt has TWO sub-blocks with different cache lifetimes:
+ *
+ * - **Brain navigation index** (first block): stable for the lifetime of a
+ *   forge process. Suitable for a 1-hour TTL marker —
+ *   `cache_control: { type: 'ephemeral', ttl: '1h' }` (per C23). The 25% write
+ *   premium amortises across every PM call in a multi-WI cycle (PM may run
+ *   N>1 times across a long initiative).
+ * - **`project-manager skill contract`** (second block): also stable, but
+ *   shorter — 5-min ephemeral covers a single cycle's PM call cluster.
+ *
+ * The Claude Agent SDK v0.1.0 does NOT expose explicit `cache_control`
+ * markers on its public surface (see `S8-DECISIONS.md` D1). Today the CLI
+ * subprocess does prompt caching server-side keyed on prompt stability; this
+ * file's job is to KEEP the prompt stable (no per-cycle timestamps, no
+ * per-WI strings interpolated mid-prompt) so the cache hits naturally. The
+ * `cacheable: true` flag on `createClaudeAgent` (and via this builder's
+ * downstream wiring) carries the intent forward; the eventual marker shape
+ * is documented here for the day the SDK exposes it.
+ *
  * Build the PM system prompt: brain navigation index + the SKILL.md contract.
  *
  * @param brainCwd - directory containing `brain/`. For the bench this is the

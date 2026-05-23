@@ -38,6 +38,25 @@ export type ClaudeAgentOptions = {
   permissionMode?: 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan' | 'dontAsk';
   /** Optional system-prompt override. */
   systemPrompt?: string;
+  /**
+   * S8 / C23 — prompt caching opt-in. Defaults to `true`. The Claude Agent
+   * SDK v0.1.0 does NOT expose an explicit `cache_control` marker on its
+   * public API surface — caching happens server-side inside the Claude Code
+   * CLI subprocess, keyed on prompt stability. This flag carries forge's
+   * intent forward: when the SDK later exposes a marker, plumbing already
+   * exists. For today, leaving it `true` documents that callers SHOULD keep
+   * their system prompts stable (no per-iteration timestamps mid-prompt).
+   *
+   * Cache hit telemetry IS already surfaced: see the `cacheReadTokens` /
+   * `cacheCreationTokens` fields on the return value, populated from the
+   * SDK's `result.usage.cache_read_input_tokens` /
+   * `cache_creation_input_tokens` fields.
+   *
+   * TTL: the CLI uses ephemeral (5-min) by default — adequate for the
+   * dev/review Ralph hot loops where iterations cluster within a single
+   * cycle.
+   */
+  cacheable?: boolean;
   /** Inject a fake `query` for testing. */
   queryFn?: QueryFn;
 };
@@ -55,6 +74,11 @@ export function createClaudeAgent(opts: ClaudeAgentOptions = {}): AgentInvocatio
       cwd: worktreePath,
       allowedTools: opts.allowedTools ?? DEFAULT_ALLOWED_TOOLS,
       permissionMode: opts.permissionMode ?? 'acceptEdits',
+      // S8 / C23 — see ClaudeAgentOptions.cacheable. The SDK does not (yet)
+      // consume this; it's forge-intent forwarded for downstream wiring +
+      // observability. cache_control: { type: 'ephemeral' } is the eventual
+      // marker shape per the Anthropic API; the SDK abstracts it today.
+      cacheable: opts.cacheable ?? true,
     };
     if (opts.disallowedTools !== undefined) options.disallowedTools = opts.disallowedTools;
     if (opts.model !== undefined) options.model = opts.model;
@@ -70,6 +94,13 @@ export function createClaudeAgent(opts: ClaudeAgentOptions = {}): AgentInvocatio
     let lastAssistantText = '';
     let tokensIn: number | undefined;
     let tokensOut: number | undefined;
+    // S8 / C23 — cache-hit telemetry. Underlying API uses snake_case
+    // (cache_read_input_tokens / cache_creation_input_tokens) on the `usage`
+    // block of the result message; we surface camelCase to match the rest of
+    // this adapter and snake_case again in the JSONL event entry (matching
+    // existing `cost_usd / tokens_in / tokens_out` convention).
+    let cacheReadTokens = 0;
+    let cacheCreationTokens = 0;
 
     for await (const msg of queryFn({ prompt, options })) {
       const m = msg as { type?: string };
@@ -100,12 +131,23 @@ export function createClaudeAgent(opts: ClaudeAgentOptions = {}): AgentInvocatio
       } else if (m.type === 'result') {
         const r = m as {
           total_cost_usd?: number;
-          usage?: { input_tokens?: number; output_tokens?: number };
+          usage?: {
+            input_tokens?: number;
+            output_tokens?: number;
+            cache_read_input_tokens?: number;
+            cache_creation_input_tokens?: number;
+          };
         };
         if (typeof r.total_cost_usd === 'number') costUsd = r.total_cost_usd;
         if (r.usage) {
           if (typeof r.usage.input_tokens === 'number') tokensIn = r.usage.input_tokens;
           if (typeof r.usage.output_tokens === 'number') tokensOut = r.usage.output_tokens;
+          if (typeof r.usage.cache_read_input_tokens === 'number') {
+            cacheReadTokens = r.usage.cache_read_input_tokens;
+          }
+          if (typeof r.usage.cache_creation_input_tokens === 'number') {
+            cacheCreationTokens = r.usage.cache_creation_input_tokens;
+          }
         }
       }
     }
@@ -118,6 +160,8 @@ export function createClaudeAgent(opts: ClaudeAgentOptions = {}): AgentInvocatio
       lastAssistantText: truncate(lastAssistantText, 2000),
       tokensIn,
       tokensOut,
+      cacheReadTokens,
+      cacheCreationTokens,
     };
   };
 }

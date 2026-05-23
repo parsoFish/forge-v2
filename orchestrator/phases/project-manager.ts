@@ -12,13 +12,14 @@ import { resolve } from 'node:path';
 import { query as sdkQuery } from '@anthropic-ai/claude-agent-sdk';
 
 import type { EventLogger } from '../logging.ts';
-import { parseManifest } from '../manifest.ts';
+import { parseManifest, type InitiativeManifest } from '../manifest.ts';
 import {
   PM_ALLOWED_TOOLS,
   PM_DISALLOWED_TOOLS,
   PM_MODEL,
   buildPmSystemPrompt,
   renderPmUserPrompt,
+  renderPmHallucinationRetryAugment,
   tallyToolUse,
   type PmToolUseSummary,
 } from '../pm-invocation.ts';
@@ -26,8 +27,24 @@ import {
   detectHiddenCoupling,
   readWorkItemsFromDir,
   validateWorkItemSet,
+  type WorkItem,
 } from '../work-item.ts';
 import { recordBrainGateResult, type CycleInput } from '../cycle-context.ts';
+
+/**
+ * Injection seam for tests. The live cycle uses `sdkQuery` from the
+ * Claude Agent SDK; cycle-pm-hallucination.test.ts supplies a stub that
+ * returns a canned PM session per call so we can exercise the retry path
+ * without hitting the network.
+ */
+export type PmQueryFn = (params: {
+  prompt: string;
+  options?: Record<string, unknown>;
+}) => AsyncIterable<unknown>;
+
+export type RunProjectManagerOptions = {
+  queryFn?: PmQueryFn;
+};
 
 /**
  * Defaults for the live PM invocation. Higher budget + turn cap than the bench
@@ -46,7 +63,11 @@ const PM_LIVE_MAX_TURNS = 50;
 // means slightly higher cost per cycle, in exchange for not fabricating.
 const PM_LIVE_MAX_BUDGET_USD = 2.5;
 
-export async function runProjectManager(input: CycleInput, logger: EventLogger): Promise<void> {
+export async function runProjectManager(
+  input: CycleInput,
+  logger: EventLogger,
+  options: RunProjectManagerOptions = {},
+): Promise<void> {
   const start = logger.emit({
     initiative_id: input.initiativeId,
     phase: 'project-manager',
@@ -56,33 +77,154 @@ export async function runProjectManager(input: CycleInput, logger: EventLogger):
     output_refs: [],
   });
 
+  const manifest = parseManifest(readFileSync(input.manifestPath, 'utf8'));
+  const queryFn = options.queryFn ?? (sdkQuery as unknown as PmQueryFn);
+
+  // First PM pass — the standard production behaviour. If it fails ONLY
+  // because of a feature-hallucination (PM emitted FEAT-N not in the
+  // manifest), C5b says: retry once with an augmented prompt that names
+  // the manifest's feature IDs verbatim. Any other failure mode falls
+  // through to the standard throw path.
+  const first = await runOnePmPass({
+    input,
+    logger,
+    manifest,
+    parentEventId: start.event_id,
+    queryFn,
+    pass: 1,
+    promptAugment: null,
+  });
+
+  if (first.kind === 'success') return;
+
+  if (first.kind !== 'feature-hallucination') {
+    throw new Error(`project-manager phase failed: ${first.summary}`);
+  }
+
+  // Hallucination retry per C5b. Emit a marker so the failure-classifier
+  // can disambiguate the retry-path failure from a first-pass success.
+  logger.emit({
+    initiative_id: input.initiativeId,
+    parent_event_id: start.event_id,
+    phase: 'project-manager',
+    skill: 'project-manager',
+    event_type: 'log',
+    input_refs: [input.manifestPath],
+    output_refs: [],
+    message: 'pm.feature-hallucination-retry',
+    metadata: {
+      pass: 1,
+      hallucinated_feature_ids: first.hallucinated,
+      manifest_feature_ids: manifest.features.map((f) => f.feature_id),
+    },
+  });
+
+  const second = await runOnePmPass({
+    input,
+    logger,
+    manifest,
+    parentEventId: start.event_id,
+    queryFn,
+    pass: 2,
+    promptAugment: renderPmHallucinationRetryAugment({
+      knownFeatureIds: manifest.features.map((f) => f.feature_id),
+      hallucinated: first.hallucinated,
+    }),
+  });
+
+  if (second.kind === 'success') return;
+
+  // Second pass also failed. If it's STILL a hallucination, classify and
+  // throw distinctly so the cycle's failure-classifier picks up
+  // pm-feature-hallucination (terminal — needs an architect amend, not
+  // an auto-retry). Other failure modes (hidden coupling, schema, etc.)
+  // fall back to the generic message and let their respective classifiers
+  // route them.
+  if (second.kind === 'feature-hallucination') {
+    logger.emit({
+      initiative_id: input.initiativeId,
+      parent_event_id: start.event_id,
+      phase: 'project-manager',
+      skill: 'project-manager',
+      event_type: 'error',
+      input_refs: [input.manifestPath],
+      output_refs: [],
+      message: 'pm.feature-hallucination',
+      metadata: {
+        passes_attempted: 2,
+        hallucinated_feature_ids: second.hallucinated,
+        manifest_feature_ids: manifest.features.map((f) => f.feature_id),
+      },
+    });
+    throw new Error(
+      `project-manager phase failed: feature_id hallucination persisted across 2 passes (last invented ${second.hallucinated.join(', ')}); manifest only declares ${manifest.features.map((f) => f.feature_id).join(', ')}`,
+    );
+  }
+  throw new Error(`project-manager phase failed: ${second.summary}`);
+}
+
+type PmPassInput = {
+  input: CycleInput;
+  logger: EventLogger;
+  manifest: InitiativeManifest;
+  parentEventId: string;
+  queryFn: PmQueryFn;
+  pass: 1 | 2;
+  /** Extra text appended to the standard PM prompt for retry-augmented passes. */
+  promptAugment: string | null;
+};
+
+type PmPassOutcome =
+  | { kind: 'success' }
+  | { kind: 'feature-hallucination'; hallucinated: string[]; summary: string }
+  | { kind: 'failure'; summary: string };
+
+/**
+ * Run one PM pass against the SDK, validate the emitted work-items, and
+ * emit telemetry. Returns a discriminated outcome rather than throwing so
+ * the outer orchestrator can decide whether to retry (hallucination) or
+ * give up (anything else).
+ */
+async function runOnePmPass(p: PmPassInput): Promise<PmPassOutcome> {
+  const { input, logger, manifest, parentEventId, queryFn, pass, promptAugment } = p;
+
   // F-21: wipe any stale `.forge/work-items/` inherited from the project's
   // base branch. The dev-loop's pre-review boundary snapshot historically
   // committed cycle scratch into project repos; without this wipe, the PM
   // agent sees pre-existing WI files and emits stale content (wrong
   // initiative_id, wrong work) instead of starting from a clean canvas.
   // Idempotent — missing dir is fine; gitignore is the structural fix,
-  // this is the runtime backstop.
+  // this is the runtime backstop. On the retry pass this also clears the
+  // hallucinated WI files from pass 1.
   const stalePmScratch = resolve(input.worktreePath, '.forge', 'work-items');
   if (existsSync(stalePmScratch)) {
     rmSync(stalePmScratch, { recursive: true, force: true });
   }
 
-  const manifest = parseManifest(readFileSync(input.manifestPath, 'utf8'));
   const featureCountByFeatureId = new Map<string, number>();
   for (const f of manifest.features) featureCountByFeatureId.set(f.feature_id, 0);
 
   const forgeRoot = resolve(import.meta.dirname, '..', '..');
   const systemPrompt = buildPmSystemPrompt(forgeRoot);
-  const prompt = renderPmUserPrompt({
+  const featureCount = manifest.features.length;
+  // C5 sizing band: per-initiative range `feature_count..2*feature_count+2`,
+  // ceiling 8 unless feature_count > 4 (then ceiling = 2*fc+2).
+  const minWorkItems = Math.max(featureCount, 2);
+  const maxWorkItems = featureCount > 4
+    ? 2 * featureCount + 2
+    : Math.min(2 * featureCount + 2, 8);
+  let prompt = renderPmUserPrompt({
     initiativeId: input.initiativeId,
     manifestRelPath: input.manifestPath,
     worktreeRelPath: input.worktreePath,
     projectName: manifest.project,
-    minWorkItems: Math.max(manifest.features.length, 2),
-    maxWorkItems: Math.max(manifest.features.length * 4, 6),
+    minWorkItems,
+    maxWorkItems,
     parallelFractionAtLeast: 0.3,
+    manifestType: detectManifestType(manifest),
+    knownFeatureIds: manifest.features.map((f) => f.feature_id),
   });
+  if (promptAugment) prompt = prompt + '\n\n' + promptAugment;
 
   const options: Record<string, unknown> = {
     // F-37: PM runs with cwd = the worktree, NOT forgeRoot. Previously
@@ -108,7 +250,7 @@ export async function runProjectManager(input: CycleInput, logger: EventLogger):
   let durationMs = 0;
   let resultSubtype: string | undefined;
 
-  for await (const msg of sdkQuery({ prompt, options }) as AsyncIterable<unknown>) {
+  for await (const msg of queryFn({ prompt, options }) as AsyncIterable<unknown>) {
     if (typeof msg !== 'object' || msg === null) continue;
     const m = msg as { type?: string; message?: { content?: Array<{ type?: string; name?: string; input?: unknown }> }; subtype?: string; total_cost_usd?: number; duration_ms?: number };
     if (m.type === 'assistant') {
@@ -125,7 +267,7 @@ export async function runProjectManager(input: CycleInput, logger: EventLogger):
   for (let i = 0; i < toolUseSummary.brainReads; i++) {
     logger.emit({
       initiative_id: input.initiativeId,
-      parent_event_id: start.event_id,
+      parent_event_id: parentEventId,
       phase: 'project-manager',
       skill: 'project-manager',
       event_type: 'tool_use',
@@ -139,17 +281,22 @@ export async function runProjectManager(input: CycleInput, logger: EventLogger):
   // PM agent skipped brain-query entirely, fail fast with a distinct error
   // (rather than continuing into validateWorkItemSet, where the
   // brain-skip's downstream effect — incomplete frontmatter — surfaces
-  // instead, masking the real cause).
+  // instead, masking the real cause). Only enforced on the first pass:
+  // the retry's augmented prompt is the orchestrator's "consult-the-brain
+  // result" surface, and the second pass shouldn't re-burn that budget.
   if (
+    pass === 1 &&
     !recordBrainGateResult('project-manager', 'project-manager', toolUseSummary.brainReads, {
       initiativeId: input.initiativeId,
       logger,
-      parentEventId: start.event_id,
+      parentEventId,
     })
   ) {
-    throw new Error(
-      'project-manager phase failed: brain-first mandate not honoured (0 brain-query calls). The system prompt requires reading from `brain/...` (forge themes + project themes) before producing work items.',
-    );
+    return {
+      kind: 'failure',
+      summary:
+        'brain-first mandate not honoured (0 brain-query calls). The system prompt requires reading from `brain/...` (forge themes + project themes) before producing work items.',
+    };
   }
 
   const workItemsDir = resolve(input.worktreePath, '.forge', 'work-items');
@@ -160,28 +307,28 @@ export async function runProjectManager(input: CycleInput, logger: EventLogger):
     featureCountByFeatureId.set(item.feature_id, prev + 1);
     logger.emit({
       initiative_id: input.initiativeId,
-      parent_event_id: start.event_id,
+      parent_event_id: parentEventId,
       phase: 'project-manager',
       skill: 'project-manager',
       event_type: 'log',
       input_refs: [input.manifestPath],
       output_refs: [resolve(workItemsDir, `${item.work_item_id}.md`)],
       message: 'pm.work-item-emitted',
-      metadata: { work_item_id: item.work_item_id, feature_id: item.feature_id },
+      metadata: { work_item_id: item.work_item_id, feature_id: item.feature_id, pass },
     });
   }
 
   for (const [featureId, count] of featureCountByFeatureId.entries()) {
     logger.emit({
       initiative_id: input.initiativeId,
-      parent_event_id: start.event_id,
+      parent_event_id: parentEventId,
       phase: 'project-manager',
       skill: 'project-manager',
       event_type: 'log',
       input_refs: [input.manifestPath],
       output_refs: [],
       message: 'pm.feature-decomposed',
-      metadata: { feature_id: featureId, work_item_count: count },
+      metadata: { feature_id: featureId, work_item_count: count, pass },
     });
   }
 
@@ -194,29 +341,9 @@ export async function runProjectManager(input: CycleInput, logger: EventLogger):
 
   // F-05: hidden-coupling check. Two WIs whose `files_in_scope` overlap
   // without a `depends_on` edge between them will conflict at merge time.
-  // The bench has scored this since pass-1; production didn't enforce it
-  // until now. Failures here surface as a distinct error so the operator
-  // sees the structural cause rather than a generic "PM phase failed".
   const couplingViolations = items.length > 0 ? detectHiddenCoupling(items) : [];
 
-  // F-39: F-36 path validation REMOVED. The original failure mode (PM
-  // fabricating `src/engine/` directories that don't exist) was caused by
-  // PM running with cwd=forgeRoot — F-37 fixed that structurally by moving
-  // PM into the worktree. With cwd=worktree, the PM can no longer easily
-  // fabricate non-existent paths because it's globbing the real project.
-  //
-  // The F-36 validator was kept as belt-and-suspenders, but at trafficGame
-  // scale it produces too many false positives: legitimate WIs that create
-  // new test files describe behaviour in their THEN clauses ("tests assert
-  // flowEfficiency is 100...") rather than re-listing the filename. The
-  // validator couldn't tell apart fabrication from legitimate new-file
-  // creation and was blocking real work.
-  //
-  // The function is kept in work-item.ts for the unit tests + future use;
-  // it's just no longer called from the cycle. If a path is genuinely
-  // wrong, the dev-loop will fail naturally when the agent can't operate
-  // on it — and we have F-23 telemetry + F-27 classification to diagnose
-  // that downstream failure cleanly.
+  const hallucinated = collectHallucinatedFeatureIds(items, knownFeatureIds);
 
   const failed =
     items.length === 0 ||
@@ -227,18 +354,19 @@ export async function runProjectManager(input: CycleInput, logger: EventLogger):
 
   logger.emit({
     initiative_id: input.initiativeId,
-    parent_event_id: start.event_id,
+    parent_event_id: parentEventId,
     phase: 'project-manager',
     skill: 'project-manager',
     event_type: 'log',
     input_refs: [input.manifestPath],
     output_refs: [resolve(workItemsDir, '_graph.md')],
     message: 'pm.graph-emitted',
+    metadata: { pass },
   });
 
   logger.emit({
     initiative_id: input.initiativeId,
-    parent_event_id: start.event_id,
+    parent_event_id: parentEventId,
     phase: 'project-manager',
     skill: 'project-manager',
     event_type: failed ? 'error' : 'end',
@@ -254,21 +382,71 @@ export async function runProjectManager(input: CycleInput, logger: EventLogger):
       set_errors: setErrors,
       per_item_error_count: itemErrorCount,
       hidden_coupling_violations: couplingViolations,
+      hallucinated_feature_ids: hallucinated,
+      pass,
     },
   });
 
-  if (failed) {
-    const summary = [
-      items.length === 0 ? 'no work items emitted' : null,
-      Object.keys(parseErrors).length > 0 ? `parse errors: ${Object.keys(parseErrors).join(', ')}` : null,
-      setErrors.length > 0 ? `set errors: ${setErrors.join('; ')}` : null,
-      itemErrorCount > 0 ? `${itemErrorCount} per-item validation errors` : null,
-      couplingViolations.length > 0
-        ? `${couplingViolations.length} hidden-coupling pair(s): ${couplingViolations.map((p) => `${p.a}↔${p.b} share ${p.sharedFiles.join(',')}`).join('; ')}`
-        : null,
-    ]
-      .filter((s): s is string => s !== null)
-      .join('; ');
-    throw new Error(`project-manager phase failed: ${summary}`);
+  if (!failed) return { kind: 'success' };
+
+  // If the only validator-level error is the feature-hallucination set
+  // (i.e., per_item_error_count is exactly the count of hallucinated WIs
+  // and nothing else fails), surface as the dedicated kind so the
+  // outer orchestrator can retry per C5b.
+  const onlyHallucination =
+    hallucinated.length > 0 &&
+    items.length > 0 &&
+    Object.keys(parseErrors).length === 0 &&
+    setErrors.length === 0 &&
+    couplingViolations.length === 0 &&
+    itemErrorCount === hallucinated.length;
+
+  const summary = [
+    items.length === 0 ? 'no work items emitted' : null,
+    Object.keys(parseErrors).length > 0 ? `parse errors: ${Object.keys(parseErrors).join(', ')}` : null,
+    setErrors.length > 0 ? `set errors: ${setErrors.join('; ')}` : null,
+    itemErrorCount > 0 ? `${itemErrorCount} per-item validation errors` : null,
+    couplingViolations.length > 0
+      ? `${couplingViolations.length} hidden-coupling pair(s): ${couplingViolations.map((p) => `${p.a}↔${p.b} share ${p.sharedFiles.join(',')}`).join('; ')}`
+      : null,
+  ]
+    .filter((s): s is string => s !== null)
+    .join('; ');
+
+  if (onlyHallucination) {
+    return { kind: 'feature-hallucination', hallucinated, summary };
   }
+  return { kind: 'failure', summary };
+}
+
+/**
+ * Walk the emitted work items and return the set of feature_ids that don't
+ * appear in the manifest. Drives the retry path per C5b.
+ */
+function collectHallucinatedFeatureIds(
+  items: ReadonlyArray<WorkItem>,
+  knownFeatureIds: ReadonlySet<string>,
+): string[] {
+  const out = new Set<string>();
+  for (const item of items) {
+    if (item.feature_id && !knownFeatureIds.has(item.feature_id)) {
+      out.add(item.feature_id);
+    }
+  }
+  return [...out].sort();
+}
+
+/**
+ * Detect the C27 manifest discriminator. The architect's manifest
+ * frontmatter may carry `type: implementation | exploration`. Read it
+ * defensively — most current manifests omit it, in which case the default
+ * is `implementation`.
+ */
+function detectManifestType(manifest: InitiativeManifest): 'implementation' | 'exploration' {
+  // The current InitiativeManifest type doesn't yet expose `type:` (it
+  // arrives via S2B). Read the body for a frontmatter-shaped hint until
+  // the field lands in the schema — robust against partial migrations.
+  const m = manifest as unknown as { type?: string };
+  if (m.type === 'exploration') return 'exploration';
+  return 'implementation';
 }

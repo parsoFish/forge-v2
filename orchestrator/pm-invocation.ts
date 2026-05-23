@@ -87,6 +87,19 @@ export type PmUserPromptInput = {
    * (no `depends_on`). Used as a discipline anchor against linear chains.
    */
   parallelFractionAtLeast: number;
+  /**
+   * C27 manifest discriminator. `implementation` (default) = feature-decomposition
+   * WIs; `exploration` = sweep-batch WIs (coarse → fine → regression → screenshot+doc).
+   * Optional — omitted callers default to `implementation`.
+   */
+  manifestType?: 'implementation' | 'exploration';
+  /**
+   * The manifest's declared feature_ids. Surfaced verbatim in the prompt so
+   * the PM never invents FEAT-N outside this set (C5a load-bearing fix).
+   * Optional only for backward-compat with older bench callers; live cycle
+   * always passes it.
+   */
+  knownFeatureIds?: readonly string[];
 };
 
 /**
@@ -95,6 +108,8 @@ export type PmUserPromptInput = {
  * the contract (brain-first, Given-When-Then, files_in_scope, _graph.md).
  */
 export function renderPmUserPrompt(input: PmUserPromptInput): string {
+  const manifestType = input.manifestType ?? 'implementation';
+  const knownFeatureIds = input.knownFeatureIds ?? [];
   return [
     '# Project-manager invocation',
     '',
@@ -130,6 +145,43 @@ export function renderPmUserPrompt(input: PmUserPromptInput): string {
     '',
     `## Initiative: ${input.initiativeId}`,
     `## Project: ${input.projectName}`,
+    `## Manifest type: ${manifestType}`,
+    ...(knownFeatureIds.length > 0
+      ? [
+          '',
+          '## Known feature IDs (manifest)',
+          '',
+          `The architect's manifest declares exactly these feature IDs — your work items' \`feature_id\` field MUST be drawn from this set. Inventing a \`FEAT-N\` outside this list is a hard error and aborts the cycle. Read the manifest body to learn what each one means; do NOT add new ones, do NOT rename them.`,
+          '',
+          knownFeatureIds.map((id) => `- \`${id}\``).join('\n'),
+        ]
+      : []),
+    ...(manifestType === 'exploration'
+      ? [
+          '',
+          '## Exploration-mode WI shape (C27 / L2)',
+          '',
+          'This is an `type: exploration` manifest. Instead of feature-decomposition WIs, emit a **sweep-batch** decomposition:',
+          '',
+          '1. **Coarse sweep** — broad sample of the `parameter_space` (read it from the manifest body). One WI; the dev-loop unifier runs the `metric_command` against the sample.',
+          '2. **Fine sweep** — narrow around the best coarse-sweep result. One WI, `depends_on` the coarse sweep.',
+          '3. **Regression check** — assert the champion result does not regress the project\'s `locked_baselines` (read from the manifest body / `.forge/project.json`).',
+          '4. **Screenshot + doc** — capture a visual artifact (per L4 — visual confirmation is non-optional for visual / canvas / physics projects) and write a one-line summary back into the brain via the reflector handoff.',
+          '',
+          'The `iteration_budget` in an exploration manifest is a hint, not a contract (L9) — explorations grow naturally as one fix exposes the next structural problem. Do not pad WIs to consume budget.',
+        ]
+      : []),
+    '',
+    '## Per-WI optional fields (C5)',
+    '',
+    'In addition to the required frontmatter below, you MAY emit four optional fields when they materially help the dev-loop. All are omit-on-undefined — a WI without them serialises identically to the legacy shape. Use them especially on larger initiatives (≥ 6 WIs) where the dev-loop otherwise lacks per-WI signal:',
+    '',
+    '- `quality_gate_cmd: ["npm","test","--","tests/x.test.ts"]` — per-WI gate command override (must be non-empty array of strings). Use when the WI is tightly scoped to one test file or module so the dev-loop spends time on the work, not on whole-project test runs.',
+    '- `non_goals: ["docs","the bar component"]` — explicit out-of-scope items pulled forward from the manifest\'s per-feature `non_goals` block. Forces clarity; rescues the over-eager dev-loop from rewriting adjacent code.',
+    '- `verification_artifact: "tests/x.test.ts"` — the path the dev-loop must produce that the gate exercises. Pairs with `quality_gate_cmd`. Must appear in `files_in_scope`.',
+    '- `creates: ["tests/x.test.ts"]` — files this WI creates from scratch (subset of `files_in_scope`). At most one WI may declare a given path in `creates`; subsequent WIs `depends_on` the creator and may extend the file. This is a structured marker — the bench uses it to verify every `files_in_scope` path either exists on disk or is explicitly created by some WI.',
+    '',
+    '`demo_hook` is **NOT** a WI field — it lives at the initiative level only (C15b). The unifier reads it from the manifest; do not author demos here.',
     '',
     '## Inputs',
     '',
@@ -183,6 +235,33 @@ export function renderPmUserPrompt(input: PmUserPromptInput): string {
     "**Brain-cite sanity check:** the body's \"Brain themes consulted\" footer should reference actual theme files you `Read`-ed in step 0. Don't fabricate citations — the orchestrator can detect a mismatch (cite that doesn't appear in your tool-use trace).",
     '',
     'Do not update the manifest frontmatter or status — leave that to the orchestrator. Just write the work items and the graph, then stop.',
+  ].join('\n');
+}
+
+/**
+ * S3 / C5b — augment the PM user prompt on a hallucination retry. The
+ * orchestrator catches a first-pass feature_id-hallucination, wipes the
+ * stale work-items dir, and re-invokes the PM with this text appended.
+ *
+ * The retry's whole job is "do it again, but use these feature_ids verbatim
+ * and only these" — we DON'T re-state the brain-query mandate (the first
+ * pass already covered it; the retry's brain gate is intentionally
+ * relaxed in runProjectManager).
+ */
+export function renderPmHallucinationRetryAugment(args: {
+  knownFeatureIds: readonly string[];
+  hallucinated: readonly string[];
+}): string {
+  return [
+    '## RETRY pass — your previous work items invented feature IDs',
+    '',
+    `Your previous decomposition declared the following feature IDs that do **not** appear in the manifest: ${args.hallucinated.map((f) => `\`${f}\``).join(', ')}. The orchestrator has wiped your previous \`.forge/work-items/\` output. Re-decompose the initiative from scratch.`,
+    '',
+    'Use **only** these feature IDs (manifest declared):',
+    '',
+    args.knownFeatureIds.map((id) => `- \`${id}\``).join('\n'),
+    '',
+    "If a WI you wrote previously would have fitted a manifest feature you missed, re-map it to the correct existing FEAT-id. **Do not invent new feature IDs**, even if you believe one is needed — the architect contract is binding; if the manifest is genuinely incomplete, surface the gap in the first WI's body and proceed against the existing features only.",
   ].join('\n');
 }
 

@@ -246,3 +246,29 @@ Per TDD discipline:
    SDK exposes explicit `cache_control` markers; the prompt-stability
    work it enables (no per-iteration timestamps in prompts) is already
    in place.
+
+---
+
+## D12 — Final scorecard
+
+| AC | Status | Evidence |
+|---|---|---|
+| AC1 `tsc --noEmit` clean | PASS | No output (clean exit) |
+| AC2 targeted `node --test` | PASS | 26/26 across the 4 named test files |
+| AC3 `npm test` ≥ 576 | PASS | 590/590 (+14 new) |
+| AC4 `cache_control` ≥ 5 hits across 5 sites | PASS | 8 hits across all 5 SDK call sites |
+| AC5 3× haiku + 1× sonnet routing | PASS | 3 haiku (ceo/design/dx) + 1 sonnet (eng) |
+| AC6 `OUTPUT STYLE` on reflector + reviewer | PASS | both SKILL.md files have the directive |
+| AC7 memory proposal doc + apply script | PASS | files present; memory files unmodified |
+| AC8 baseline.json + harness tests | PASS | 7/7 harness tests |
+| AC9 `EventLogEntry.cache_*_tokens` round-trip | PASS | two round-trip tests + type entries |
+| AC10 NO new budget mechanism | PASS | 0 hits on `budget_cap\|max_cost_usd\|cost_threshold` |
+
+5 commits on `s8-token-economy`:
+- `eeef5fa` WI-1 (caching intent + telemetry plumbing)
+- `aa8e299` WI-2 (council model routing)
+- `924c786` WI-3 (micro-caveman on reflector + reviewer)
+- `c7f73af` WI-5 (token-economy ratchet bench)
+- `c123c63` WI-4 (memory compression proposal + apply script)
+
+No push; no merge. Operator wakes up to a green branch + a proposal doc.

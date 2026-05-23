@@ -21,13 +21,13 @@
  */
 
 import { execFileSync } from 'node:child_process';
-import { existsSync, readFileSync, readdirSync, writeFileSync, statSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { basename, join, resolve } from 'node:path';
 
-import type { EventLogEntry } from './logging.ts';
+import type { EventLogEntry } from '../orchestrator/logging.ts';
 import { summariseCycle, type CycleMetrics } from './metrics.ts';
-import { parseManifest, type InitiativeManifest } from './manifest.ts';
-import { parseWorkItem, type WorkItem } from './work-item.ts';
+import { parseManifest, type InitiativeManifest } from '../orchestrator/manifest.ts';
+import { parseWorkItem, type WorkItem } from '../orchestrator/work-item.ts';
 
 export type CycleReportInput = {
   cycleId: string;
@@ -94,16 +94,6 @@ export function buildCycleReport(input: CycleReportInput): string {
     renderAppendix(cycleLogDir, forgeRoot, manifest, prUrl, cycleId),
   ];
   return sections.filter(Boolean).join('\n\n') + '\n';
-}
-
-/** Build the report and write it to `_logs/<cycleId>/report.md`. */
-export function writeCycleReport(input: CycleReportInput): string {
-  const forgeRoot = resolve(input.forgeRoot ?? process.cwd());
-  const cycleLogDir = resolve(forgeRoot, '_logs', input.cycleId);
-  const md = buildCycleReport(input);
-  const outPath = resolve(cycleLogDir, 'report.md');
-  writeFileSync(outPath, md);
-  return outPath;
 }
 
 // ---------- data loaders ----------

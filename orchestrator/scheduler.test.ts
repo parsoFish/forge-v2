@@ -353,17 +353,17 @@ function writeFailureLog(logDir: string, mode: string, recoverable: boolean): st
   return logPath;
 }
 
-test('decideAutoRetry: recoverable mode + retry_count=0 → retry with count=1', () => {
+test('decideAutoRetry: transient kind + retry_count=0 → retry with count=1', () => {
   const { dir, paths } = setupQueue();
   try {
     writeManifestWithRetry(paths.inFlight, 'INIT-2026-05-10-r1', 0);
     const logDir = mkdtempSync(join(tmpdir(), 'forge-log-'));
-    const logPath = writeFailureLog(logDir, 'trivial-pass', true);
+    const logPath = writeFailureLog(logDir, 'transient', true);
     try {
       const decision = decideAutoRetry('INIT-2026-05-10-r1.md', paths, logPath);
       assert.equal(decision.retry, true);
       if (decision.retry) {
-        assert.equal(decision.mode, 'trivial-pass');
+        assert.equal(decision.mode, 'transient');
         assert.equal(decision.nextRetryCount, 1);
       }
     } finally {
@@ -374,17 +374,17 @@ test('decideAutoRetry: recoverable mode + retry_count=0 → retry with count=1',
   }
 });
 
-test('decideAutoRetry: non-recoverable mode → no retry', () => {
+test('decideAutoRetry: terminal kind → no retry', () => {
   const { dir, paths } = setupQueue();
   try {
     writeManifestWithRetry(paths.inFlight, 'INIT-2026-05-10-r2', 0);
     const logDir = mkdtempSync(join(tmpdir(), 'forge-log-'));
-    const logPath = writeFailureLog(logDir, 'gate-missing-script', false);
+    const logPath = writeFailureLog(logDir, 'terminal', false);
     try {
       const decision = decideAutoRetry('INIT-2026-05-10-r2.md', paths, logPath);
       assert.equal(decision.retry, false);
       if (!decision.retry) {
-        assert.match(decision.reason, /not recoverable/);
+        assert.match(decision.reason, /terminal/);
       }
     } finally {
       rmSync(logDir, { recursive: true, force: true });
@@ -399,30 +399,11 @@ test(`decideAutoRetry: retry_count >= ${MAX_AUTO_RETRIES} → no retry (cap reac
   try {
     writeManifestWithRetry(paths.inFlight, 'INIT-2026-05-10-r3', MAX_AUTO_RETRIES);
     const logDir = mkdtempSync(join(tmpdir(), 'forge-log-'));
-    const logPath = writeFailureLog(logDir, 'trivial-pass', true);
+    const logPath = writeFailureLog(logDir, 'transient', true);
     try {
       const decision = decideAutoRetry('INIT-2026-05-10-r3.md', paths, logPath);
       assert.equal(decision.retry, false);
       if (!decision.retry) assert.match(decision.reason, /retry cap/);
-    } finally {
-      rmSync(logDir, { recursive: true, force: true });
-    }
-  } finally {
-    rmSync(dir, { recursive: true, force: true });
-  }
-});
-
-test('decideAutoRetry: same recoverable mode repeated → no retry (anti-thrash)', () => {
-  const { dir, paths } = setupQueue();
-  try {
-    // Already retried once for trivial-pass; the same mode shows up again.
-    writeManifestWithRetry(paths.inFlight, 'INIT-2026-05-10-r4', 1, ['trivial-pass']);
-    const logDir = mkdtempSync(join(tmpdir(), 'forge-log-'));
-    const logPath = writeFailureLog(logDir, 'trivial-pass', true);
-    try {
-      const decision = decideAutoRetry('INIT-2026-05-10-r4.md', paths, logPath);
-      assert.equal(decision.retry, false);
-      if (!decision.retry) assert.match(decision.reason, /repeated despite prior retry/);
     } finally {
       rmSync(logDir, { recursive: true, force: true });
     }
@@ -450,13 +431,14 @@ test('decideAutoRetry: log without classification event → no retry', () => {
   }
 });
 
-test('decideAutoRetry: different recoverable mode after prior retry → retry (modes are distinct)', () => {
+test('decideAutoRetry: prior transient retry + new transient classification → still retries (cap is the only bound)', () => {
   const { dir, paths } = setupQueue();
   try {
-    // Prior: brain-skipped. Current: trivial-pass. Different modes — give it another shot.
-    writeManifestWithRetry(paths.inFlight, 'INIT-2026-05-10-r6', 1, ['brain-skipped']);
+    // With the simplified transient|terminal taxonomy the per-mode
+    // anti-thrash check is gone — the retry-count cap is the only bound.
+    writeManifestWithRetry(paths.inFlight, 'INIT-2026-05-10-r6', 1, ['transient']);
     const logDir = mkdtempSync(join(tmpdir(), 'forge-log-'));
-    const logPath = writeFailureLog(logDir, 'trivial-pass', true);
+    const logPath = writeFailureLog(logDir, 'transient', true);
     try {
       const decision = decideAutoRetry('INIT-2026-05-10-r6.md', paths, logPath);
       assert.equal(decision.retry, true);
@@ -469,39 +451,42 @@ test('decideAutoRetry: different recoverable mode after prior retry → retry (m
   }
 });
 
-// ---- F-27: failure classifier ----
+// ---- F-27: failure classifier (transient | terminal) ----
 
-test('classifyCycleFailure: trivial-pass detected from ralph.end with iterations=0', async () => {
+test('classifyCycleFailure: trivial-pass ralph.end → transient', async () => {
   const { classifyCycleFailure } = await import('./failure-classifier.ts');
   const events = [
     { event_id: 'e1', cycle_id: 'c', initiative_id: 'i', started_at: '', phase: 'developer-loop', skill: 'developer-ralph', event_type: 'end', input_refs: [], output_refs: [], message: 'ralph.end', metadata: { work_item_id: 'WI-1', status: 'failed', stop_reason: 'quality-gates-pass', iterations: 0 } },
   ];
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const cls = classifyCycleFailure(events as any);
-  assert.equal(cls.mode, 'trivial-pass');
+  assert.equal(cls.kind, 'transient');
   assert.equal(cls.recoverable, true);
+  assert.match(cls.reason, /F-26|forces ≥1 iteration/i);
 });
 
-test('classifyCycleFailure: gate-missing-script detected from gate.fail stderr', async () => {
+test('classifyCycleFailure: gate-missing-script → terminal', async () => {
   const { classifyCycleFailure } = await import('./failure-classifier.ts');
   const events = [
     { event_id: 'e1', cycle_id: 'c', initiative_id: 'i', started_at: '', phase: 'developer-loop', skill: 'developer-ralph', event_type: 'error', input_refs: [], output_refs: [], message: 'gate.fail', metadata: { gate_stderr_tail: 'npm error: missing script: test:visual:fast' } },
   ];
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const cls = classifyCycleFailure(events as any);
-  assert.equal(cls.mode, 'gate-missing-script');
+  assert.equal(cls.kind, 'terminal');
   assert.equal(cls.recoverable, false);
+  assert.match(cls.reason, /missing npm script/i);
 });
 
-test('classifyCycleFailure: unknown when no signature matches', async () => {
+test('classifyCycleFailure: empty events → terminal (unrecognised)', async () => {
   const { classifyCycleFailure } = await import('./failure-classifier.ts');
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const cls = classifyCycleFailure([] as any);
-  assert.equal(cls.mode, 'unknown');
+  assert.equal(cls.kind, 'terminal');
   assert.equal(cls.recoverable, false);
+  assert.match(cls.reason, /could not be classified/i);
 });
 
-test('classifyCycleFailure: pm-invalid-work-items detected from PM error per_item_error_count > 0 and is recoverable', async () => {
+test('classifyCycleFailure: pm per_item_error_count > 0 → transient', async () => {
   const { classifyCycleFailure } = await import('./failure-classifier.ts');
   const events = [
     { event_id: 'e1', cycle_id: 'c', initiative_id: 'i', started_at: '', phase: 'project-manager', skill: 'project-manager', event_type: 'error', input_refs: [], output_refs: [], message: 'pm.end', metadata: { work_item_count: 3, per_item_error_count: 1, hidden_coupling_violations: [] } },
@@ -509,31 +494,20 @@ test('classifyCycleFailure: pm-invalid-work-items detected from PM error per_ite
   ];
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const cls = classifyCycleFailure(events as any);
-  assert.equal(cls.mode, 'pm-invalid-work-items');
+  assert.equal(cls.kind, 'transient');
   assert.equal(cls.recoverable, true);
-  assert.match(cls.recommendation, /re-running the PM/i);
   assert.ok(cls.evidence_event_ids.includes('e1'));
 });
 
-test('classifyCycleFailure: per_item_error_count = 0 does NOT trigger pm-invalid-work-items', async () => {
+test('classifyCycleFailure: pm capped AND degenerate → terminal (no auto-retry)', async () => {
   const { classifyCycleFailure } = await import('./failure-classifier.ts');
   const events = [
-    { event_id: 'e1', cycle_id: 'c', initiative_id: 'i', started_at: '', phase: 'project-manager', skill: 'project-manager', event_type: 'error', input_refs: [], output_refs: [], message: 'pm.end', metadata: { work_item_count: 0, per_item_error_count: 0, hidden_coupling_violations: [] } },
+    { event_id: 'e1', cycle_id: 'c', initiative_id: 'i', started_at: '', phase: 'project-manager', skill: 'project-manager', event_type: 'error', input_refs: [], output_refs: [], message: 'pm.end', metadata: { result_subtype: 'error_max_turns', per_item_error_count: 1, hidden_coupling_violations: [{ a: 'WI-1', b: 'WI-2', sharedFiles: ['x.ts'] }] } },
   ];
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const cls = classifyCycleFailure(events as any);
-  assert.notEqual(cls.mode, 'pm-invalid-work-items');
-});
-
-test('classifyCycleFailure: hidden-coupling takes precedence over invalid-work-items when both present (both recoverable)', async () => {
-  const { classifyCycleFailure } = await import('./failure-classifier.ts');
-  const events = [
-    { event_id: 'e1', cycle_id: 'c', initiative_id: 'i', started_at: '', phase: 'project-manager', skill: 'project-manager', event_type: 'error', input_refs: [], output_refs: [], message: 'pm.end', metadata: { per_item_error_count: 1, hidden_coupling_violations: [{ a: 'WI-1', b: 'WI-2', sharedFiles: ['src/x.ts'] }] } },
-  ];
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const cls = classifyCycleFailure(events as any);
-  assert.equal(cls.mode, 'pm-hidden-coupling');
-  assert.equal(cls.recoverable, true);
+  assert.equal(cls.kind, 'terminal');
+  assert.match(cls.reason, /never converged/i);
 });
 
 // ---- F-28: dispatchTerminalStatus must NOT signal cleanup for ready-for-review ----

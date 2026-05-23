@@ -17,6 +17,7 @@ import {
   writeWorkItem,
   readWorkItemsFromDir,
   detectHiddenCoupling,
+  requiredVerificationPaths,
   type WorkItem,
 } from './work-item.ts';
 
@@ -308,4 +309,37 @@ test('creates: entry not in files_in_scope is rejected', () => {
     creates: ['tests/x.test.ts'],
   }));
   assert.ok(errors.some((e) => e.includes('creates')), `got ${JSON.stringify(errors)}`);
+});
+
+// ---- requiredVerificationPaths: single source of truth for the gate's
+// "WI did real work" check (rebuild-review 2026-05-24 §3 #9) ----
+
+test('requiredVerificationPaths: returns union of creates + verification_artifact', () => {
+  const wi = fixture({
+    files_in_scope: ['src/handler.ts', 'tests/handler.test.ts', 'docs/handler.md'],
+    creates: ['tests/handler.test.ts'],
+    verification_artifact: 'docs/handler.md',
+  });
+  assert.deepEqual(requiredVerificationPaths(wi), ['tests/handler.test.ts', 'docs/handler.md']);
+});
+
+test('requiredVerificationPaths: empty when neither field set (no gate tightening)', () => {
+  const wi = fixture(); // no creates, no verification_artifact
+  assert.deepEqual(requiredVerificationPaths(wi), []);
+});
+
+test('requiredVerificationPaths: false-pass scenario — creates declared but diff is empty would fail the gate', () => {
+  // This is the 2026-05-23 dogfood case: WI declared `creates: tests/x.go`
+  // but the agent never wrote it; `go test -run TestX` exits 0 (no tests
+  // matched the -run filter); the gate executor in stop-conditions.ts
+  // reads requiredVerificationPaths(wi) and rejects because none of the
+  // declared paths appear in `git diff main...HEAD`. This helper is the
+  // single seam — the dev-loop call site does no further computation.
+  const wi = fixture({
+    files_in_scope: ['azuredevops/internal/service/release/resource_release_definition_test.go'],
+    creates: ['azuredevops/internal/service/release/resource_release_definition_test.go'],
+  });
+  const paths = requiredVerificationPaths(wi);
+  assert.equal(paths.length, 1);
+  assert.equal(paths[0], 'azuredevops/internal/service/release/resource_release_definition_test.go');
 });

@@ -344,6 +344,28 @@ export function writeWorkItemStatus(specPath: string, status: WorkItemStatus): v
 }
 
 /**
+ * Paths the gate executor must see in `git diff main...HEAD` before
+ * declaring quality-gate pass — the union of the work item's `creates`
+ * paths (C5: files the work item commits to producing) and its
+ * `verification_artifact` (the single file the gate-cmd is meant to
+ * exercise). Returns an empty array when neither is set; the gate
+ * executor treats empty as "no tightening" and only does its base
+ * exit-code + NO_WORK_INDICATORS scan.
+ *
+ * Single source of truth for the "which paths prove this WI did real
+ * work?" rule (rebuild-review 2026-05-24 §3 #9 — collapsed from two call
+ * sites that re-derived it). The gate executor in
+ * [`loops/ralph/stop-conditions.ts`](../loops/ralph/stop-conditions.ts)
+ * consumes the value; the dev-loop call site just hands the WI here.
+ */
+export function requiredVerificationPaths(wi: WorkItem): string[] {
+  return [
+    ...(wi.creates ?? []),
+    ...(wi.verification_artifact ? [wi.verification_artifact] : []),
+  ];
+}
+
+/**
  * Find pairs of work items that share a file in `files_in_scope` but are not
  * connected by any directed dependency edge in either direction (transitively).
  *

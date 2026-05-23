@@ -316,9 +316,13 @@ function emitFailureClassification(
       message: 'failure_classification',
       metadata: {
         cycle_id: cycleId,
-        failure_mode: cls.mode,
+        // `failure_mode` retained for backward compatibility with archived
+        // log readers; value is now 'transient' | 'terminal' (was a
+        // 14-mode enum pre-2026-05-24).
+        failure_mode: cls.kind,
+        failure_kind: cls.kind,
         recoverable: cls.recoverable,
-        recommendation: cls.recommendation,
+        reason: cls.reason,
         evidence_event_ids: cls.evidence_event_ids,
       },
     });

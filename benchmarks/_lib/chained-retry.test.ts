@@ -25,7 +25,6 @@ import {
   readFileSync,
   rmSync,
   existsSync,
-  renameSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -240,9 +239,8 @@ test(`runCycleWithBoundedRetry: persistent recoverable failure stops at 1 + MAX_
     let call = 0;
     const runCycleFn: RunCycleFn = async () => {
       call += 1;
-      // Each attempt fails recoverably with a DISTINCT mode so the
-      // same-mode anti-thrash guard never short-circuits — the only thing
-      // that stops the loop is the real MAX_AUTO_RETRIES cap.
+      // Each attempt fails recoverably (transient kind); the cap is the
+      // only bound (post-2026-05-24 the per-mode anti-thrash check is gone).
       const modes = ['brain-skipped', 'agent-rate-limited', 'pm-invalid-work-items', 'trivial-pass'];
       return {
         cycle_id: `c${call}`,
@@ -267,47 +265,6 @@ test(`runCycleWithBoundedRetry: persistent recoverable failure stops at 1 + MAX_
     assert.equal(out.result.status, 'failed');
     assert.equal(out.attempts, 1 + MAX_AUTO_RETRIES, 'capped at the production bound');
     assert.equal(out.retriedModes.length, MAX_AUTO_RETRIES);
-  } finally {
-    rmSync(dir, { recursive: true, force: true });
-  }
-});
-
-test('runCycleWithBoundedRetry: anti-thrash — same recoverable mode already retried → REAL policy declines, attempts=1', async () => {
-  const { dir, paths } = setupQueue();
-  const { projDir, head } = setupRepo(dir);
-  try {
-    // Manifest already retried once for pm-invalid-work-items; the same
-    // mode shows up again. decideAutoRetry's anti-thrash guard must
-    // refuse a second retry of the same mode.
-    writeManifest(paths.inFlight, 'INIT-x', 1, ['pm-invalid-work-items']);
-    const manifestPath = join(paths.inFlight, 'INIT-x.md');
-
-    let call = 0;
-    const runCycleFn: RunCycleFn = async () => {
-      call += 1;
-      return {
-        cycle_id: `c${call}`,
-        initiative_id: 'INIT-x',
-        status: 'failed',
-        reflection_status: 'skipped',
-        duration_ms: 1,
-        log_path: writeClassifiedLog(dir, 'pm-invalid-work-items', true),
-      };
-    };
-
-    const out = await runCycleWithBoundedRetry({
-      cycleInput: baseCycleInput(manifestPath, projDir),
-      paths,
-      filename: 'INIT-x.md',
-      manifest: { initiativeId: 'INIT-x', project: 'slugifier' },
-      projDir,
-      preCycleHead: head,
-      runCycleFn,
-    });
-
-    assert.equal(out.attempts, 1, 'no retry — same mode repeated');
-    assert.equal(out.result.status, 'failed');
-    assert.deepEqual(out.retriedModes, []);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -406,114 +363,8 @@ test('runCycleWithBoundedRetry: resets the repo to preCycleHead between attempts
   }
 });
 
-// ---------------------------------------------------------------------------
-// Bench-scoped extra-recoverable ride: production declines dev-loop-total-
-// failure (non-recoverable, conservative), the BENCH rides the stochastic
-// wedge the absent operator would re-run — bounded by the same attempt cap.
-// ---------------------------------------------------------------------------
-
-// Mimics production dispatch declining a non-recoverable failure: it moves
-// the in-flight manifest to failed/ and reports no authorised retry.
-function declineToFailed(filename: string, paths: ReturnType<typeof getPaths>) {
-  return async () => {
-    const from = join(paths.inFlight, filename);
-    const to = join(paths.failed, filename);
-    if (existsSync(from)) renameSync(from, to);
-    return {
-      moved: 'failed' as const,
-      notified: 'failed' as const,
-      retry_decision: { retry: false as const, reason: 'non-recoverable' },
-    };
-  };
-}
-
-test('runCycleWithBoundedRetry: BENCH rides a stochastic dev-loop-total-failure, then succeeds', async () => {
-  const { dir, paths } = setupQueue();
-  const { projDir, head } = setupRepo(dir);
-  try {
-    writeManifest(paths.inFlight, 'INIT-x');
-    const manifestPath = join(paths.inFlight, 'INIT-x.md');
-
-    let n = 0;
-    const runCycleFn: RunCycleFn = async () => {
-      n += 1;
-      if (n === 1) {
-        return {
-          cycle_id: 'c1',
-          initiative_id: 'INIT-x',
-          status: 'failed',
-          reflection_status: 'skipped',
-          duration_ms: 1,
-          log_path: writeClassifiedLog(dir, 'dev-loop-total-failure', false),
-        };
-      }
-      return {
-        cycle_id: 'c2',
-        initiative_id: 'INIT-x',
-        status: 'pr-open',
-        reflection_status: 'skipped',
-        duration_ms: 1,
-        log_path: writeClassifiedLog(dir, 'x', false),
-      };
-    };
-
-    const out = await runCycleWithBoundedRetry({
-      cycleInput: baseCycleInput(manifestPath, projDir),
-      paths,
-      filename: 'INIT-x.md',
-      manifest: { initiativeId: 'INIT-x', project: 'slugifier' },
-      projDir,
-      preCycleHead: head,
-      runCycleFn,
-      dispatchFn: declineToFailed('INIT-x.md', paths),
-    });
-
-    assert.equal(out.attempts, 2, 'bench rode the stochastic wedge once');
-    assert.equal(out.result.status, 'pr-open');
-    assert.deepEqual(out.retriedModes, ['bench:dev-loop-total-failure']);
-    assert.ok(
-      existsSync(join(paths.inFlight, 'INIT-x.md')),
-      'manifest reclaimed from failed/ → in-flight/ for the retry',
-    );
-  } finally {
-    rmSync(dir, { recursive: true, force: true });
-  }
-});
-
-test(`runCycleWithBoundedRetry: persistent dev-loop-total-failure bench-rides bounded at ${1 + MAX_AUTO_RETRIES} attempts`, async () => {
-  const { dir, paths } = setupQueue();
-  const { projDir, head } = setupRepo(dir);
-  try {
-    writeManifest(paths.inFlight, 'INIT-x');
-    const manifestPath = join(paths.inFlight, 'INIT-x.md');
-
-    let n = 0;
-    const runCycleFn: RunCycleFn = async () => {
-      n += 1;
-      return {
-        cycle_id: `c${n}`,
-        initiative_id: 'INIT-x',
-        status: 'failed',
-        reflection_status: 'skipped',
-        duration_ms: 1,
-        log_path: writeClassifiedLog(dir, 'dev-loop-total-failure', false),
-      };
-    };
-
-    const out = await runCycleWithBoundedRetry({
-      cycleInput: baseCycleInput(manifestPath, projDir),
-      paths,
-      filename: 'INIT-x.md',
-      manifest: { initiativeId: 'INIT-x', project: 'slugifier' },
-      projDir,
-      preCycleHead: head,
-      runCycleFn,
-      dispatchFn: declineToFailed('INIT-x.md', paths),
-    });
-
-    assert.equal(out.attempts, 1 + MAX_AUTO_RETRIES, 'hard cap stops a genuinely unsolvable seed');
-    assert.equal(out.result.status, 'failed');
-  } finally {
-    rmSync(dir, { recursive: true, force: true });
-  }
-});
+// Note: the bench-scoped extra-recoverable ride that used to re-run
+// `dev-loop-total-failure` (override of the 14-mode taxonomy) was removed
+// when the classifier collapsed to transient|terminal (rebuild-review
+// 2026-05-24 §3 #8). The production dispatch is now authoritative for the
+// bench too — a terminal kind exhausts the retries.

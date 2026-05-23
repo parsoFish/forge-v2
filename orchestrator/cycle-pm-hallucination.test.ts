@@ -290,10 +290,11 @@ test('runProjectManager: two consecutive hallucinations throws + emits pm.featur
       2,
     );
 
-    // Classifier should pick up the dedicated terminal mode.
+    // Classifier picks this up as terminal (PM lost the manifest contract).
     const classification = classifyCycleFailure(events);
-    assert.equal(classification.mode, 'pm-feature-hallucination');
+    assert.equal(classification.kind, 'terminal');
     assert.equal(classification.recoverable, false);
+    assert.match(classification.reason, /feature_id not in the manifest/i);
   } finally {
     rmSync(h.dir, { recursive: true, force: true });
   }

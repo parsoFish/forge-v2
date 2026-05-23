@@ -585,6 +585,6 @@ test('classifier: pm-invalid-work-items is detected from the PM error event and 
     } as unknown as EventLogEntry,
   ];
   const cls = classifyCycleFailure(events);
-  assert.equal(cls.mode, 'pm-invalid-work-items');
+  assert.equal(cls.kind, 'transient');
   assert.equal(cls.recoverable, true);
 });

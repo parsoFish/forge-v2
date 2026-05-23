@@ -211,16 +211,14 @@ export function decideAutoRetry(
     return { retry: false, reason: 'no failure_classification event in log' };
   }
   if (!recoverable) {
-    return { retry: false, reason: `mode ${classificationMode} is not recoverable` };
+    return { retry: false, reason: `kind=${classificationMode} is terminal` };
   }
-  // F-27 guard: if the same recoverable mode has already been retried once,
-  // it's probably not transient — let it fail terminally so a human looks.
-  if (priorModes.filter((m) => m === classificationMode).length >= 1) {
-    return {
-      retry: false,
-      reason: `mode ${classificationMode} repeated despite prior retry`,
-    };
-  }
+  // With the binary transient|terminal taxonomy the retry-count cap above
+  // is the only protection needed — a second transient hit just means
+  // another fresh sample, bounded by MAX_AUTO_RETRIES. The per-mode
+  // anti-thrash check that used to live here was load-bearing only under
+  // the prior 14-mode enum.
+  void priorModes;
   return {
     retry: true,
     mode: classificationMode,

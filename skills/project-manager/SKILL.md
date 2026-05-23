@@ -16,17 +16,25 @@ Format and validation rules are locked in [`docs/decisions/015-work-item-format.
 
 ## Required first action
 
-Invoke `brain-query` with:
+Invoke `brain-query` **at most 3 times** with targeted questions. The
+brain navigation index is already in your system prompt — re-querying for
+broad exploration burns tokens without adding signal (2026-05-23 dogfood:
+PM burned $1.54 / 9 brain-queries for an 8-min run that produced
+overlapping WIs).
+
+Suggested 3 queries (pick the most relevant 1-3):
 
 - "What patterns / antipatterns does the brain have for decomposing **<feature-type>** features?"
 - "What does the brain say about work-item sizing and acceptance criteria?"
 - "Are there any project-specific constraints in `brain/projects/<project>/`?"
 
-Always-relevant brain themes:
+Always-relevant brain themes (read directly if topical — Read is faster
+than brain-query for a known path):
 
 - [`brain/forge/themes/spec-driven-work-items.md`](../../brain/forge/themes/spec-driven-work-items.md) — Given-When-Then is the contract; declarative > imperative.
 - [`brain/forge/themes/design-is-the-bottleneck.md`](../../brain/forge/themes/design-is-the-bottleneck.md) — v1 evidence: bad decomposition produces churn.
 - [`brain/forge/themes/work-item-completion-by-domain.md`](../../brain/forge/themes/work-item-completion-by-domain.md) — empirical develop-time data per project, used to calibrate `estimated_iterations`.
+- [`brain/forge/themes/quality-gate-cmd-must-assert-new-work.md`](../../brain/forge/themes/quality-gate-cmd-must-assert-new-work.md) — pair per-WI `quality_gate_cmd` with `creates` OR `verification_artifact` so the gate-tightening can verify NEW work landed.
 
 Then read `brain/projects/<project>/profile.md` and any `themes/*.md` for the specific project.
 
@@ -115,9 +123,9 @@ graph TD
    - Each declares its `depends_on` work items and its `files_in_scope` (worktree-relative paths, no leading `/`, no `..`).
    - Each estimates `estimated_iterations` (used as a soft hint for the Ralph loop; calibrate from `brain/forge/themes/work-item-completion-by-domain.md`).
 4. **Inherit feature parallelism.** Read each feature's `depends_on` in the manifest. If two features have no edge connecting them, their work items must also be independent — never serialise parallel features into a WI chain. The architect's feature graph is the skeleton; the WI graph refines it without over-constraining it.
-5. **Practise file-scope discipline.** If two WIs would both edit the same file, prefer (a) splitting the file along the dimension that distinguishes them (one file per impl / concern), then (b) merging the WIs into one, then (c) adding a `depends_on` edge serialising them. Two WIs sharing a file with no edge is a guaranteed merge conflict.
+5. **Practise file-scope discipline.** If two WIs would both edit the same file, prefer (a) splitting the file along the dimension that distinguishes them (one file per impl / concern), then (b) merging the WIs into one, then (c) adding a `depends_on` edge serialising them **AND** declaring `creates: [<file>]` only on the first WI that introduces the file (subsequent WIs that EXTEND it list the file in `files_in_scope` but NOT in `creates`). Two WIs sharing a file with no edge is a guaranteed merge conflict and the orchestrator's `detectHiddenCoupling()` validator will REJECT the cycle at PM close (the 2026-05-23 betterado dogfood failed exactly this way: WI-1 + WI-5 both listed a shared schema file with no edge → cycle failed at PM phase, $1.54 wasted).
 6. Write the dependency graph as `_graph.md` (mermaid `graph TD`; one node per WI; edges run prerequisite → dependent and must agree exactly with the union of all `depends_on` lists).
-7. **Self-check.** Walk every pair of work items that share any file in `files_in_scope`. If neither item appears in the other's `depends_on` (transitively, in either direction), they will conflict at merge time — add the missing edge or merge them into one work item. The bench scores this as `no_hidden_coupling`; the orchestrator's `detectHiddenCoupling()` enforces it.
+7. **Self-check — MANDATORY before writing files.** Walk every pair of work items that share any file in `files_in_scope`. If neither item appears in the other's `depends_on` (transitively, in either direction), they will conflict at merge time. **STOP and fix it before emitting any WI file** — either add the missing edge OR merge them into one work item. The bench scores this as `no_hidden_coupling`; the orchestrator's `detectHiddenCoupling()` validator HARD-FAILS the cycle if you emit overlapping WIs without a connecting edge (you don't get a retry — the cycle dies at PM phase).
 
 ## Constraints
 

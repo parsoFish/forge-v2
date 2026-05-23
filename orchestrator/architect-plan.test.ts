@@ -23,6 +23,7 @@ import { join, resolve } from 'node:path';
 
 import {
   renderPlanDoc,
+  renderPlanHtml,
   writePlanDoc,
   parseFeedbackComments,
   bundleFeedbackAsMarkdown,
@@ -95,7 +96,8 @@ test('renderPlanDoc: produces a markdown document with all required sections', (
   const session = fxSession();
   const doc = renderPlanDoc(session);
   assert.match(doc, /^# Architect plan — 2026-05-23T10-15-00/m);
-  assert.match(doc, /## Vision recap/);
+  // Cwc Amendment 1: brief + interview replaces the old "Vision recap" section
+  assert.match(doc, /## Operator brief \+ interview/);
   assert.match(doc, /## Brain context/);
   assert.match(doc, /## Council transcript/);
   assert.match(doc, /## Proposed initiatives/);
@@ -451,4 +453,222 @@ test('renderPlanDoc: proposed-initiatives table lists each initiative and depend
   assert.match(doc, /INIT-2026-05-23-a-bar/);
   // Dependency edge surfaces in the table
   assert.match(doc, /INIT-2026-05-23-a-bar.*INIT-2026-05-23-a-foo/);
+});
+
+// ---------------------------------------------------------------------------
+// 14. Cwc Amendment 1 — Operator brief + interview section
+// ---------------------------------------------------------------------------
+
+test('renderPlanDoc: empty interview rounds renders an "operator drafted directly" notice', () => {
+  const doc = renderPlanDoc(fxSession({ interview: [] }));
+  assert.match(doc, /## Operator brief \+ interview/);
+  assert.match(doc, /### Interview/);
+  assert.match(doc, /No interview rounds — operator drafted directly/);
+});
+
+test('renderPlanDoc: omitted interview field renders the same notice (defaults to no rounds)', () => {
+  // Fixture has no `interview` field by default
+  const doc = renderPlanDoc(fxSession());
+  assert.match(doc, /No interview rounds — operator drafted directly/);
+});
+
+test('renderPlanDoc: interview rounds render as a Q&A table with operator answers', () => {
+  const session = fxSession({
+    interview: [
+      { question: 'What is the scope edge?', answer: 'INIT-01 only; defer the rest.' },
+      { question: 'What signals success?', answer: 'release_definition tests pass on first cycle.' },
+      { question: 'Any prior attempts?', answer: '[operator skipped]' },
+    ],
+  });
+  const doc = renderPlanDoc(session);
+  // Table header present
+  assert.match(doc, /\| # \| Question \| Operator answer \|/);
+  // Each round surfaces both Q and A
+  assert.match(doc, /What is the scope edge\?/);
+  assert.match(doc, /INIT-01 only; defer the rest\./);
+  assert.match(doc, /What signals success\?/);
+  assert.match(doc, /release_definition tests pass on first cycle\./);
+  assert.match(doc, /Any prior attempts\?/);
+  assert.match(doc, /\[operator skipped\]/);
+});
+
+test('renderPlanDoc: interview answers containing | are escaped so the markdown table stays valid', () => {
+  const session = fxSession({
+    interview: [
+      { question: 'Pick one: A | B | C?', answer: 'option | B' },
+    ],
+  });
+  const doc = renderPlanDoc(session);
+  // Pipes inside cells are escaped with backslash so the table parses
+  assert.match(doc, /Pick one: A \\\| B \\\| C\?/);
+  assert.match(doc, /option \\\| B/);
+});
+
+// ---------------------------------------------------------------------------
+// 15. Cwc Amendment 2 — renderPlanHtml smoke + structural
+// ---------------------------------------------------------------------------
+
+test('renderPlanHtml: produces a self-contained HTML document with no external links', () => {
+  const html = renderPlanHtml(fxSession());
+  // Well-formed doctype + html
+  assert.match(html, /^<!DOCTYPE html>/);
+  assert.match(html, /<html lang="en">/);
+  assert.match(html, /<\/html>\s*$/);
+  // Inline styles present, no external stylesheet
+  assert.match(html, /<style>/);
+  assert.ok(!/rel="stylesheet"/.test(html), 'no external stylesheet link');
+  assert.ok(!/<script[^>]+src=/.test(html), 'no external script src');
+  // Title carries session id + project
+  assert.match(html, /<title>PLAN — 2026-05-23T10-15-00 — sample<\/title>/);
+});
+
+test('renderPlanHtml: includes the forge cycle diagram with brain band + user nodes', () => {
+  const html = renderPlanHtml(fxSession());
+  assert.match(html, /class="cycle"/);
+  assert.match(html, /graphify brain/);
+  assert.match(html, /class="node user this">architect/);
+  assert.match(html, /class="node user">before\/after/);
+  assert.match(html, /class="node user">reflect/);
+  // The HTML page node mentioned in the diagram
+  assert.match(html, /\+ html page/);
+});
+
+test('renderPlanHtml: surfaces vision + interview rounds as a table', () => {
+  const html = renderPlanHtml(fxSession({
+    vision: 'A bill-splitting app for friends.',
+    interview: [
+      { question: 'Login required?', answer: 'No — link-based only.' },
+      { question: 'Settle up flow?', answer: 'Single tap, no currencies.' },
+    ],
+  }));
+  assert.match(html, /A bill-splitting app for friends\./);
+  assert.match(html, /<th>Question<\/th>/);
+  assert.match(html, /Login required\?/);
+  assert.match(html, /link-based only/);
+  assert.match(html, /Settle up flow\?/);
+  assert.match(html, /Single tap, no currencies\./);
+});
+
+test('renderPlanHtml: empty interview renders the "operator drafted directly" notice', () => {
+  const html = renderPlanHtml(fxSession({ interview: [] }));
+  assert.match(html, /No interview rounds — operator drafted directly\./);
+  // The Q&A table should NOT be present in the interview section
+  // (the council escalations section may still have <tr> elements, so we
+  // can't assert globally — but the interview heading + empty-class notice is enough)
+  assert.match(html, /<p class="empty">No interview rounds/);
+});
+
+test('renderPlanHtml: aggregate footprint renders a stacked bar with one segment per initiative', () => {
+  const initiatives: ProposedInitiative[] = [];
+  for (let i = 1; i <= 4; i++) {
+    initiatives.push(fxInitiative({
+      initiative_id: `INIT-2026-05-23-aggr-${i}`,
+      iteration_budget: i,
+    }));
+  }
+  const html = renderPlanHtml(fxSession({ initiatives }));
+  // Section header carries the informational badge per C19
+  assert.match(html, /Aggregate footprint <span class="badge">informational<\/span>/);
+  // One <div class="seg"> per initiative (4 initiatives → 4 segments)
+  const segs = html.match(/<div class="seg"/g) ?? [];
+  assert.equal(segs.length, 4, `expected 4 stacked-bar segments, got ${segs.length}`);
+  // Informational framing visible in the body (uses C19-safe vocabulary per
+  // S2A-DECISIONS §11: avoids the words "gate", "threshold",
+  // "auto-escalate/auto-escalation", and "aggregate_budget_declared" — even
+  // in plain prose).
+  assert.match(html, /Informational only\./);
+  assert.match(html, /Forge does not enforce a budget or block at any number/);
+  assert.match(html, /the operator decides/);
+});
+
+test('renderPlanHtml: C19 — aggregate footprint section uses none of the forbidden vocabulary', () => {
+  const html = renderPlanHtml(fxSession({
+    initiatives: [
+      fxInitiative({ initiative_id: 'INIT-X-1', estimated_cost_usd: 100 }),
+      fxInitiative({ initiative_id: 'INIT-X-2', estimated_cost_usd: 200 }),
+    ],
+  }));
+  // Slice the footprint block from <h2>Aggregate footprint to the next <h2>
+  const footprintStart = html.indexOf('Aggregate footprint');
+  const nextH2 = html.indexOf('<h2', footprintStart + 1);
+  const block = html.slice(footprintStart, nextH2 >= 0 ? nextH2 : html.length);
+  assert.ok(!/\bthreshold\b/i.test(block), `footprint block must not say "threshold":\n${block}`);
+  assert.ok(!/auto-?escalat/i.test(block), `footprint block must not propose auto-escalation:\n${block}`);
+  assert.ok(!/aggregate_budget_declared/.test(block), `footprint block must not reference removed bench criterion:\n${block}`);
+});
+
+test('renderPlanHtml: exploration session surfaces parameter_space + hint badges (C27)', () => {
+  const html = renderPlanHtml(fxSession({
+    type: 'exploration',
+    initiatives: [fxInitiative({
+      initiative_id: 'INIT-2026-05-23-sweep',
+      iteration_budget: 8,
+      exploration: {
+        parameter_space: '- cp_spacing: [40, 50, 60]\n- rate: [0.2, 0.4]',
+        hypothesis: 'CP spacing acts as a natural speed limit.',
+        metric_command: ['npm', 'run', 'grading'],
+        locked_baselines: ['docs/baselines/frontier.md'],
+      },
+    })],
+  }));
+  assert.match(html, /class="badge warn">hint/i);
+  assert.match(html, /cp_spacing/);
+  assert.match(html, /CP spacing acts as a natural speed limit\./);
+  assert.match(html, /npm run grading/);
+  assert.match(html, /docs\/baselines\/frontier\.md/);
+});
+
+test('renderPlanHtml: escalation options render as cards (no naked bullet lists)', () => {
+  const html = renderPlanHtml(fxSession({
+    open_escalations: [{
+      critic: 'ceo',
+      question: 'One initiative or two?',
+      options: [
+        { label: 'one', rationale: 'easier review' },
+        { label: 'two', rationale: 'parallel work' },
+      ],
+    }],
+  }));
+  // Critic chip + question + options block surface
+  assert.match(html, /class="critic-chip">ceo</);
+  assert.match(html, /One initiative or two\?/);
+  assert.match(html, /class="option"/);
+  assert.match(html, /<span class="label">one<\/span>/);
+  assert.match(html, /<span class="rationale">easier review<\/span>/);
+  assert.match(html, /<span class="label">two<\/span>/);
+});
+
+test('renderPlanHtml: HTML-escapes operator content so manifest body cannot break the page', () => {
+  const html = renderPlanHtml(fxSession({
+    vision: 'Build <thing> with "quotes" & ampersands.',
+    initiatives: [fxInitiative({
+      body: '# Title <h1> attack\n\n<script>alert("xss")</script>\nNormal content.\n',
+    })],
+  }));
+  // Vision is escaped
+  assert.match(html, /Build &lt;thing&gt; with &quot;quotes&quot; &amp; ampersands\./);
+  // Manifest body is escaped — the literal "<script>" must NOT appear as raw HTML
+  assert.ok(!/<script>alert\("xss"\)<\/script>/.test(html), 'XSS-style content must be escaped');
+  assert.match(html, /&lt;script&gt;alert\(&quot;xss&quot;\)&lt;\/script&gt;/);
+});
+
+// ---------------------------------------------------------------------------
+// 16. writePlanDoc — emits PLAN.html sibling next to PLAN.md (Amendment 2)
+// ---------------------------------------------------------------------------
+
+test('writePlanDoc: writes PLAN.html sibling alongside PLAN.md and council-transcript.md', () => {
+  const dir = fxTempdir('w2');
+  const projectRoot = join(dir, 'project-y');
+  mkdirSync(projectRoot, { recursive: true });
+  const session = fxSession({ session_id: '2026-05-24T00-00-00', project: 'project-y' });
+  const planPath = writePlanDoc(session, projectRoot);
+
+  const sessionDir = resolve(projectRoot, '_architect', '2026-05-24T00-00-00');
+  assert.ok(existsSync(planPath), 'PLAN.md exists');
+  assert.ok(existsSync(join(sessionDir, 'PLAN.html')), 'PLAN.html sibling exists');
+  assert.ok(existsSync(join(sessionDir, 'council-transcript.md')), 'council-transcript.md sibling exists');
+
+  const html = readFileSync(join(sessionDir, 'PLAN.html'), 'utf8');
+  assert.match(html, /^<!DOCTYPE html>/);
+  assert.match(html, /<title>PLAN — 2026-05-24T00-00-00 — project-y<\/title>/);
 });

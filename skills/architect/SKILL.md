@@ -101,8 +101,26 @@ emitted by the `forge architect commit` CLI, not by this skill.)
 ## Process
 
 1. **Brain query first** (mandatory).
-2. **Listen.** Reflect the user's idea back in your own words and confirm
-   understanding before proposing structure.
+2. **Brief + interview** (cwc Amendment 1 — see
+   [S2A-CWC-AMENDMENTS.md](../../docs/planning/2026-05-20-refinement/S2A-CWC-AMENDMENTS.md)).
+
+   - Restate the operator's brief in your own words as a single paragraph.
+     This becomes `ArchitectSession.vision` later.
+   - **Invoke `AskUserQuestion` at least once** with 1-4 questions targeting
+     the highest-leverage ambiguities in this order: scope edge (what's in,
+     what's out?), success signal (when is this done?), prior-art tax
+     (anything already attempted?), hard constraints (any no-goes?).
+   - You MAY run up to **5 interview rounds** total. STOP earlier when:
+     (a) the operator answers "just draft" or similar,
+     (b) you have enough to draft a manifest without unresolved scope /
+         success-signal / constraint ambiguity,
+     (c) the next question would only refine, not unblock.
+   - Free-form chat between `AskUserQuestion` calls is fine; only the
+     structured rounds count toward the 5-round cap.
+   - Capture every round into `ArchitectSession.interview` as an array of
+     `{ question, answer }` pairs. Use `"[operator skipped]"` verbatim as
+     the answer if the operator declined to choose (e.g. typed "Other"
+     with no content, or said "skip" / "just draft").
 3. **Invoke `architect-llm-council`** via [`runCouncil()`](../architect-llm-council/council.ts)
    to apply CEO/eng/design/DX critics. The council resolves mechanical issues
    (`flags`) and surfaces only taste decisions (`escalations`). Use the
@@ -138,11 +156,14 @@ emitted by the `forge architect commit` CLI, not by this skill.)
 10. **Tell the user** what's queued for review and how to proceed:
 
    ```
-   PLAN.md is ready at <projectRepoPath>/_architect/<session-id>/PLAN.md.
+   PLAN is ready in <projectRepoPath>/_architect/<session-id>/:
+
+     - PLAN.md   (annotation target — edit in your editor)
+     - PLAN.html (read-only rich viewer — open in browser)
 
    Review the plan, leave `<!-- review: ... -->` HTML-comment annotations
-   inline, set the top-of-file verdict to `approve`, `revise`, or `reject`,
-   then run:
+   inline in PLAN.md, set the top-of-file verdict to `approve`, `revise`,
+   or `reject`, then run:
 
      forge architect commit <session-id>
 

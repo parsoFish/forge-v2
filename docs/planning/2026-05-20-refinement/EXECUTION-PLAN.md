@@ -253,11 +253,23 @@ Grep `demo.kind` (project-level) returns zero hits. Grep
   when present, the PLAN.md surfaces the metric command + baselines
   alongside the manifest; the architect can propose exploration
   initiatives when the project has them.
+- **Front-of-architect interview step (cwc amendment 1)** — architect
+  MUST invoke `AskUserQuestion` ≥1 time, capped at 5 rounds. Captured
+  as an "Operator brief + interview" section in PLAN.md. See
+  [S2A-CWC-AMENDMENTS.md](./S2A-CWC-AMENDMENTS.md).
+- **Sibling `PLAN.html` rich viewer (cwc amendment 2)** —
+  `renderPlanHtml(session)` emits zero-dep static HTML next to PLAN.md:
+  forge cycle diagram, escalation cards rendered side-by-side, stacked
+  aggregate-footprint bar (informational only — C19), manifest
+  drawers as `<details>`. PLAN.md remains the only parse target. See
+  [S2A-CWC-AMENDMENTS.md](./S2A-CWC-AMENDMENTS.md).
 - Acceptance: round-trip on the 8 synthetic fixtures preserves
   manifest parity (no regression); aggregate-footprint line appears in
   PLAN.md for the betterado-style multi-initiative case;
   `type: exploration` round-trips with a sample `metric_command` +
-  parameter space.
+  parameter space; a real `/forge-architect` session emits PLAN.md
+  with an `Operator brief + interview` section (≥1 Q/A row) and a
+  PLAN.html sibling that opens in a browser.
 - **Bundles the council-infrastructure robustness fix (I-23):** make
   `runCouncil()` survive ≥15k-char drafts + 30-turn budget; pin a snapshot
   of council output if SDK structured-output fails on retry.

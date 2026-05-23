@@ -27,7 +27,11 @@ graphify (additive brain layer), and a token economy plan.
 3. **[LEARNINGS-trafficgame.md](./LEARNINGS-trafficgame.md)** — canonical
    reference for "what good looks like": 10 learnings the operator
    surfaced through trafficGame post-S0, mapped to the plans they amend.
-4. Each plan + its council review below.
+4. **[S2A-CWC-AMENDMENTS.md](./S2A-CWC-AMENDMENTS.md)** — front-of-architect
+   interview step (`AskUserQuestion`) + sibling `PLAN.html` rich viewer,
+   distilled from `anthropics/cwc-workshops/how-we-claude-code`. Additive
+   to S2A; doesn't disturb the locked surface.
+5. Each plan + its council review below.
 
 ## Plans
 

@@ -3,7 +3,8 @@ area: architect
 date: 2026-05-20
 date_contracts_locked: 2026-05-21
 date_trafficgame_amended: 2026-05-23
-status: contracts locked — see CONTRACTS.md
+date_cwc_amended: 2026-05-24
+status: contracts locked — see CONTRACTS.md; cwc amendments — see S2A-CWC-AMENDMENTS.md
 contract_deps: [C4, C10, C10a, C12, C18b, C19, C26, C27]
 ---
 
@@ -26,6 +27,12 @@ contract_deps: [C4, C10, C10a, C12, C18b, C19, C26, C27]
 > manifests carry `parameter_space` + `hypothesis` + `metric_command` +
 > `locked_baselines` per L2 and treat `iteration_budget` as a hint not
 > a contract per L9). See [LEARNINGS-trafficgame.md](./LEARNINGS-trafficgame.md).
+> **Amended 2026-05-24 (cwc-workshops):** front-of-architect structured
+> interview step (`AskUserQuestion`, ≤5 rounds, ≥1 mandatory) and a
+> sibling `PLAN.html` rich viewer alongside `PLAN.md`. Both refinements
+> are additive — S2A's locked surface (single operator artefact +
+> annotation parse loop) is unchanged. See [S2A-CWC-AMENDMENTS.md](./S2A-CWC-AMENDMENTS.md)
+> for the full text of the two amendments + operator decisions.
 
 ## Problem (grounded in cycles thus far)
 

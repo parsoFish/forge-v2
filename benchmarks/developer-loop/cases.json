@@ -7,11 +7,16 @@
     "work_item_spec_rel_path": ".forge/work-items/WI-1.md",
     "expected": {
       "max_iterations": 3,
-      "max_cost_usd": 0.50,
       "must_complete": true,
       "quality_gate_cmd": ["python3", "-m", "pytest", "tests/test_redact_argv.py", "-q"],
       "pre_existing_tests_cmd": ["python3", "-m", "pytest", "tests/test_redactor.py", "-q"],
       "files_in_scope_extra": ["tests/test_redact_argv.py"]
+    },
+    "expected_unifier": {
+      "max_iterations": 3,
+      "demo_shape": "artifact",
+      "demo_command": ["bash", "-lc", "python3 -m env_optimiser --example > demo-output.txt && cat demo-output.txt"],
+      "demo_artifact_glob": "demo/INIT-*/*.{txt,md}"
     }
   },
   {
@@ -22,11 +27,16 @@
     "work_item_spec_rel_path": ".forge/work-items/WI-1.md",
     "expected": {
       "max_iterations": 5,
-      "max_cost_usd": 1.50,
       "must_complete": true,
       "quality_gate_cmd": ["node", "--test", "--experimental-strip-types", "tests/distribute-flow.test.ts"],
       "pre_existing_tests_cmd": ["node", "--test", "--experimental-strip-types", "tests/flow.test.ts"],
       "files_in_scope_extra": ["tests/distribute-flow.test.ts"]
+    },
+    "expected_unifier": {
+      "max_iterations": 3,
+      "demo_shape": "browser",
+      "demo_command": ["bash", "-lc", "npx playwright test demo.spec.ts --reporter=list --trace=on"],
+      "demo_artifact_glob": "demo/INIT-*/*.{png,webm,md}"
     }
   },
   {
@@ -37,11 +47,16 @@
     "work_item_spec_rel_path": ".forge/work-items/WI-1.md",
     "expected": {
       "max_iterations": 3,
-      "max_cost_usd": 0.50,
       "must_complete": true,
       "quality_gate_cmd": ["bats", "tests/dry_run.bats"],
       "pre_existing_tests_cmd": ["bats", "tests/parity_apply.bats"],
       "files_in_scope_extra": ["tests/dry_run.bats"]
+    },
+    "expected_unifier": {
+      "max_iterations": 3,
+      "demo_shape": "cli-diff",
+      "demo_command": ["bash", "-lc", "./bin/simplarr --dry-run sample-input.json"],
+      "demo_artifact_glob": "demo/INIT-*/*.{md,txt}"
     }
   },
   {
@@ -52,11 +67,16 @@
     "work_item_spec_rel_path": ".forge/work-items/WI-1.md",
     "expected": {
       "max_iterations": 3,
-      "max_cost_usd": 0.50,
       "must_complete": true,
       "quality_gate_cmd": ["node", "--test", "--experimental-strip-types", "tests/multipart.test.ts"],
       "pre_existing_tests_cmd": ["node", "--test", "--experimental-strip-types", "tests/runner.test.ts"],
       "files_in_scope_extra": ["tests/multipart.test.ts"]
+    },
+    "expected_unifier": {
+      "max_iterations": 3,
+      "demo_shape": "artifact",
+      "demo_command": ["bash", "-lc", "node example.ts > demo-output.txt && cat demo-output.txt"],
+      "demo_artifact_glob": "demo/INIT-*/*.{txt,md}"
     }
   },
   {
@@ -67,11 +87,56 @@
     "work_item_spec_rel_path": ".forge/work-items/WI-1.md",
     "expected": {
       "max_iterations": 2,
-      "max_cost_usd": 0.30,
       "must_complete": true,
       "quality_gate_cmd": ["bash", "-c", "grep -q '^## Quick start' README.md && grep -q Install README.md && grep -q Run README.md"],
       "pre_existing_tests_cmd": ["bash", "-c", "grep -q 'Self-hosted health tracker' README.md && grep -q '## Auth' README.md && grep -q '## Features' README.md"],
       "files_in_scope_extra": []
+    },
+    "expected_unifier": {
+      "max_iterations": 3,
+      "demo_shape": "none",
+      "demo_command": [],
+      "demo_artifact_glob": "demo/INIT-*/DEMO.md"
+    }
+  },
+  {
+    "id": "betterado-go-harness",
+    "project": "terraform-provider-betterado",
+    "seed_tree": "fixtures/betterado-stub",
+    "initiative_id": "INIT-2026-05-23-betterado-go-harness",
+    "work_item_spec_rel_path": ".forge/work-items/WI-1.md",
+    "expected": {
+      "max_iterations": 3,
+      "must_complete": true,
+      "quality_gate_cmd": ["bash", "-lc", "go test ./..."],
+      "pre_existing_tests_cmd": ["bash", "-lc", "go test ./..."],
+      "files_in_scope_extra": []
+    },
+    "expected_unifier": {
+      "max_iterations": 3,
+      "demo_shape": "harness",
+      "demo_command": ["bash", "-lc", "go test -v ./... 2>&1 | tee demo.log"],
+      "demo_artifact_glob": "demo/INIT-*/*.{log,md}"
+    }
+  },
+  {
+    "id": "slugifier-artifact-demo",
+    "project": "slugifier",
+    "seed_tree": "fixtures/slugifier-stub",
+    "initiative_id": "INIT-2026-05-23-slugifier-artifact-demo",
+    "work_item_spec_rel_path": ".forge/work-items/WI-1.md",
+    "expected": {
+      "max_iterations": 3,
+      "must_complete": true,
+      "quality_gate_cmd": ["npm", "test"],
+      "pre_existing_tests_cmd": ["npm", "test"],
+      "files_in_scope_extra": []
+    },
+    "expected_unifier": {
+      "max_iterations": 3,
+      "demo_shape": "artifact",
+      "demo_command": ["bash", "-lc", "node example.ts > demo-output.txt && cat demo-output.txt"],
+      "demo_artifact_glob": "demo/INIT-*/*.{txt,md}"
     }
   }
 ]

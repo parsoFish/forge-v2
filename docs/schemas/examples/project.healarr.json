@@ -1,0 +1,9 @@
+{
+  "demo": {
+    "shape": "cli-diff",
+    "command": ["bash", "-lc", "./bin/healarr status"],
+    "output": "demo/<initiative-id>/",
+    "baseline": "main"
+  },
+  "quality_gate_cmd": ["bats", "tests/"]
+}

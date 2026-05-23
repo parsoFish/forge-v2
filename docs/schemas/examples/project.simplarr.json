@@ -1,0 +1,9 @@
+{
+  "demo": {
+    "shape": "cli-diff",
+    "command": ["bash", "-lc", "./bin/simplarr --dry-run sample-input.json"],
+    "output": "demo/<initiative-id>/",
+    "baseline": "main"
+  },
+  "quality_gate_cmd": ["bats", "tests/"]
+}

@@ -3,53 +3,46 @@
  * score.ts (the runner) so they are trivially unit-testable without mocking
  * the SDK or shelling out to test runners.
  *
- * Mirrors benchmarks/project-manager/scoring.ts shape:
- *   - one `terminated_cleanly` gate (run() returned without throwing).
- *   - five weighted criteria summed to 1.0.
- *   - PASS_THRESHOLD = 0.7 (matches brain + architect + PM benches).
- *
- * Why these dimensions and weights:
+ * S4 changes (CONTRACTS.md C19): `cost_budget_respected` REMOVED.
+ * Its 0.15 weight is redistributed across the remaining four criteria:
  *
  *   gate: terminated_cleanly
  *       If run() threw, no quality dimension matters — the loop crashed.
- *       Mirrors PM's `work_items_present` gate.
  *
- *   loop_completed (0.35)
- *       result.status === 'complete'. The loop's whole purpose is to drive a
- *       work item green. Anything else is efficiency around that — hence the
- *       heaviest weight.
+ *   loop_completed (0.40)        — was 0.35
+ *       result.status === 'complete'. The loop's whole purpose is to drive
+ *       a work item green. Anything else is efficiency around that.
  *
- *   iteration_budget_respected (0.20)
- *       result.iterations <= expected.max_iterations. Phase-doc target is
- *       median ≤ 3 iterations; the bench enforces that per fixture.
+ *   iteration_budget_respected (0.25) — was 0.20
+ *       result.iterations <= expected.max_iterations.
  *
- *   cost_budget_respected (0.15)
- *       result.cost_usd <= expected.max_cost_usd. Token-burn discipline.
+ *   files_in_scope_respected (0.20) — unchanged
+ *       Every modified path ∈ workItem.files_in_scope ∪ files_in_scope_extra.
  *
- *   files_in_scope_respected (0.20)
- *       Every modified path ∈ workItem.files_in_scope ∪ expected.files_in_scope_extra.
- *       Catches scope creep — the load-bearing PM-handoff invariant. If the
- *       loop ignores scope, the PM's `no_hidden_coupling` work was wasted.
+ *   no_regression (0.15) — was 0.10
+ *       Pre-existing tests still pass at the end.
  *
- *   no_regression (0.10)
- *       Pre-existing tests still pass at the end (provided by the bench
- *       harness as a separate command). Defends against the wedge-detector
- *       escape valve where the agent makes random changes that pass the new
- *       test but break others.
+ * Per C19 there is no $-budget criterion. `DevExpected.max_cost_usd` is
+ * retained as a JSON-schema field so existing cases.json files don't break
+ * to parse, but the scorer ignores it.
  *
- * Atomic-commits-per-AC discipline is intentionally NOT scored in v1: it's
- * hard to verify reliably across language fixtures (each language tooling
- * differs), and the existing weight set already discriminates good vs bad
- * loop behaviour. Promote when the rubric plateaus and we need finer
- * resolution.
+ * Plus: S4 adds an optional `expected_unifier` criteria layer. When a fixture
+ * declares `expected_unifier`, the runner additionally evaluates the
+ * unifier-specific criteria (`unifier_terminated_cleanly` gate,
+ * `initiative_gate_passed`, `demo_present`, `demo_runs_clean`,
+ * `pr_self_contained`, `branches_in_sync`). See `unifierCaseScore` below.
+ *
+ * PASS_THRESHOLD = 0.7 (unchanged).
  */
 
 import type { LoopResult } from '../../loops/ralph/runner.ts';
 import type { WorkItem } from '../../orchestrator/work-item.ts';
+import type { DemoShape } from '../../orchestrator/project-config.ts';
 
 export type DevExpected = {
   max_iterations: number;
-  max_cost_usd: number;
+  /** Retained for cases.json back-compat; the scorer no longer uses it (C19). */
+  max_cost_usd?: number;
   must_complete: boolean;
   /** Argv-style command run by the bench to verify acceptance criteria. */
   quality_gate_cmd: string[];
@@ -63,7 +56,6 @@ export type DevCriteria = {
   terminated_cleanly: 0 | 1;
   loop_completed: 0 | 1;
   iteration_budget_respected: 0 | 1;
-  cost_budget_respected: 0 | 1;
   files_in_scope_respected: 0 | 1;
   no_regression: 0 | 1;
 };
@@ -82,12 +74,11 @@ export type DevScore = {
 
 export const PASS_THRESHOLD = 0.7;
 
-// Weights — must sum to 1.
-export const WEIGHT_COMPLETED = 0.35;
-export const WEIGHT_ITERATIONS = 0.20;
+// Weights — must sum to 1 (S4: redistributed after removing cost_budget per C19).
+export const WEIGHT_COMPLETED = 0.40;
+export const WEIGHT_ITERATIONS = 0.25;
 export const WEIGHT_FILES_IN_SCOPE = 0.20;
-export const WEIGHT_COST = 0.15;
-export const WEIGHT_NO_REGRESSION = 0.10;
+export const WEIGHT_NO_REGRESSION = 0.15;
 
 export function loopCompleted(result: LoopResult | null): number {
   return result !== null && result.status === 'complete' ? 1 : 0;
@@ -98,25 +89,14 @@ export function iterationBudgetRespected(result: LoopResult | null, expected: De
   return result.iterations <= expected.max_iterations ? 1 : 0;
 }
 
-export function costBudgetRespected(result: LoopResult | null, expected: DevExpected): number {
-  if (result === null) return 0;
-  return result.cost_usd <= expected.max_cost_usd ? 1 : 0;
-}
-
 /**
  * Ralph loop bookkeeping artifacts — never count as scope creep.
  *
  * The Ralph runner stamps these into the worktree before the agent runs and
- * the agent is expected to update them across iterations. Treating their
- * modification as out-of-scope misclassifies normal loop behaviour as a
- * violation.
+ * the agent is expected to update them across iterations.
  *
- * - `PROMPT.md` — per-iteration brief; runner stamps once.
- * - `AGENT.md` — institutional memory; agent appends each iteration.
- * - `fix_plan.md` — checklist of acceptance criteria; agent ticks each iteration.
- * - `.forge/work-items/*.md` — WI spec; orchestrator updates frontmatter status
- *   after run() returns, but the agent may inspect it (and historically has
- *   touched it under SKILL.md step 8 wording — that step has been removed).
+ * S4 addition: tracked `demo/<initiative-id>/` paths are also exempted —
+ * the unifier writes there as part of its mandate.
  */
 const RALPH_WORKSPACE_ARTIFACTS: ReadonlySet<string> = new Set([
   'PROMPT.md',
@@ -126,7 +106,9 @@ const RALPH_WORKSPACE_ARTIFACTS: ReadonlySet<string> = new Set([
 
 function isRalphArtifact(path: string): boolean {
   if (RALPH_WORKSPACE_ARTIFACTS.has(path)) return true;
-  return path.startsWith('.forge/work-items/');
+  if (path.startsWith('.forge/work-items/')) return true;
+  if (path.startsWith('demo/')) return true; // S4: unifier-owned tracked path
+  return false;
 }
 
 export function filesInScopeRespected(
@@ -146,10 +128,6 @@ export function filesInScopeRespected(
 }
 
 function normalisePath(p: string): string {
-  // Path may come back from claude-agent.ts as absolute, relative, or a mix.
-  // The work item's files_in_scope is worktree-relative. The bench harness
-  // pre-normalises absolute paths via worktreeRelative(); as a defensive
-  // fallback, drop any leading `./` and treat the path as-is.
   return p.replace(/^\.\//, '');
 }
 
@@ -182,7 +160,6 @@ export function caseScore(input: CaseScoreInput): DevScore {
 
   const completed = loopCompleted(result) as 0 | 1;
   const iterationsOk = iterationBudgetRespected(result, expected) as 0 | 1;
-  const costOk = costBudgetRespected(result, expected) as 0 | 1;
   const scope = filesInScopeRespected(result, workItem, expected);
   const noRegression = (regressionPassed ? 1 : 0) as 0 | 1;
 
@@ -190,7 +167,6 @@ export function caseScore(input: CaseScoreInput): DevScore {
     terminated_cleanly: 1,
     loop_completed: completed,
     iteration_budget_respected: iterationsOk,
-    cost_budget_respected: costOk,
     files_in_scope_respected: scope.value,
     no_regression: noRegression,
   };
@@ -199,7 +175,6 @@ export function caseScore(input: CaseScoreInput): DevScore {
     WEIGHT_COMPLETED * criteria.loop_completed +
     WEIGHT_ITERATIONS * criteria.iteration_budget_respected +
     WEIGHT_FILES_IN_SCOPE * criteria.files_in_scope_respected +
-    WEIGHT_COST * criteria.cost_budget_respected +
     WEIGHT_NO_REGRESSION * criteria.no_regression;
 
   return {
@@ -220,8 +195,116 @@ function emptyCriteria(): DevCriteria {
     terminated_cleanly: 0,
     loop_completed: 0,
     iteration_budget_respected: 0,
-    cost_budget_respected: 0,
     files_in_scope_respected: 0,
     no_regression: 0,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// S4 — unifier scoring layer (runs when a fixture declares `expected_unifier`)
+// ---------------------------------------------------------------------------
+
+/**
+ * Expected unifier outcomes per fixture. Pass shape into `unifierCaseScore`
+ * alongside the actual observations (gathered by the bench runner) to score.
+ *
+ * Per CONTRACTS.md C19 there is NO `max_cost_usd` — iteration cap is the only
+ * bound. Per CONTRACTS.md C2 the field name is `demo_shape`, not `kind`.
+ */
+export type UnifierExpected = {
+  max_iterations: number;
+  demo_shape: DemoShape;
+  /** Argv-style command the bench runs to verify demo_runs_clean. */
+  demo_command: string[];
+  /** Glob the bench checks for demo artefact presence (e.g. `demo/<id>/*.{png,webm,md}`). */
+  demo_artifact_glob: string;
+};
+
+export type UnifierObservations = {
+  /** Did `runUnifier` return without throwing? */
+  terminated_cleanly: boolean;
+  /** Did the project quality-gate command pass against branch tip? */
+  initiative_gate_passed: boolean;
+  /** Does a DEMO.md (and ≥1 artefact when shape != "none") exist under demo/<id>/? */
+  demo_present: boolean;
+  /** Did the project's demo.command exit 0 (skip for shape "none")? */
+  demo_runs_clean: boolean;
+  /** PR body draft ≥ 300 chars with `## Demo` block AND demo dir tracked. */
+  pr_self_contained: boolean;
+  /** assertLocalRemoteSynced OK at unifier close. */
+  branches_in_sync: boolean;
+  iterations: number;
+};
+
+export type UnifierCriteria = {
+  unifier_terminated_cleanly: 0 | 1;
+  initiative_gate_passed: 0 | 1;
+  demo_present: 0 | 1;
+  demo_runs_clean: 0 | 1;
+  pr_self_contained: 0 | 1;
+  branches_in_sync: 0 | 1;
+};
+
+export type UnifierScore = {
+  score: number;
+  passed: boolean;
+  criteria: UnifierCriteria;
+  iterations: number;
+};
+
+// Weights — must sum to 1. Per CONTRACTS.md C19, NO cost_within_unifier_budget.
+export const UNIFIER_WEIGHT_INITIATIVE_GATE = 0.30;
+export const UNIFIER_WEIGHT_DEMO_PRESENT = 0.25;
+export const UNIFIER_WEIGHT_DEMO_RUNS_CLEAN = 0.20;
+export const UNIFIER_WEIGHT_PR_SELF_CONTAINED = 0.15;
+export const UNIFIER_WEIGHT_BRANCHES_IN_SYNC = 0.10;
+
+export function unifierCaseScore(
+  observations: UnifierObservations,
+  expected: UnifierExpected,
+): UnifierScore {
+  // Gate: unifier_terminated_cleanly. If the runner threw, no quality
+  // dimension applies.
+  if (!observations.terminated_cleanly) {
+    return {
+      score: 0,
+      passed: false,
+      criteria: {
+        unifier_terminated_cleanly: 0,
+        initiative_gate_passed: 0,
+        demo_present: 0,
+        demo_runs_clean: 0,
+        pr_self_contained: 0,
+        branches_in_sync: 0,
+      },
+      iterations: observations.iterations,
+    };
+  }
+
+  // For shape "none" the demo_runs_clean criterion is excused (forced to 1).
+  const demoRunsClean: 0 | 1 =
+    expected.demo_shape === 'none' ? 1 : observations.demo_runs_clean ? 1 : 0;
+
+  const criteria: UnifierCriteria = {
+    unifier_terminated_cleanly: 1,
+    initiative_gate_passed: observations.initiative_gate_passed ? 1 : 0,
+    demo_present: observations.demo_present ? 1 : 0,
+    demo_runs_clean: demoRunsClean,
+    pr_self_contained: observations.pr_self_contained ? 1 : 0,
+    branches_in_sync: observations.branches_in_sync ? 1 : 0,
+  };
+
+  const score =
+    UNIFIER_WEIGHT_INITIATIVE_GATE * criteria.initiative_gate_passed +
+    UNIFIER_WEIGHT_DEMO_PRESENT * criteria.demo_present +
+    UNIFIER_WEIGHT_DEMO_RUNS_CLEAN * criteria.demo_runs_clean +
+    UNIFIER_WEIGHT_PR_SELF_CONTAINED * criteria.pr_self_contained +
+    UNIFIER_WEIGHT_BRANCHES_IN_SYNC * criteria.branches_in_sync;
+
+  return {
+    score,
+    passed: score >= PASS_THRESHOLD,
+    criteria,
+    iterations: observations.iterations,
   };
 }

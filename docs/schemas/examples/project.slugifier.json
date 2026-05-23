@@ -1,0 +1,9 @@
+{
+  "demo": {
+    "shape": "artifact",
+    "command": ["bash", "-lc", "node example.ts > demo-output.txt && cat demo-output.txt"],
+    "output": "demo/<initiative-id>/",
+    "baseline": "main"
+  },
+  "quality_gate_cmd": ["npm", "test"]
+}

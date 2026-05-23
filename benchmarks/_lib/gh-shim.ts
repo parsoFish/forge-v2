@@ -26,7 +26,17 @@
 import { chmodSync, existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-import type { ReviewerGateState } from '../../orchestrator/reviewer-stage2.ts';
+import type { Verdict } from '../../orchestrator/file-verdict.ts';
+
+/**
+ * Minimal review-Ralph gate-state shape used by the e2e bench for reconstructing
+ * round telemetry from the event log. Mirrors the now-deleted
+ * `ReviewerGateState` type from `orchestrator/reviewer-stage2.ts` (S4 deletion).
+ */
+type ReviewerGateState = {
+  invocations: number;
+  verdicts: Verdict[];
+};
 
 export type BuildGhShimOptions = {
   /**

@@ -25,7 +25,6 @@
 
 import { execFileSync } from 'node:child_process';
 import {
-  cpSync,
   existsSync,
   mkdirSync,
   readdirSync,
@@ -60,27 +59,34 @@ function parseOwnerRepo(originUrl: string): string | null {
 const DEMO_IMAGE_EXTS = new Set(['.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg']);
 
 /**
- * 2026-05-18 amendment: make the PR the SOLE review window. The reviewer
- * writes the demo bundle into `.forge/demos/<id>/` (gitignored — invisible
- * to a PR reviewer, who otherwise has to open a local HTML, infer the
- * change, then come back to comment). This copies that bundle into a
- * TRACKED `demo/<id>/` dir, commits it on the initiative branch, and
- * returns a `## Demo` markdown block that embeds the screenshots INLINE in
- * the PR body via GitHub raw URLs (and links non-image artefacts). After
- * this the reviewer sees and comments on everything from the PR alone.
+ * S4 amendment (CONTRACTS.md C2 + plan 04 §"PR-as-self-contained-review-window"):
+ * `embedDemoInPr` is a **pure PR-body composer**. It does NOT mutate the
+ * filesystem (no `cpSync`, no `git add`, no `git commit`). The dev-loop
+ * unifier writes the tracked `demo/<initiative-id>/` bundle directly during
+ * its own loop and commits it as part of the unifier's closing commit; by
+ * the time `openPullRequest` runs the demo already exists on the branch and
+ * this function only reads it to produce the `## Demo` markdown body block.
  *
- * Best-effort: returns `null` on any failure (no demo, not a GitHub
- * remote, git error) so PR creation never breaks because of the demo.
+ * Signature change from the prior (combined writer+composer) version:
+ *   embedDemoInPr(worktree, initiativeId, branch, trackedDemoDir, isPrivate)
+ *     → bodyBlock | null
+ *
+ * Returns `null` on any failure (no demo, not a GitHub remote, etc.) so PR
+ * creation never breaks because of demo composition — but the caller
+ * (`openPullRequest`) now asserts `assertTrackedDemoExists` BEFORE composing,
+ * so a missing demo is a hard, classified failure earlier in the flow
+ * rather than silently dropping the demo block.
  */
 export function embedDemoInPr(
   worktreePath: string,
   initiativeId: string,
   branch: string,
+  trackedDemoDir: string,
+  isPrivate: boolean,
 ): string | null {
   try {
-    const srcDir = join(worktreePath, '.forge', 'demos', initiativeId);
-    if (!existsSync(srcDir)) return null;
-    const entries = readdirSync(srcDir, { withFileTypes: true })
+    if (!existsSync(trackedDemoDir)) return null;
+    const entries = readdirSync(trackedDemoDir, { withFileTypes: true })
       .filter((e) => e.isFile())
       .map((e) => e.name)
       .filter((n) => !n.startsWith('.'));
@@ -93,63 +99,16 @@ export function embedDemoInPr(
     const ownerRepo = parseOwnerRepo(originUrl);
     if (!ownerRepo) return null; // only GitHub raw URLs render inline
 
-    // Copy the bundle into a tracked path.
     const relDir = `demo/${initiativeId}`;
-    const dstDir = join(worktreePath, relDir);
-    mkdirSync(dstDir, { recursive: true });
-    cpSync(srcDir, dstDir, { recursive: true, force: true });
 
-    const images = entries.filter((n) => DEMO_IMAGE_EXTS.has(extname(n).toLowerCase())).sort();
+    const images = entries
+      .filter((n) => DEMO_IMAGE_EXTS.has(extname(n).toLowerCase()))
+      .sort();
     const others = entries
       .filter((n) => !DEMO_IMAGE_EXTS.has(extname(n).toLowerCase()))
       .sort();
 
-    // Ensure a DEMO.md with RELATIVE image links exists. This is the
-    // visibility-agnostic surface: GitHub renders a committed markdown
-    // file (with relative images) for the authenticated reviewer on the
-    // blob page even for a PRIVATE repo — whereas an `![](raw-url)` inline
-    // in the PR body is fetched by GitHub's image proxy, which CANNOT read
-    // a private repo and shows a broken image. Don't clobber an
-    // agent-authored DEMO.md.
-    const demoMdPath = join(dstDir, 'DEMO.md');
-    if (!existsSync(demoMdPath) && images.length > 0) {
-      const md = ['# Demo', ''];
-      for (const img of images) {
-        const label = img.replace(/\.[^.]+$/, '');
-        md.push(`## ${label}`, '', `![${label}](./${img})`, '');
-      }
-      writeFileSync(demoMdPath, md.join('\n') + '\n');
-    }
-
-    // Commit the bundle on the branch (idempotent).
-    execFileSync('git', ['add', '--', relDir], { cwd: worktreePath, stdio: 'pipe' });
-    const staged = execFileSync('git', ['diff', '--cached', '--name-only', '--', relDir], {
-      cwd: worktreePath,
-      stdio: 'pipe',
-      encoding: 'utf8',
-    }).trim();
-    if (staged) {
-      execFileSync(
-        'git',
-        ['commit', '-m', `docs(demo): embed review demo for ${initiativeId}`],
-        { cwd: worktreePath, stdio: 'pipe' },
-      );
-    }
-
-    // Repo visibility decides whether inline raw images render. Default to
-    // PRIVATE (the safe assumption — a broken inline image is worse than a
-    // link) if `gh` can't tell us.
-    let isPrivate = true;
-    try {
-      const vis = execFileSync(
-        'gh',
-        ['repo', 'view', ownerRepo, '--json', 'isPrivate', '-q', '.isPrivate'],
-        { cwd: worktreePath, stdio: 'pipe', encoding: 'utf8' },
-      ).trim();
-      isPrivate = vis !== 'false';
-    } catch {
-      /* keep the safe default */
-    }
+    const demoMdPath = join(trackedDemoDir, 'DEMO.md');
 
     const rawBase = `https://github.com/${ownerRepo}/raw/${branch}/${relDir}`;
     const blobBase = `https://github.com/${ownerRepo}/blob/${branch}/${relDir}`;
@@ -190,6 +149,55 @@ export function embedDemoInPr(
   }
 }
 
+/**
+ * S4: precondition for `openPullRequest`. Throws when the tracked demo
+ * bundle is missing — the unifier was supposed to author it and commit it
+ * on the branch before review opens the PR. A silent re-commit at PR-open
+ * time would mask a unifier failure; a hard throw surfaces it as a
+ * classified `dev-loop-unifier-demo-failed` event.
+ *
+ * Returns the tracked-demo directory path on success (so callers don't
+ * recompute it). The shape: "none" case is special-cased — the unifier
+ * still writes a `DEMO.md` rationale block in that case, so the same
+ * assertion (file existence) holds.
+ */
+export function assertTrackedDemoExists(worktreePath: string, initiativeId: string): string {
+  const dir = join(worktreePath, 'demo', initiativeId);
+  const demoMd = join(dir, 'DEMO.md');
+  if (!existsSync(demoMd)) {
+    throw new Error(
+      `assertTrackedDemoExists: ${demoMd} is missing — the dev-loop unifier did not author the demo bundle. ` +
+        `Classify as dev-loop-unifier-demo-failed.`,
+    );
+  }
+  return dir;
+}
+
+/**
+ * Resolve repo visibility via `gh repo view`. Returns true (private) on
+ * any error — the safe default per the original embedDemoInPr (a broken
+ * inline image is worse than a relative link). Pure helper exposed for
+ * the unifier's gate code so the test seam is observable.
+ */
+export function resolveRepoIsPrivate(worktreePath: string): boolean {
+  try {
+    const originUrl = execFileSync('git', ['-C', worktreePath, 'remote', 'get-url', 'origin'], {
+      stdio: 'pipe',
+      encoding: 'utf8',
+    }).trim();
+    const ownerRepo = parseOwnerRepo(originUrl);
+    if (!ownerRepo) return true;
+    const vis = execFileSync(
+      'gh',
+      ['repo', 'view', ownerRepo, '--json', 'isPrivate', '-q', '.isPrivate'],
+      { cwd: worktreePath, stdio: 'pipe', encoding: 'utf8' },
+    ).trim();
+    return vis !== 'false';
+  } catch {
+    return true;
+  }
+}
+
 export function openPullRequest(
   worktreePath: string,
   prDescriptionPath: string,
@@ -204,13 +212,22 @@ export function openPullRequest(
     }).trim();
     if (!branch || branch === 'HEAD') return null;
 
-    // Make the PR self-contained: commit the demo bundle on the branch and
-    // build a combined body (PR description + inline demo). Best-effort —
-    // a demo failure must never block the PR. Done BEFORE the push so the
-    // demo commit ships with the branch.
+    const initiativeId = basenameInitiativeId(branch);
+
+    // S4: precondition — the dev-loop unifier MUST have authored the
+    // tracked demo bundle before review opens the PR. A missing demo at
+    // this point is a hard error (classified as dev-loop-unifier-demo-failed
+    // upstream), NOT something to silently re-commit. The prior cpSync +
+    // git commit path masked unifier failures by re-creating the bundle
+    // from .forge/demos/; that flow is gone — embedDemoInPr is a pure
+    // composer now.
+    const trackedDemoDir = assertTrackedDemoExists(worktreePath, initiativeId);
+    const isPrivate = resolveRepoIsPrivate(worktreePath);
+
+    // Compose the demo block from the (already-tracked) bundle.
     let bodyFile = prDescriptionPath;
     try {
-      const demoMd = embedDemoInPr(worktreePath, basenameInitiativeId(branch), branch);
+      const demoMd = embedDemoInPr(worktreePath, initiativeId, branch, trackedDemoDir, isPrivate);
       if (demoMd) {
         const base = existsSync(prDescriptionPath)
           ? readFileSync(prDescriptionPath, 'utf8')
@@ -221,7 +238,7 @@ export function openPullRequest(
         bodyFile = combined;
       }
     } catch {
-      /* keep the plain description */
+      /* keep the plain description — composition errors must not block PR open */
     }
 
     // Push to origin (set-upstream so gh pr create knows the head ref).

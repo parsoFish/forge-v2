@@ -20,7 +20,7 @@
     "bench:architect": "node --experimental-strip-types benchmarks/architect/score.ts",
     "bench:project-manager": "node --experimental-strip-types benchmarks/project-manager/score.ts",
     "bench:developer-loop": "node --experimental-strip-types benchmarks/developer-loop/score.ts",
-    "bench:review-loop": "node --experimental-strip-types benchmarks/review-loop/score.ts",
+    "bench:review-router": "node --experimental-strip-types benchmarks/review-router/sdk.ts",
     "bench:reflection": "node --experimental-strip-types benchmarks/reflection/score.ts",
     "bench:chained": "node --experimental-strip-types benchmarks/chained/score.ts",
     "lint": "echo 'TODO: pick a linter; v2 stays minimal until a need appears'",

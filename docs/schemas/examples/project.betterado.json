@@ -1,0 +1,9 @@
+{
+  "demo": {
+    "shape": "harness",
+    "command": ["bash", "-lc", "cd azuredevops && go test -v ./internal/service/release/... 2>&1 | tee demo.log"],
+    "output": "demo/<initiative-id>/",
+    "baseline": "main"
+  },
+  "quality_gate_cmd": ["bash", "-lc", "cd azuredevops && go test ./internal/service/release/..."]
+}

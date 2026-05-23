@@ -33,8 +33,38 @@ import {
 import { dirname, resolve } from 'node:path';
 
 import { notify, type NotifyConfig } from './notify.ts';
-import type { GetVerdict, Verdict, VerdictContext } from './reviewer-stage2.ts';
-import type { AcceptanceCriterion } from './work-item.ts';
+import type { AcceptanceCriterion, WorkItem } from './work-item.ts';
+
+/**
+ * Verdict shape — the operator's response to the review prompt. Migrated from
+ * the (deleted) `reviewer-stage2.ts` module during S4: the verdict-shape
+ * types live next to the file-verdict transport that produces them.
+ */
+export type Verdict =
+  | { kind: 'approve'; rationale: string }
+  | { kind: 'send-back'; feedback: AcceptanceCriterion[]; rationale: string };
+
+/**
+ * Context the verdict-provider sees when asked for a verdict. The review
+ * router (S4) builds this from the open PR's state when running the
+ * file-based provider as a fallback to PR-comment polling.
+ */
+export type VerdictContext = {
+  initiativeId: string;
+  worktreePath: string;
+  manifestPath: string;
+  /** Absolute path to `<worktree>/.forge/pr-description.md`. */
+  prDescriptionPath: string;
+  /** Absolute path to the tracked demo bundle directory. */
+  demoBundleDir: string;
+  workItems: WorkItem[];
+  /** `git diff main...HEAD --stat` output, capped at ~4 KB. */
+  diffSummary: string;
+  /** 1 = first review (after iteration 1); 2 = after iteration 2; ... */
+  roundNumber: number;
+};
+
+export type GetVerdict = (ctx: VerdictContext) => Promise<Verdict>;
 
 export type FileVerdictPaths = {
   promptPath: string;
@@ -307,10 +337,11 @@ function parseFrontmatter(text: string): Record<string, string> {
 
 /**
  * Parse acceptance-criterion bullet lines from a markdown body. Tolerates
- * the `- AC:` prefix that mirrors `appendSendBackFeedback`'s emitted
- * format, plus a plain `- GIVEN` form.
+ * the `- AC:` prefix that mirrors the prior reviewer-stage2 send-back
+ * format, plus a plain `- GIVEN` form. Exported for the review router
+ * (S4) which uses it to scrape ACs from PR-level review comments.
  */
-function parseAcceptanceCriteria(body: string): AcceptanceCriterion[] {
+export function parseAcceptanceCriteria(body: string): AcceptanceCriterion[] {
   const acs: AcceptanceCriterion[] = [];
   for (const raw of body.split('\n')) {
     const line = raw.trim();

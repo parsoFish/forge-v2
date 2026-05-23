@@ -28,7 +28,7 @@ import type {
 import type {
   Verdict,
   VerdictContext,
-} from '../../orchestrator/reviewer-stage2.ts';
+} from '../../orchestrator/file-verdict.ts';
 
 export type SimulatorQueryFn = (params: {
   prompt: string;

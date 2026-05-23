@@ -17,7 +17,7 @@ import {
   type SimulatorQueryFn,
   type TargetSpec,
 } from './simulator.ts';
-import type { VerdictContext } from '../../orchestrator/reviewer-stage2.ts';
+import type { VerdictContext } from '../../orchestrator/file-verdict.ts';
 import type { WorkItem } from '../../orchestrator/work-item.ts';
 
 // ---------- parseVerdict ----------

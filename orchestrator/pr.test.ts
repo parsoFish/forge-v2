@@ -31,8 +31,10 @@ import { join } from 'node:path';
 import {
   alignLocalToRemote,
   assertLocalRemoteSynced,
+  assertTrackedDemoExists,
   checkLocalRemoteSynced,
   confirmPrMerged,
+  embedDemoInPr,
   pushInitiativeBranch,
 } from './pr.ts';
 
@@ -273,6 +275,42 @@ test('alignLocalToRemote: best-effort — returns aligned even when nothing to d
     const r = alignLocalToRemote(proj, 'nonexistent-branch');
     assert.equal(r.aligned, true);
     assert.match(r.detail, /already up to date|main/);
+  } finally {
+    cleanup();
+  }
+});
+
+// ---- S4: assertTrackedDemoExists + embedDemoInPr (pure composer) ----
+
+test('assertTrackedDemoExists: throws when demo/<id>/DEMO.md is missing', () => {
+  const { proj, cleanup } = makeRepoWithOrigin();
+  try {
+    assert.throws(
+      () => assertTrackedDemoExists(proj, 'INIT-missing'),
+      /dev-loop-unifier-demo-failed/,
+    );
+  } finally {
+    cleanup();
+  }
+});
+
+test('assertTrackedDemoExists: returns the demo dir when DEMO.md exists', () => {
+  const { proj, cleanup } = makeRepoWithOrigin();
+  try {
+    mkdirSync(join(proj, 'demo', 'INIT-ok'), { recursive: true });
+    writeFileSync(join(proj, 'demo', 'INIT-ok', 'DEMO.md'), '# Demo\n');
+    const dir = assertTrackedDemoExists(proj, 'INIT-ok');
+    assert.equal(dir, join(proj, 'demo', 'INIT-ok'));
+  } finally {
+    cleanup();
+  }
+});
+
+test('embedDemoInPr (S4 signature): returns null when trackedDemoDir is missing', () => {
+  const { proj, cleanup } = makeRepoWithOrigin();
+  try {
+    const result = embedDemoInPr(proj, 'INIT-x', 'forge/INIT-x', join(proj, 'demo', 'INIT-x'), true);
+    assert.equal(result, null);
   } finally {
     cleanup();
   }

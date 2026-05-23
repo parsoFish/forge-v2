@@ -15,7 +15,7 @@ import { resolve } from 'node:path';
 
 import type { EventLogger } from './logging.ts';
 import { parseManifest } from './manifest.ts';
-import type { GetVerdict } from './reviewer-stage2.ts';
+import type { GetVerdict } from './file-verdict.ts';
 
 export type CycleInput = {
   initiativeId: string;
@@ -79,6 +79,13 @@ export type CycleInput = {
    * Threaded straight through to `createLogger`'s `tee`.
    */
   eventTee?: (entry: import('./logging.ts').EventLogEntry) => void;
+  /**
+   * S4 — when set, the unifier runs in send-back mode (CONTRACTS.md C3b).
+   * Points at a `_queue/in-flight/<id>.pr-feedback.md` file the unifier
+   * reads as its iteration input. Set by the daemon/scheduler when the
+   * review router enqueues a re-entrant unifier run.
+   */
+  unifierFeedbackRef?: string;
 };
 
 export type ReflectionStatus = 'closed' | 'failed' | 'skipped';

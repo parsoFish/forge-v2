@@ -1,0 +1,20 @@
+{
+  "demo": {
+    "shape": "browser",
+    "command": ["bash", "-lc", "npx playwright test demo.spec.ts --reporter=list --trace=on"],
+    "output": "demo/<initiative-id>/",
+    "baseline": "main",
+    "preview_command": ["npm", "run", "preview"]
+  },
+  "quality_gate_cmd": ["npm", "test"],
+  "metrics": {
+    "command": ["bash", "-lc", "node scripts/grading/runSweep.mjs --metric throughput"],
+    "baselines_dir": "docs/baselines/",
+    "tolerance_pct": 2.0
+  },
+  "sweep": {
+    "start_command": ["bash", "-lc", "npm run preview"],
+    "draw_function": "src/sweep/draw.ts",
+    "measurement_extractor": "src/sweep/extract.ts"
+  }
+}

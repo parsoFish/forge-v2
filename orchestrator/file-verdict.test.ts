@@ -18,7 +18,7 @@ import {
   parseVerdictResponse,
   renderVerdictPrompt,
 } from './file-verdict.ts';
-import type { VerdictContext } from './reviewer-stage2.ts';
+import type { VerdictContext } from './file-verdict.ts';
 
 function setupQueue(): { dir: string; queueRoot: string } {
   const dir = mkdtempSync(join(tmpdir(), 'forge-fv-'));

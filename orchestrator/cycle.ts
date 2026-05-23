@@ -48,15 +48,15 @@ import type {
 import { resolveQualityGateCmd } from './cycle-context.ts';
 
 // Phase runners (extracted from this module — cycle.ts is the thin spine).
-// computeAdaptiveReviewIterationCap is re-exported so benchmarks keep
-// importing it from `./cycle.ts` unchanged.
 import { runProjectManager } from './phases/project-manager.ts';
 import { runDeveloperLoop } from './phases/developer-loop.ts';
 import { runReviewer } from './phases/reviewer.ts';
 import { runReflector } from './phases/reflector.ts';
 import { runClosure } from './phases/closure.ts';
 import { assertLocalRemoteSynced, pushInitiativeBranch } from './pr.ts';
-export { computeAdaptiveReviewIterationCap } from './phases/reviewer.ts';
+// S4: computeAdaptiveReviewIterationCap removed alongside the Ralph reviewer.
+// The unifier sub-phase owns iteration in dev-loop space; the review phase
+// is now a thin non-LLM router (see orchestrator/review-router.ts).
 
 export async function runCycle(input: CycleInput): Promise<CycleResult> {
   const started = Date.now();

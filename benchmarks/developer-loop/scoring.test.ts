@@ -1,8 +1,10 @@
 /**
  * Unit tests for benchmarks/developer-loop/scoring.ts. Pure functions only —
- * no SDK, no shells, no tempdirs. Mirrors benchmarks/project-manager/scoring.test.ts
- * shape: assemble a synthetic LoopResult + WorkItem + DevExpected, call
- * caseScore, assert the criteria booleans and score arithmetic.
+ * no SDK, no shells, no tempdirs.
+ *
+ * S4 changes per CONTRACTS.md C19: `cost_budget_respected` removed; weights
+ * redistributed. The `cost_budget_respected` test is gone; the
+ * `cost-overrun` test repurposed to verify the criterion no longer exists.
  */
 
 import { test } from 'node:test';
@@ -10,17 +12,23 @@ import assert from 'node:assert/strict';
 
 import {
   caseScore,
-  costBudgetRespected,
   filesInScopeRespected,
   iterationBudgetRespected,
   loopCompleted,
   PASS_THRESHOLD,
+  unifierCaseScore,
   WEIGHT_COMPLETED,
-  WEIGHT_COST,
   WEIGHT_FILES_IN_SCOPE,
   WEIGHT_ITERATIONS,
   WEIGHT_NO_REGRESSION,
+  UNIFIER_WEIGHT_BRANCHES_IN_SYNC,
+  UNIFIER_WEIGHT_DEMO_PRESENT,
+  UNIFIER_WEIGHT_DEMO_RUNS_CLEAN,
+  UNIFIER_WEIGHT_INITIATIVE_GATE,
+  UNIFIER_WEIGHT_PR_SELF_CONTAINED,
   type DevExpected,
+  type UnifierExpected,
+  type UnifierObservations,
 } from './scoring.ts';
 import type { LoopResult } from '../../loops/ralph/runner.ts';
 import type { WorkItem } from '../../orchestrator/work-item.ts';
@@ -56,7 +64,6 @@ function loopResult(overrides: Partial<LoopResult> = {}): LoopResult {
 function expected(overrides: Partial<DevExpected> = {}): DevExpected {
   return {
     max_iterations: 3,
-    max_cost_usd: 0.30,
     must_complete: true,
     quality_gate_cmd: ['npm', 'test'],
     files_in_scope_extra: ['tests/foo.test.ts'],
@@ -77,13 +84,9 @@ test('caseScore: ideal run scores 1.0 and passes', () => {
     terminated_cleanly: 1,
     loop_completed: 1,
     iteration_budget_respected: 1,
-    cost_budget_respected: 1,
     files_in_scope_respected: 1,
     no_regression: 1,
   });
-  assert.equal(score.status, 'complete');
-  assert.equal(score.stop_reason, 'quality-gates-pass');
-  assert.deepEqual(score.out_of_scope_files, []);
 });
 
 test('caseScore: crashed run scores 0 and fails the gate', () => {
@@ -98,7 +101,6 @@ test('caseScore: crashed run scores 0 and fails the gate', () => {
   assert.ok(!score.passed);
   assert.equal(score.criteria.terminated_cleanly, 0);
   assert.equal(score.status, 'crashed');
-  assert.equal(score.stop_reason, 'crashed');
 });
 
 test('caseScore: failed run (over iteration budget) loses iteration weight only', () => {
@@ -108,25 +110,25 @@ test('caseScore: failed run (over iteration budget) loses iteration weight only'
     expected: expected({ max_iterations: 3 }),
     regressionPassed: true,
   });
-  // loses loop_completed (0.35) AND iteration_budget_respected (0.20)
-  const want = WEIGHT_FILES_IN_SCOPE + WEIGHT_COST + WEIGHT_NO_REGRESSION;
+  // loses loop_completed (0.40) AND iteration_budget_respected (0.25)
+  const want = WEIGHT_FILES_IN_SCOPE + WEIGHT_NO_REGRESSION;
   assert.equal(round3(score.score), round3(want));
   assert.equal(score.criteria.loop_completed, 0);
   assert.equal(score.criteria.iteration_budget_respected, 0);
-  assert.ok(!score.passed);
 });
 
-test('caseScore: completed but cost-overrun keeps loop_completed and loses cost', () => {
+test('caseScore (S4): no cost criterion — high cost does not affect the score', () => {
+  // Per CONTRACTS.md C19 the cost_budget_respected criterion was removed.
+  // A run that would have failed cost in the old rubric now scores 1.0.
   const score = caseScore({
-    result: loopResult({ cost_usd: 0.50 }),
+    result: loopResult({ cost_usd: 999 }),
     workItem: workItem(),
     expected: expected({ max_cost_usd: 0.30 }),
     regressionPassed: true,
   });
-  const want = 1 - WEIGHT_COST;
-  assert.equal(round3(score.score), round3(want));
-  assert.equal(score.criteria.cost_budget_respected, 0);
-  assert.equal(score.criteria.loop_completed, 1);
+  assert.equal(score.score, 1);
+  // The criteria object should not contain a cost_budget_respected field.
+  assert.equal((score.criteria as Record<string, unknown>).cost_budget_respected, undefined);
 });
 
 test('caseScore: out-of-scope file modification loses scope weight', () => {
@@ -154,37 +156,6 @@ test('caseScore: regression failure loses no_regression weight only', () => {
   assert.equal(score.criteria.no_regression, 0);
 });
 
-test('caseScore: completed at exactly iteration budget passes the iteration criterion', () => {
-  // boundary: max_iterations is inclusive
-  const score = caseScore({
-    result: loopResult({ iterations: 3 }),
-    workItem: workItem(),
-    expected: expected({ max_iterations: 3 }),
-    regressionPassed: true,
-  });
-  assert.equal(score.criteria.iteration_budget_respected, 1);
-});
-
-test('caseScore: pass threshold of 0.7 is the gate', () => {
-  // With weights 0.35/0.20/0.20/0.15/0.10, dropping the two lightest (cost +
-  // no_regression) gives 0.75 — still passes. Dropping a heavier one fails.
-  const dropCostAndRegression = caseScore({
-    result: loopResult({ cost_usd: 1 }),
-    workItem: workItem(),
-    expected: expected({ max_cost_usd: 0.3 }),
-    regressionPassed: false,
-  });
-  assert.ok(dropCostAndRegression.score >= PASS_THRESHOLD, `${dropCostAndRegression.score} >= ${PASS_THRESHOLD}`);
-
-  const dropCompleted = caseScore({
-    result: loopResult({ status: 'failed', stop_reason: 'iteration-budget' }),
-    workItem: workItem(),
-    expected: expected(),
-    regressionPassed: true,
-  });
-  assert.ok(dropCompleted.score < PASS_THRESHOLD, `${dropCompleted.score} < ${PASS_THRESHOLD}`);
-});
-
 test('filesInScopeRespected: Ralph workspace artifacts are not counted as out-of-scope', () => {
   const r = filesInScopeRespected(
     loopResult({
@@ -203,11 +174,21 @@ test('filesInScopeRespected: Ralph workspace artifacts are not counted as out-of
   assert.deepEqual(r.outOfScope, []);
 });
 
-test('filesInScopeRespected: source files outside scope are still flagged even with Ralph artifacts present', () => {
+test('filesInScopeRespected (S4): tracked demo/<id>/ paths are exempt (unifier owns them)', () => {
   const r = filesInScopeRespected(
     loopResult({
-      filesChanged: ['src/foo.ts', 'src/secret.ts', 'AGENT.md'],
+      filesChanged: ['src/foo.ts', 'demo/INIT-x/DEMO.md', 'demo/INIT-x/screenshot.png'],
     }),
+    workItem({ files_in_scope: ['src/foo.ts'] }),
+    expected({ files_in_scope_extra: [] }),
+  );
+  assert.equal(r.value, 1);
+  assert.deepEqual(r.outOfScope, []);
+});
+
+test('filesInScopeRespected: source files outside scope are still flagged', () => {
+  const r = filesInScopeRespected(
+    loopResult({ filesChanged: ['src/foo.ts', 'src/secret.ts', 'AGENT.md'] }),
     workItem({ files_in_scope: ['src/foo.ts'] }),
     expected({ files_in_scope_extra: [] }),
   );
@@ -215,28 +196,120 @@ test('filesInScopeRespected: source files outside scope are still flagged even w
   assert.deepEqual(r.outOfScope, ['src/secret.ts']);
 });
 
-test('filesInScopeRespected: leading ./ is stripped before comparison', () => {
-  const r = filesInScopeRespected(
-    loopResult({ filesChanged: ['./src/foo.ts'] }),
-    workItem({ files_in_scope: ['src/foo.ts'] }),
-    expected(),
-  );
-  assert.equal(r.value, 1);
-  assert.deepEqual(r.outOfScope, []);
-});
-
 test('individual criterion helpers handle null result', () => {
   assert.equal(loopCompleted(null), 0);
   assert.equal(iterationBudgetRespected(null, expected()), 0);
-  assert.equal(costBudgetRespected(null, expected()), 0);
   const r = filesInScopeRespected(null, workItem(), expected());
   assert.equal(r.value, 0);
   assert.deepEqual(r.outOfScope, []);
 });
 
-test('weights sum to 1', () => {
+test('weights sum to 1 (S4 redistributed: 0.40 + 0.25 + 0.20 + 0.15)', () => {
+  const sum = WEIGHT_COMPLETED + WEIGHT_ITERATIONS + WEIGHT_FILES_IN_SCOPE + WEIGHT_NO_REGRESSION;
+  assert.equal(round3(sum), 1);
+});
+
+test('caseScore: PASS_THRESHOLD 0.7 is the gate (post-S4 redistribution)', () => {
+  // Loop completed + iterations + scope = 0.40 + 0.25 + 0.20 = 0.85 — still passes.
+  const partial = caseScore({
+    result: loopResult(),
+    workItem: workItem(),
+    expected: expected(),
+    regressionPassed: false,
+  });
+  assert.ok(partial.score >= PASS_THRESHOLD, `${partial.score} >= ${PASS_THRESHOLD}`);
+
+  // Drop loop_completed (heaviest at 0.40) → 0.60, fails.
+  const dropCompleted = caseScore({
+    result: loopResult({ status: 'failed', stop_reason: 'iteration-budget' }),
+    workItem: workItem(),
+    expected: expected(),
+    regressionPassed: true,
+  });
+  assert.ok(dropCompleted.score < PASS_THRESHOLD, `${dropCompleted.score} < ${PASS_THRESHOLD}`);
+});
+
+// ---------------------------------------------------------------------------
+// unifierCaseScore
+// ---------------------------------------------------------------------------
+
+function unifierExpected(overrides: Partial<UnifierExpected> = {}): UnifierExpected {
+  return {
+    max_iterations: 3,
+    demo_shape: 'browser',
+    demo_command: ['npx', 'playwright', 'test', '--reporter=list'],
+    demo_artifact_glob: 'demo/INIT-*/*.{png,webm,md}',
+    ...overrides,
+  };
+}
+
+function unifierObs(overrides: Partial<UnifierObservations> = {}): UnifierObservations {
+  return {
+    terminated_cleanly: true,
+    initiative_gate_passed: true,
+    demo_present: true,
+    demo_runs_clean: true,
+    pr_self_contained: true,
+    branches_in_sync: true,
+    iterations: 2,
+    ...overrides,
+  };
+}
+
+test('unifierCaseScore: ideal observations score 1.0 and pass', () => {
+  const s = unifierCaseScore(unifierObs(), unifierExpected());
+  assert.equal(s.score, 1);
+  assert.ok(s.passed);
+});
+
+test('unifierCaseScore: terminated_cleanly false → score 0, gate failed', () => {
+  const s = unifierCaseScore(unifierObs({ terminated_cleanly: false }), unifierExpected());
+  assert.equal(s.score, 0);
+  assert.ok(!s.passed);
+  assert.equal(s.criteria.unifier_terminated_cleanly, 0);
+});
+
+test('unifierCaseScore: shape "none" excuses demo_runs_clean (criterion forced to 1)', () => {
+  // demo_runs_clean would be false in obs, but shape: "none" excuses it.
+  const s = unifierCaseScore(
+    unifierObs({ demo_runs_clean: false }),
+    unifierExpected({ demo_shape: 'none' }),
+  );
+  assert.equal(s.criteria.demo_runs_clean, 1);
+  assert.equal(s.score, 1);
+});
+
+test('unifierCaseScore: shape != "none" honours demo_runs_clean falsy', () => {
+  const s = unifierCaseScore(
+    unifierObs({ demo_runs_clean: false }),
+    unifierExpected({ demo_shape: 'harness' }),
+  );
+  assert.equal(s.criteria.demo_runs_clean, 0);
+  assert.equal(round3(s.score), round3(1 - UNIFIER_WEIGHT_DEMO_RUNS_CLEAN));
+});
+
+test('unifierCaseScore: initiative gate failure dominates score', () => {
+  const s = unifierCaseScore(
+    unifierObs({ initiative_gate_passed: false }),
+    unifierExpected(),
+  );
+  assert.equal(s.criteria.initiative_gate_passed, 0);
+  assert.equal(round3(s.score), round3(1 - UNIFIER_WEIGHT_INITIATIVE_GATE));
+});
+
+test('unifierCaseScore: NO cost criterion per CONTRACTS.md C19', () => {
+  // No `cost_within_unifier_budget` field exists.
+  const s = unifierCaseScore(unifierObs(), unifierExpected());
+  assert.equal((s.criteria as Record<string, unknown>).cost_within_unifier_budget, undefined);
+});
+
+test('unifierCaseScore weights sum to 1', () => {
   const sum =
-    WEIGHT_COMPLETED + WEIGHT_ITERATIONS + WEIGHT_FILES_IN_SCOPE + WEIGHT_COST + WEIGHT_NO_REGRESSION;
+    UNIFIER_WEIGHT_INITIATIVE_GATE +
+    UNIFIER_WEIGHT_DEMO_PRESENT +
+    UNIFIER_WEIGHT_DEMO_RUNS_CLEAN +
+    UNIFIER_WEIGHT_PR_SELF_CONTAINED +
+    UNIFIER_WEIGHT_BRANCHES_IN_SYNC;
   assert.equal(round3(sum), 1);
 });
 

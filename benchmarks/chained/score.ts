@@ -42,7 +42,9 @@ import type { TargetSpec } from '../e2e/simulator.ts';
 import { caseScore as architectCaseScore } from '../architect/scoring.ts';
 import { caseScore as pmCaseScore } from '../project-manager/scoring.ts';
 import { caseScore as devCaseScore } from '../developer-loop/scoring.ts';
-import { caseScore as reviewCaseScore } from '../review-loop/scoring.ts';
+// S4: review-loop bench retired; minimal local shim until the chained
+// bench's review-phase row is rebuilt around the unifier criteria.
+import { caseScore as reviewCaseScore } from './review-loop-stub.ts';
 import { caseScore as reflectionCaseScore } from '../reflection/scoring.ts';
 
 import {

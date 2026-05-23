@@ -45,6 +45,12 @@ type Case = {
   initiative_id: string;
   work_item_spec_rel_path: string;    // worktree-relative
   expected: DevExpected;
+  /**
+   * S4 — optional unifier expectations. Present when the fixture exercises
+   * the dev-loop unifier sub-phase. Scoring layer is in
+   * scoring.ts:unifierCaseScore (run after the per-WI rubric).
+   */
+  expected_unifier?: import('./scoring.ts').UnifierExpected;
 };
 
 type CaseResult = {
@@ -79,7 +85,6 @@ function emptyCriteria(): DevCriteria {
     terminated_cleanly: 0,
     loop_completed: 0,
     iteration_budget_respected: 0,
-    cost_budget_respected: 0,
     files_in_scope_respected: 0,
     no_regression: 0,
   };
@@ -193,7 +198,6 @@ const criteriaPassRates: Record<keyof DevCriteria, number> = {
   terminated_cleanly: 0,
   loop_completed: 0,
   iteration_budget_respected: 0,
-  cost_budget_respected: 0,
   files_in_scope_respected: 0,
   no_regression: 0,
 };

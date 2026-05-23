@@ -64,7 +64,13 @@ export type RunDevInput = {
   workItemSpecRelPath: string;
   expected: {
     max_iterations: number;
-    max_cost_usd: number;
+    /**
+     * S4: per CONTRACTS.md C19 the dev-loop bench has no $-cap criterion;
+     * this field is retained for back-compat in fixture parsing and used
+     * only as a soft per-iteration cap inside this sdk module (never as a
+     * pass/fail signal). Optional; defaults to Infinity when omitted.
+     */
+    max_cost_usd?: number;
     quality_gate_cmd: string[];
     pre_existing_tests_cmd?: string[];
   };
@@ -184,7 +190,9 @@ export async function runDevLoop(input: RunDevInput): Promise<RunDevResult> {
       workItemSpecRelPath: input.workItemSpecRelPath,
       worktreePath,
       iterationBudget: input.expected.max_iterations,
-      costBudgetUsd: input.expected.max_cost_usd,
+      // S4: per C19 there is no $-cap. Use Infinity so the prompt header
+      // shows "no $ ceiling".
+      costBudgetUsd: input.expected.max_cost_usd ?? Number.POSITIVE_INFINITY,
     });
     workItem = prepared.workItem;
   } catch (err) {
@@ -240,7 +248,8 @@ export async function runDevLoop(input: RunDevInput): Promise<RunDevResult> {
     worktreePath,
     initiativeBudget: {
       iterations: input.expected.max_iterations,
-      usd: input.expected.max_cost_usd,
+      // S4: per C19 there is no $-cap on the bench either.
+      usd: input.expected.max_cost_usd ?? Number.POSITIVE_INFINITY,
     },
     brainQueryResults:
       '_(seeded by skill step 1; v1 leaves this empty — the agent has the brain index in its system prompt and can Read themes itself during iteration 1.)_',

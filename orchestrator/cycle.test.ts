@@ -98,72 +98,7 @@ test('recordBrainGateResult: parentEventId is propagated for child-event correla
   }
 });
 
-// ---- F-30: adaptive reviewer iteration cap ----
-
-import { execFileSync } from 'node:child_process';
-import { writeFileSync } from 'node:fs';
-import { computeAdaptiveReviewIterationCap } from './cycle.ts';
-
-function makeRepoWithChangedFiles(count: number): { dir: string; worktree: string } {
-  const dir = mkdtempSync(join(tmpdir(), 'forge-adaptive-'));
-  // Initialise a tiny repo on `main` with a base commit, then create a feature
-  // branch with `count` extra committed files so `git diff main...HEAD
-  // --name-only` reports exactly `count` lines.
-  execFileSync('git', ['init', '-q', '-b', 'main', dir]);
-  execFileSync('git', ['-C', dir, 'config', 'user.email', 'test@forge']);
-  execFileSync('git', ['-C', dir, 'config', 'user.name', 'forge-test']);
-  writeFileSync(join(dir, 'README.md'), 'base\n');
-  execFileSync('git', ['-C', dir, 'add', '.']);
-  execFileSync('git', ['-C', dir, 'commit', '-q', '-m', 'base']);
-  execFileSync('git', ['-C', dir, 'checkout', '-q', '-b', 'feature']);
-  for (let i = 0; i < count; i++) {
-    writeFileSync(join(dir, `f${i}.txt`), `${i}\n`);
-  }
-  if (count > 0) {
-    execFileSync('git', ['-C', dir, 'add', '.']);
-    execFileSync('git', ['-C', dir, 'commit', '-q', '-m', `${count} files`]);
-  }
-  return { dir, worktree: dir };
-}
-
-test('computeAdaptiveReviewIterationCap: ≤20 changed files → 3 (default)', () => {
-  const { dir, worktree } = makeRepoWithChangedFiles(10);
-  try {
-    assert.equal(computeAdaptiveReviewIterationCap(worktree), 3);
-  } finally {
-    rmSync(dir, { recursive: true, force: true });
-  }
-});
-
-test('computeAdaptiveReviewIterationCap: 21-50 changed files → 4', () => {
-  const { dir, worktree } = makeRepoWithChangedFiles(35);
-  try {
-    assert.equal(computeAdaptiveReviewIterationCap(worktree), 4);
-  } finally {
-    rmSync(dir, { recursive: true, force: true });
-  }
-});
-
-test('computeAdaptiveReviewIterationCap: 100+ changed files → 5/6/8 by tier', () => {
-  const c1 = makeRepoWithChangedFiles(75);
-  const c2 = makeRepoWithChangedFiles(150);
-  const c3 = makeRepoWithChangedFiles(250);
-  try {
-    assert.equal(computeAdaptiveReviewIterationCap(c1.worktree), 5);
-    assert.equal(computeAdaptiveReviewIterationCap(c2.worktree), 6);
-    assert.equal(computeAdaptiveReviewIterationCap(c3.worktree), 8);
-  } finally {
-    rmSync(c1.dir, { recursive: true, force: true });
-    rmSync(c2.dir, { recursive: true, force: true });
-    rmSync(c3.dir, { recursive: true, force: true });
-  }
-});
-
-test('computeAdaptiveReviewIterationCap: not a git repo → falls back to default 3', () => {
-  const dir = mkdtempSync(join(tmpdir(), 'forge-not-a-repo-'));
-  try {
-    assert.equal(computeAdaptiveReviewIterationCap(dir), 3);
-  } finally {
-    rmSync(dir, { recursive: true, force: true });
-  }
-});
+// S4 deletion: the F-30 adaptive reviewer iteration cap tests are gone —
+// `computeAdaptiveReviewIterationCap` was reviewer-internal logic that
+// moves away with the Ralph-reviewer deletion. The new router-driven
+// review phase doesn't iterate (the unifier owns iteration in S4 mode).

@@ -1,0 +1,74 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://forge/docs/schemas/project-config.schema.json",
+  "title": "ProjectConfig",
+  "description": "Per-project forge configuration. Lives at <project-root>/.forge/project.json (CONTRACTS.md C1). Declares the project's demo shape, quality gate, and optional metrics + sweep plug-ins (C26 + C28).",
+  "type": "object",
+  "required": ["demo", "quality_gate_cmd"],
+  "additionalProperties": false,
+  "properties": {
+    "demo": {
+      "type": "object",
+      "required": ["shape"],
+      "additionalProperties": false,
+      "properties": {
+        "shape": {
+          "type": "string",
+          "enum": ["browser", "harness", "cli-diff", "artifact", "none"],
+          "description": "How the project surfaces a reviewer-visible demo (CONTRACTS.md C2). browser = Vite/Playwright; harness = test harness with regex-scrapable output; cli-diff = before/after stdout; artifact = generated file/output; none = infra-only initiatives, DEMO.md rationale block."
+        },
+        "command": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Argv-style command the unifier runs to produce the demo. Required when shape != 'none'."
+        },
+        "output": {
+          "type": "string",
+          "description": "Output directory relative to worktree root. Default: demo/<initiative-id>/."
+        },
+        "baseline": {
+          "type": "string",
+          "description": "Git ref / branch the unifier diffs against for before/after captures. Default: main."
+        },
+        "preview_command": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Required when shape = 'browser'. The dev/preview server command (forge picks a free PORT)."
+        }
+      }
+    },
+    "quality_gate_cmd": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Argv-style command the developer-loop + unifier run between iterations. Must exit 0 on a green tree."
+    },
+    "metrics": {
+      "type": "object",
+      "description": "Optional holistic metrics block (CONTRACTS.md C26). Required for any project that wants exploration-shape initiatives (C27); omit otherwise.",
+      "required": ["command", "baselines_dir", "tolerance_pct"],
+      "additionalProperties": false,
+      "properties": {
+        "command": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "baselines_dir": { "type": "string" },
+        "tolerance_pct": { "type": "number" }
+      }
+    },
+    "sweep": {
+      "type": "object",
+      "description": "Optional parameter-sweep plug-in points (CONTRACTS.md C28). Consumed by skills/project-sweep when the unifier runs in harness-runner mode for type: exploration manifests.",
+      "required": ["start_command", "draw_function", "measurement_extractor"],
+      "additionalProperties": false,
+      "properties": {
+        "start_command": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "draw_function": { "type": "string" },
+        "measurement_extractor": { "type": "string" }
+      }
+    }
+  }
+}

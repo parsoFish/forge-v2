@@ -219,16 +219,24 @@ export async function runDeveloperLoop(input: CycleInput, logger: EventLogger): 
           brainQueryResults: '',
           cycleId: logger.cycleId,
           initiativeId: input.initiativeId,
-          // F-04: thread the per-project quality-gate command into the
-          // runner. When absent, runner falls back to its default
-          // (`npm test --silent`); when present (resolveQualityGateCmd
-          // populated it from manifest or a Node-repo default), the runner
-          // uses the exact same command the reviewer will use.
-          qualityGate: input.qualityGateCmd && input.qualityGateCmd.length > 0
-            ? makeQualityGateFromCmd(
-                input.worktreePath,
-                input.qualityGateCmd,
-                (gateInfo) => emitGateEvent(logger, input.initiativeId, wiStart.event_id, wi.work_item_id, gateInfo),
+          // F-04 + 2026-05-25 (claude-harness audit): prefer the WI's
+          // per-WI quality_gate_cmd (set by PM to a sharp, AC-exercising
+          // command) over the cycle-level default. The cycle-level
+          // default (`npm test --silent`) is only the fallback when the
+          // WI doesn't set its own — but post-2026-05-24 the WI MUST set
+          // its own, so this is effectively always the WI's cmd in
+          // production. Without this, the iter-0 gate-too-loose check
+          // false-fires (the WI's sharp gate would have failed cleanly,
+          // but cycle-level `npm test` passes on the baseline).
+          qualityGate: ((): undefined | (() => boolean) => {
+            const wiCmd = wi.quality_gate_cmd && wi.quality_gate_cmd.length > 0 ? wi.quality_gate_cmd : null;
+            const fallback = input.qualityGateCmd && input.qualityGateCmd.length > 0 ? input.qualityGateCmd : null;
+            const effective = wiCmd ?? fallback;
+            if (!effective) return undefined;
+            return makeQualityGateFromCmd(
+              input.worktreePath,
+              effective,
+              (gateInfo) => emitGateEvent(logger, input.initiativeId, wiStart.event_id, wi.work_item_id, gateInfo),
                 // Gate tightening: when the WI declares `creates` or
                 // `verification_artifact` (C5), require ≥1 of those paths
                 // to appear in `git diff main...HEAD` before declaring
@@ -239,8 +247,8 @@ export async function runDeveloperLoop(input: CycleInput, logger: EventLogger): 
                 // TestX was never written. See
                 // [[quality-gate-cmd-must-assert-new-work]].
                 { requiredPaths: requiredVerificationPaths(wi) },
-              )
-            : undefined,
+            );
+          })(),
           // F-14: emit per-iteration events so metrics (cycle.ts:metrics.ts)
           // can aggregate iteration counts. F-23 enriches the metadata so
           // post-mortems can see what the agent actually did per iteration

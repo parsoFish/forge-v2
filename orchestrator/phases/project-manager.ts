@@ -221,9 +221,14 @@ async function runOnePmPass(p: PmPassInput): Promise<PmPassOutcome> {
   const forgeRoot = resolve(import.meta.dirname, '..', '..');
   const systemPrompt = buildPmSystemPrompt(forgeRoot);
   const featureCount = manifest.features.length;
-  // C5 sizing band: per-initiative range `feature_count..2*feature_count+2`,
-  // ceiling 8 unless feature_count > 4 (then ceiling = 2*fc+2).
-  const minWorkItems = Math.max(featureCount, 2);
+  // C5 sizing band as ADVISORY range (operator note 2026-05-25: PM was
+  // hitting the cap formulaically, over-decomposing to "look thorough"
+  // instead of letting work-shape decide). Floor relaxed to 1 — a
+  // trivial single-WI initiative is legitimate. Ceiling kept (rough cap
+  // on cycle complexity) but PM may exceed if the work genuinely needs
+  // it. The hint is what's surfaced to the agent; no orchestrator-side
+  // rejection on count.
+  const minWorkItems = 1;
   const maxWorkItems = featureCount > 4
     ? 2 * featureCount + 2
     : Math.min(2 * featureCount + 2, 8);

@@ -20,6 +20,7 @@ import { AgentHexCanvas } from '@/components/AgentHexCanvas';
 import { ActivityPanel } from '@/components/ActivityPanel';
 import { VerdictForm } from '@/components/VerdictForm';
 import { SchedulerBanner } from '@/components/SchedulerBanner';
+import { CycleArtifacts } from '@/components/CycleArtifacts';
 
 export default function Page() {
   const [snapshot, setSnapshot] = useState<CycleListSnapshot>({ live: [], recent: [] });
@@ -155,6 +156,8 @@ export default function Page() {
       <SchedulerBanner />
 
       <CyclesTab cycles={allCycles} activeId={activeCycleId} onSelect={setActiveCycleId} />
+
+      <CycleArtifacts cycleId={activeCycleId} />
 
       {activeCycle?.status === 'ready-for-review' && (
         <section style={{ marginTop: 24 }} data-section="verdict-form">

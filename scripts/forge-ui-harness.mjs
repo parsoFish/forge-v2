@@ -1055,20 +1055,24 @@ async function JOURNEY(ui, page) {
       ).catch(() => { /* */ });
       await page.locator(`[data-cycle-id="${cycle.cycleId}"]`).first().click().catch(() => { /* */ });
       await sleep(1000);
-      // Type a tiny rationale + click approve.
+      // Fill the rationale so the form visibly shows the operator's
+      // input. We INTENTIONALLY do NOT click "approve and merge"
+      // because the bridge's POST /api/verdict expects the manifest
+      // in in-flight/ — but this synthetic journey already moved it
+      // to ready-for-review/ to surface the form, so the POST would
+      // 409 and dead-end the cycle. Instead we write the
+      // verdict-response.md directly (the real flow this simulates is
+      // "operator's verdict file gets picked up by reviewer Ralph"
+      // which is the same end-state).
       try {
         await page.locator('[data-component="verdict-form"] textarea').first().fill('LGTM — meets every acceptance criterion.');
-        await page.locator('[data-component="verdict-form"] button:has-text("approve")').first().click();
-        // Synthetically write the verdict file ourselves too (the
-        // bridge's POST will be racing — having the file on disk is
-        // what closure picks up).
-        writeFileSync(
-          join(QDIR('ready-for-review'), `${cycle.initiativeId}.verdict-response.md`),
-          '---\nverdict: approve\nrationale: |\n  LGTM — meets every acceptance criterion.\n---\n',
-        );
       } catch (err) {
-        log('JOURNEY', `approve click skipped: ${err.message}`);
+        log('JOURNEY', `rationale fill skipped: ${err.message}`);
       }
+      writeFileSync(
+        join(QDIR('ready-for-review'), `${cycle.initiativeId}.verdict-response.md`),
+        '---\nverdict: approve\nrationale: |\n  LGTM — meets every acceptance criterion.\n---\n',
+      );
     }
     await pauseAndCaptureJourney(page, 'J12-verdict-submitted');
 
@@ -1173,7 +1177,12 @@ async function main() {
   if (flags.demo) {
     // Journey mode: same chromium-driven flow as record, separate
     // output dir so the regression record and the journey video
-    // don't stomp on each other.
+    // don't stomp on each other. Viewport bumped to 1600x2400 so the
+    // full page (cycle tabs + hex canvas + state-machine + activity
+    // sidebar + WI graph + activity panel + event tail) fits inside
+    // the recording without scrolling — playwright records the
+    // viewport, not the full page, so anything below the fold would
+    // otherwise be invisible in the video.
     console.log('[harness:demo] starting forge watch (this takes ~15s)…');
     watch = await startWatch();
     console.log(`[harness:demo] watch ready: ui=${watch.uiUrl} bridge=${watch.bridgeUrl}`);
@@ -1182,8 +1191,8 @@ async function main() {
     mkdirSync(JOURNEY_FRAMES_DIR, { recursive: true });
     browser = await chromium.launch();
     const ctx = await browser.newContext({
-      viewport: { width: 1600, height: 1000 },
-      recordVideo: { dir: JOURNEY_VIDEO_DIR, size: { width: 1600, height: 1000 } },
+      viewport: { width: 1600, height: 2400 },
+      recordVideo: { dir: JOURNEY_VIDEO_DIR, size: { width: 1600, height: 2400 } },
     });
     page = await ctx.newPage();
     page.on('pageerror', (err) => console.error(`[harness:pageerror] ${err.message}`));

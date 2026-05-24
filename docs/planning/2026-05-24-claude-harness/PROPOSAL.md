@@ -43,46 +43,76 @@ commits landed, PRs opened.
   harness needs a project at arm's length so the cycle exercise is
   realistic.
 
-## First three cycles
+## How a cycle actually starts — architect interview, NOT pre-baked brief
 
-I'd run these myself (autonomous: I write the brief, I'm the verdict
-operator) so the operator only sees the recordings + the verdicts I
-chose, not the active piloting.
+> Operator's correction (2026-05-24, post-PROPOSAL v1): "make sure
+> your planned harness project goes through this intended journey ...
+> input at the start of the journey [is] a seed. It should be ... a
+> fairly minimal idea that is then put through the architect phase
+> with questions asked of the operator as the architect explores and
+> surfaces edge cases, ambiguity, etc that the operator then provides
+> clarity for."
 
-### Cycle 1 — `INIT-2026-05-25-claude-trail-scaffold`
+The MINIMUM viable input I (claude, acting as operator) give the
+architect is **one sentence**:
 
-- **FEAT-1**: package scaffold (`package.json`, `tsconfig.json`,
-  `src/cli.ts` entry point, `npm test` runner).
-- **FEAT-2**: read a frozen `_logs/<cycleId>/events.jsonl` fixture
-  and roll up phase events into a markdown section.
-- **FEAT-3**: read a frozen `brain/` fixture, find the themes whose
+> "I want a small CLI that consolidates everything forge knows about
+> a given initiative — its brain themes, its events, its commits, its
+> cost — into one markdown trail doc."
+
+That seed goes to `forge architect claude-harness`. The architect
+phase then runs its interview — surfacing ambiguity, edge cases,
+scope cuts, naming, package layout, what counts as "everything",
+what off-the-shelf libraries it might lean on, what the test fixture
+should look like, etc. I answer **only what the architect actually
+asks**. The output of cycle 1's architect phase is a real PLAN.md
+the operator (me) ratifies — it is not a thing I wrote up front.
+
+Concretely, the cycle-1 seed brief is at
+[`docs/planning/2026-05-24-claude-harness/CYCLE-1-SEED.md`](./CYCLE-1-SEED.md)
+(to be filed in the next commit) and is exactly one paragraph long.
+
+The three-cycle direction below is **my anticipation of where the
+architect/PM will land**, not a prescription. If the architect's
+interview pushes us somewhere different (e.g. "trail" turns out to
+need a completely different decomposition), we follow that. Anything
+I pre-write here is a hypothesis, not a contract — the contract is
+the PLAN.md the architect produces and I approve at the
+ready-for-review verdict.
+
+## Three-cycle direction (hypothesis, subject to architect's interview)
+
+I'd run these myself (autonomous: I answer the architect's
+interview questions, I'm the verdict operator at ready-for-review)
+so the operator only sees the recordings + the verdicts I chose, not
+the active piloting.
+
+### Cycle 1 — `INIT-2026-05-25-claude-trail-scaffold` (anticipated)
+
+Seed → architect interview → likely scope:
+
+- Package scaffold (`package.json`, `tsconfig.json`, `src/cli.ts` entry
+  point, `npm test` runner).
+- Reads a frozen `_logs/<cycleId>/events.jsonl` fixture and rolls up
+  phase events into a markdown section.
+- Reads a frozen `brain/` fixture, finds the themes whose
   `applies_to_initiatives:` frontmatter mentions the target initiative,
-  list them.
+  lists them.
 
-**Acceptance**: `claude-trail INIT-FIXTURE-1` against the bundled
-fixture matches `tests/fixtures/INIT-FIXTURE-1.trail.golden.md`.
+**Likely acceptance shape** (architect will set the real bar):
+`claude-trail INIT-FIXTURE-1` against the bundled fixture matches
+`tests/fixtures/INIT-FIXTURE-1.trail.golden.md`.
 
-### Cycle 2 — `INIT-2026-05-26-claude-trail-cost-rollup`
+### Cycle 2 — `INIT-2026-05-26-claude-trail-cost-rollup` (anticipated)
 
-- **FEAT-1**: per-phase cost section reading the same events.jsonl.
-- **FEAT-2**: git-log section reading the cycle's worktree.
-- **FEAT-3**: PR section reading `_pr-metadata.json` from the cycle's
-  log dir.
+Likely adds: per-phase cost section, git-log section, PR section
+reading `_pr-metadata.json`.
 
-**Acceptance**: a new fixture with cost+PR data produces the expected
-sections.
+### Cycle 3 — `INIT-2026-05-27-claude-trail-cross-cycle` (anticipated)
 
-### Cycle 3 — `INIT-2026-05-27-claude-trail-cross-cycle`
-
-- **FEAT-1**: `--since <cycle_id>` support: include preceding cycles
-  that touched the same initiative (e.g. retry cycles, send-back
-  rounds).
-- **FEAT-2**: surface failure-mode classifications across all
-  included cycles.
-- **FEAT-3**: emit a top-of-doc summary table: cycles, total cost,
-  total wall-clock, verdict history.
-
-**Acceptance**: golden file for a multi-cycle initiative.
+Likely adds: `--since <cycle_id>` to include preceding cycles
+(retry / send-back rounds), failure-mode summary, top-of-doc summary
+table.
 
 ## Project layout
 
@@ -114,13 +144,19 @@ test fixtures are checked in (no real operator data leaks).
 1. **Direction**: agree this is the right shape for a harness project
    (small, binary, self-contained, useful, grows naturally).
 2. **Onboarding mechanic**: I'll bootstrap `projects/claude-harness/`
-   with a stub README + `git init`, write an architect brief at
-   `docs/planning/2026-05-24-claude-harness/CYCLE-1-BRIEF.md`, and
-   enqueue it for the next forge cycle. The first cycle proves the
-   loop.
+   with a stub README + `git init` (already done in this branch),
+   write a **one-paragraph seed** at
+   `docs/planning/2026-05-24-claude-harness/CYCLE-1-SEED.md`, and
+   then run `forge architect claude-harness` against it. The
+   architect's interview is what produces the actual brief; I answer
+   ambiguity questions in real time as they're asked. The first
+   cycle's PLAN.md is the architect's output, NOT anything I drafted
+   in advance.
 3. **Autonomy**: the operator only sees the recordings + the verdicts
    I chose. I won't escalate unless something breaks the harness
-   itself (e.g. forge crashes mid-cycle).
+   itself (e.g. forge crashes mid-cycle) or the architect surfaces a
+   policy question I'm not authorised to answer (e.g. licence choice,
+   public/private repo).
 4. **Sequencing**: ship 2–3 `claude-trail` cycles before pointing the
    harness at `terraform-provider-betterado`. The forge improvements
    from those cycles should land before we attempt the harder project.

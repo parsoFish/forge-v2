@@ -15,6 +15,7 @@
 import { readFileSync, writeFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import {
+  autoCommitWorktreeIfDirty,
   checkStopConditions,
   countOpenFixPlanItems,
   defaultQualityGates,
@@ -186,6 +187,14 @@ export async function run(input: LoopInput, agent: AgentInvocation = stubAgent):
     state.costUsdSoFar += result.costUsd;
     state.filesChangedHistory.push(result.filesChanged);
     state.fixPlanItemsHistory.push(countOpenFixPlanItems(input.worktreePath));
+    // Safety net (surfaced by claude-harness cycle 1, 2026-05-24): if
+    // the agent left WIP uncommitted, commit it under a clearly-tagged
+    // `forge-autocommit:` message before the next gate check so the
+    // required-paths-against-main diff sees the work. The agent's
+    // intent IS still "commit your own work" (per dev-invocation
+    // system prompt) — this just guarantees the gate doesn't dead-end
+    // on iteration-budget when the work is otherwise complete.
+    autoCommitWorktreeIfDirty(input.worktreePath, state.iteration, deriveWorkItemId(input.workItemSpecPath));
     if (input.onIteration) {
       // F-23: forward all rich-info fields the agent populated. Plain assignment
       // (no field-by-field copy) keeps onIteration backward compatible with the
@@ -193,6 +202,12 @@ export async function run(input: LoopInput, agent: AgentInvocation = stubAgent):
       await input.onIteration(state.iteration, result);
     }
   }
+}
+
+/** Pulls `WI-N` out of a workItemSpecPath like `.forge/work-items/WI-3.md`. */
+function deriveWorkItemId(specPath: string): string | undefined {
+  const m = specPath.match(/(WI-\d+)\.md$/);
+  return m ? m[1] : undefined;
 }
 
 function ensureScaffolded(

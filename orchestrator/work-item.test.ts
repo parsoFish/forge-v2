@@ -317,56 +317,35 @@ test('creates: entry not in files_in_scope is rejected', () => {
   assert.ok(errors.some((e) => e.includes('creates')), `got ${JSON.stringify(errors)}`);
 });
 
-// ---- requiredVerificationPaths: single source of truth for the gate's
-// "WI did real work" check (rebuild-review 2026-05-24 §3 #9) ----
+// ---- requiredVerificationPaths: DEPRECATED stub returning [] ----
+// The gate-tightening was removed 2026-05-24 (operator feedback: "overly
+// restrictive to be so specific about files allowed to be edited — it
+// seems to me this would not allow agentic flexibility to solve
+// problems"). quality_gate_cmd (npm test / project test runner) is now
+// the sole arbiter; no-work-indicator catches "agent did nothing".
 
-test('requiredVerificationPaths: returns union of creates + verification_artifact', () => {
+test('requiredVerificationPaths: returns [] (deprecated; gate skips path-tightening)', () => {
   const wi = fixture({
     files_in_scope: ['src/handler.ts', 'tests/handler.test.ts', 'docs/handler.md'],
     creates: ['tests/handler.test.ts'],
     verification_artifact: 'docs/handler.md',
   });
-  assert.deepEqual(requiredVerificationPaths(wi), ['tests/handler.test.ts', 'docs/handler.md']);
-});
-
-test('requiredVerificationPaths: empty when neither field set (no gate tightening)', () => {
-  // Use a docs-only WI (F1.I5 mandatory-creates rule doesn't apply to
-  // pure-docs WIs, so creates can legitimately be unset here).
-  const wi = fixture({ files_in_scope: ['README.md'], creates: undefined });
   assert.deepEqual(requiredVerificationPaths(wi), []);
 });
 
-// F1.I5: PM creates: mandatory for code-file WIs
-test('validateWorkItem F1.I5: rejects code-file WI without creates / verification_artifact', () => {
+// F1.I5 removed — modify-only WIs are legitimate (e.g. WI-6 extending
+// src/trail.ts created by WI-2). The validator no longer second-guesses
+// the PM's grammar.
+test('validateWorkItem: accepts modify-only code-file WI (no creates required)', () => {
   const errors = validateWorkItem(fixture({
-    files_in_scope: ['azuredevops/internal/service/release/resource_release_definition.go'],
+    files_in_scope: ['src/handler.ts'],
     creates: undefined,
     verification_artifact: undefined,
   }));
-  assert.ok(
-    errors.some((e) => e.includes('at least one code file in files_in_scope must appear in creates: or verification_artifact:')),
-    `expected mandatory-creates error; got ${JSON.stringify(errors)}`,
-  );
-});
-
-test('validateWorkItem F1.I5: accepts code-file WI when creates includes a code file', () => {
-  const errors = validateWorkItem(fixture({
-    files_in_scope: ['src/handler.ts'],
-    creates: ['src/handler.ts'],
-  }));
   assert.deepEqual(errors, []);
 });
 
-test('validateWorkItem F1.I5: accepts code-file WI when verification_artifact covers it', () => {
-  const errors = validateWorkItem(fixture({
-    files_in_scope: ['src/handler.ts'],
-    creates: undefined,
-    verification_artifact: 'src/handler.ts',
-  }));
-  assert.deepEqual(errors, []);
-});
-
-test('validateWorkItem F1.I5: exempts pure-docs WI', () => {
+test('validateWorkItem: accepts pure-docs WI', () => {
   const errors = validateWorkItem(fixture({
     files_in_scope: ['docs/foo.md', 'README.md'],
     creates: undefined,
@@ -376,17 +355,14 @@ test('validateWorkItem F1.I5: exempts pure-docs WI', () => {
 });
 
 test('requiredVerificationPaths: false-pass scenario — creates declared but diff is empty would fail the gate', () => {
-  // This is the 2026-05-23 dogfood case: WI declared `creates: tests/x.go`
-  // but the agent never wrote it; `go test -run TestX` exits 0 (no tests
-  // matched the -run filter); the gate executor in stop-conditions.ts
-  // reads requiredVerificationPaths(wi) and rejects because none of the
-  // declared paths appear in `git diff main...HEAD`. This helper is the
-  // single seam — the dev-loop call site does no further computation.
+  // Historical (2026-05-23 dogfood): when the gate ran path-tightening,
+  // this case caught a WI that declared creates but the agent never wrote
+  // any of those paths. The tightening was removed 2026-05-24 (operator
+  // feedback re: flexibility). The no-work-indicator scan in
+  // stop-conditions remains as the genuine "agent did nothing" net.
   const wi = fixture({
     files_in_scope: ['azuredevops/internal/service/release/resource_release_definition_test.go'],
     creates: ['azuredevops/internal/service/release/resource_release_definition_test.go'],
   });
-  const paths = requiredVerificationPaths(wi);
-  assert.equal(paths.length, 1);
-  assert.equal(paths[0], 'azuredevops/internal/service/release/resource_release_definition_test.go');
+  assert.deepEqual(requiredVerificationPaths(wi), []);
 });

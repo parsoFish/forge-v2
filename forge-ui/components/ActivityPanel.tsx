@@ -300,6 +300,18 @@ function EventDetail({ event }: { event: EventLogEntry }) {
   const wi = readWorkItemId(event);
   const parent = readStringField(event.metadata, 'parent_event_id');
   const cost = readNumberField(event.metadata, 'cost_usd');
+  // Surface high-value per-iteration agent state up-front (operator
+  // feedback 2026-05-24: "hard to discern from a single log"). These
+  // fields are emitted by orchestrator/phases/developer-loop.ts:248
+  // for every dev-loop iteration; the rest of metadata still renders
+  // below as raw JSON for completeness.
+  const bashCommands = readStringArray(event.metadata, 'bash_commands');
+  const toolsUsed = readStringArray(event.metadata, 'tools_used');
+  const lastText = readStringField(event.metadata, 'last_assistant_text');
+  const gateStderr = readStringField(event.metadata, 'gate_stderr_tail');
+  const gateStdout = readStringField(event.metadata, 'gate_stdout_tail');
+  const stopReason = readStringField(event.metadata, 'stop_reason');
+  const iterations = readNumberField(event.metadata, 'iterations');
   const metaJson = JSON.stringify(event.metadata ?? {}, null, 2);
   return (
     <div style={{ fontFamily: monoStack, fontSize: 12, color: '#e6edf3' }}>
@@ -313,19 +325,66 @@ function EventDetail({ event }: { event: EventLogEntry }) {
       {wi && <DetailField label="work_item_id" value={wi} />}
       {parent && <DetailField label="parent_event_id" value={parent} />}
       {cost !== null && <DetailField label="cost_usd" value={`$${cost.toFixed(4)}`} />}
+      {iterations !== null && <DetailField label="iterations" value={String(iterations)} />}
+      {stopReason && <DetailField label="stop_reason" value={stopReason} accent="#f85149" />}
       {event.message && (
         <div style={{ marginTop: 8 }}>
           <div style={detailLabelStyle}>message</div>
           <pre style={preStyle}>{event.message}</pre>
         </div>
       )}
-      <div style={{ marginTop: 8 }}>
-        <div style={detailLabelStyle}>metadata</div>
+      {toolsUsed.length > 0 && (
+        <div style={{ marginTop: 8 }}>
+          <div style={detailLabelStyle}>tools used ({toolsUsed.length})</div>
+          <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', padding: '4px 0' }}>
+            {toolsUsed.map((t, i) => (
+              <span key={i} style={toolChipStyle}>{t}</span>
+            ))}
+          </div>
+        </div>
+      )}
+      {bashCommands.length > 0 && (
+        <div style={{ marginTop: 8 }}>
+          <div style={detailLabelStyle}>bash commands ({bashCommands.length})</div>
+          <pre style={{ ...preStyle, maxHeight: 200 }}>
+            {bashCommands.map((c, i) => `${(i + 1).toString().padStart(2, ' ')}. ${c}`).join('\n')}
+          </pre>
+        </div>
+      )}
+      {lastText && (
+        <div style={{ marginTop: 8 }}>
+          <div style={detailLabelStyle}>agent's last assistant text (what it thought it was doing)</div>
+          <pre style={{ ...preStyle, maxHeight: 280, color: '#a5d6ff' }}>{lastText}</pre>
+        </div>
+      )}
+      {gateStdout && (
+        <div style={{ marginTop: 8 }}>
+          <div style={detailLabelStyle}>gate stdout (last)</div>
+          <pre style={{ ...preStyle, maxHeight: 160 }}>{gateStdout}</pre>
+        </div>
+      )}
+      {gateStderr && (
+        <div style={{ marginTop: 8 }}>
+          <div style={detailLabelStyle}>gate stderr (rejection reason)</div>
+          <pre style={{ ...preStyle, maxHeight: 160, color: '#ffa198' }}>{gateStderr}</pre>
+        </div>
+      )}
+      <details style={{ marginTop: 12 }}>
+        <summary style={{ ...detailLabelStyle, cursor: 'pointer' }}>raw metadata (click to expand)</summary>
         <pre style={preStyle}>{metaJson}</pre>
-      </div>
+      </details>
     </div>
   );
 }
+
+const toolChipStyle: React.CSSProperties = {
+  background: '#21262d',
+  border: '1px solid #30363d',
+  borderRadius: 4,
+  padding: '2px 8px',
+  fontSize: 11,
+  color: '#79c0ff',
+};
 
 function DetailField({ label, value, accent }: { label: string; value: string; accent?: string }) {
   return (
@@ -374,6 +433,16 @@ function readNumberField(
   if (!meta) return null;
   const v = meta[key];
   return typeof v === 'number' && Number.isFinite(v) ? v : null;
+}
+
+function readStringArray(
+  meta: Record<string, unknown> | undefined,
+  key: string,
+): string[] {
+  if (!meta) return [];
+  const v = meta[key];
+  if (!Array.isArray(v)) return [];
+  return v.filter((x): x is string => typeof x === 'string');
 }
 
 function truncate(s: string, n: number): string {

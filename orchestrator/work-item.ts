@@ -254,30 +254,16 @@ export function validateWorkItem(w: WorkItem, opts: ValidateOptions = {}): strin
     }
   }
 
-  // F1.I5 (2026-05-24 followups): every WI whose files_in_scope contains a
-  // non-pure-docs source file MUST declare at least one of those files in
-  // `creates:` (or as `verification_artifact:`). Without it the gate-
-  // tightening in stop-conditions.ts skips its diff check and a WI can
-  // false-pass without touching any file. Pure-docs WIs (only .md in
-  // files_in_scope) are exempt — they have no code to verify.
-  const NON_CODE_EXTS = new Set(['.md', '.txt']);
-  const fileExt = (p: string): string => {
-    const i = p.lastIndexOf('.');
-    return i >= 0 ? p.slice(i).toLowerCase() : '';
-  };
-  const codeFiles = w.files_in_scope.filter((f) => !NON_CODE_EXTS.has(fileExt(f)));
-  if (codeFiles.length > 0) {
-    const declared = new Set<string>([
-      ...(w.creates ?? []),
-      ...(w.verification_artifact ? [w.verification_artifact] : []),
-    ]);
-    const codeFileDeclared = codeFiles.some((f) => declared.has(f));
-    if (!codeFileDeclared) {
-      errors.push(
-        `at least one code file in files_in_scope must appear in creates: or verification_artifact: (so the gate-tightening can verify the agent touched it). files_in_scope code files: [${codeFiles.join(', ')}]; creates: [${(w.creates ?? []).join(', ')}]; verification_artifact: ${w.verification_artifact ?? '(unset)'}`,
-      );
-    }
-  }
+  // F1.I5 was here. Removed 2026-05-24 (claude-harness cycle 1 round 3):
+  // the rule required code files in files_in_scope to ALSO appear in
+  // creates: or verification_artifact:. That over-constrains modify-only
+  // WIs (e.g. WI-6 extends src/trail.ts created by WI-2). Operator's
+  // simplification principle ("simplify over adding structure") points
+  // at the cleaner fix: derive the gate's required-paths directly from
+  // the code files in `files_in_scope` (see `requiredVerificationPaths`).
+  // The validator no longer second-guesses the PM's grammar; the gate
+  // does its own check, and the diff has to include at least one
+  // code-file-in-scope to pass.
 
   return errors;
 }
@@ -383,11 +369,21 @@ export function writeWorkItemStatus(specPath: string, status: WorkItemStatus): v
  * [`loops/ralph/stop-conditions.ts`](../loops/ralph/stop-conditions.ts)
  * consumes the value; the dev-loop call site just hands the WI here.
  */
-export function requiredVerificationPaths(wi: WorkItem): string[] {
-  return [
-    ...(wi.creates ?? []),
-    ...(wi.verification_artifact ? [wi.verification_artifact] : []),
-  ];
+/**
+ * DEPRECATED 2026-05-24 (claude-harness cycle 1 + operator feedback):
+ * the gate's per-WI required-paths tightening was overly restrictive —
+ * it denied the agent any flexibility to touch files outside the PM's
+ * predicted `files_in_scope`. Returns `[]` so the gate skips the diff
+ * check entirely; `npm test` (or whatever `quality_gate_cmd` runs) is
+ * now the sole arbiter. The `no-work-indicator` check in stop-conditions
+ * still catches "agent exited with no tests run" — that's the genuine
+ * safety net.
+ *
+ * Kept as an exported function (returning []) so existing call sites in
+ * developer-loop and any out-of-tree consumers compile unchanged.
+ */
+export function requiredVerificationPaths(_wi: WorkItem): string[] {
+  return [];
 }
 
 /**

@@ -301,6 +301,45 @@ function runGateCapturing(
 }
 
 /**
+ * Auto-commit any uncommitted (staged or unstaged) changes in the worktree
+ * with a clearly-marked `forge-autocommit` message. Surfaced as a safety
+ * net after each agent iteration so the gate's `git diff --name-only
+ * main...HEAD` check sees the work even when the agent (Sonnet/Opus)
+ * "forgot" to commit despite the system-prompt instruction to do so.
+ *
+ * Background — surfaced by claude-harness cycle 1 (2026-05-24): the dev
+ * agent wrote src/events.ts + tests/events.test.ts (15 tests passed) but
+ * never ran `git commit`. The gate then required-paths-rejected for 5
+ * iterations because the working-tree files weren't in the branch's
+ * commit diff. Auto-committing here keeps the loop from dead-ending on
+ * what is otherwise a complete WI.
+ *
+ * `forge-autocommit:` prefix lets reflectors trivially distinguish these
+ * from agent-authored commits in cycle-recap.
+ *
+ * Returns true if a commit was created; false if there was nothing to
+ * commit OR git failed (e.g., no identity). Failures are non-fatal —
+ * the gate's normal check runs whether we committed or not.
+ */
+export function autoCommitWorktreeIfDirty(
+  worktreePath: string,
+  iteration: number,
+  workItemId?: string,
+): boolean {
+  try {
+    const status = execFileSync('git', ['status', '--porcelain'], { cwd: worktreePath, stdio: 'pipe' }).toString('utf8');
+    if (status.trim().length === 0) return false;
+    execFileSync('git', ['add', '-A'], { cwd: worktreePath, stdio: 'pipe' });
+    const wiTag = workItemId ? ` ${workItemId}` : '';
+    const msg = `forge-autocommit:${wiTag} iter ${iteration} WIP (safety-net for missed agent commit)`;
+    execFileSync('git', ['commit', '-m', msg, '--no-verify'], { cwd: worktreePath, stdio: 'pipe' });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Returns the set of paths different on this branch vs the merge base with
  * `main`. Used by the requiredPaths tightening; failures (no git, no main,
  * etc.) return an empty set so the tightening fails-closed only when paths
@@ -308,19 +347,41 @@ function runGateCapturing(
  */
 function gitDiffPathsAgainstMain(worktreePath: string): Set<string> {
   try {
-    const out = execFileSync('git', ['diff', '--name-only', 'main...HEAD'], {
+    const baseBranch = resolveBaseBranch(worktreePath);
+    const out = execFileSync('git', ['diff', '--name-only', `${baseBranch}...HEAD`], {
       cwd: worktreePath,
       stdio: 'pipe',
     });
     const lines = out.toString('utf8').split('\n').map((s) => s.trim()).filter((s) => s.length > 0);
     return new Set(lines);
   } catch {
-    // No git repo / no main / detached HEAD: caller's tightening intent is
+    // No git repo / no main+master / detached HEAD: caller's tightening intent is
     // "fail on missing paths"; an empty set causes the .some() check above
     // to fail and reject the gate. That's the safe default — better to
     // false-reject in a degraded git state than to false-pass.
     return new Set();
   }
+}
+
+/**
+ * Resolve the project's base branch name. Prefers `main`; falls back to
+ * `master`. Surfaced by claude-harness cycle 1 (2026-05-24): a fresh
+ * `git init` defaults to `master`, but the gate hard-coded `main`, so
+ * the diff silently returned empty for 5 iterations even though the
+ * agent's commits were on the branch. Throws if neither exists so the
+ * caller's catch logs the degraded state.
+ */
+function resolveBaseBranch(worktreePath: string): string {
+  for (const candidate of ['main', 'master']) {
+    try {
+      execFileSync('git', ['rev-parse', '--verify', candidate], {
+        cwd: worktreePath,
+        stdio: 'pipe',
+      });
+      return candidate;
+    } catch { /* try next */ }
+  }
+  throw new Error('no main or master branch in worktree');
 }
 
 function tail(s: string, max: number): string {

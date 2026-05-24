@@ -14,6 +14,16 @@ Types: `ingest`, `create-theme`, `update-theme`, `lint`, `structural`, `seed`.
 
 ---
 
+## [2026-05-25] create-theme | claude-harness cycle 2 reflection — 4 themes, 1 cycle archive
+
+Reflected on `INIT-2026-05-25-claude-trail-cost-only` (claude-harness project, cycle 2).
+Event log sparse again (1 event — same structural gap as cycle 1); git history primary evidence.
+**Themes written (4):** `autocommit-rate-worsening-multi-wi` (antipattern — rate 60% vs 45% cycle 1),
+`sparse-event-log-second-cycle` (antipattern — confirmed structural), `small-cycle-scope-ships-cleanly`
+(pattern — 2-WI scope, 0 send-backs, 36/36 tests), `golden-file-incremental-update` (pattern — section
+insertion works). Cycle archive: `brain/_raw/cycles/INIT-2026-05-25-claude-trail-cost-only.md`.
+36 tests passed at merge; binary golden-file criterion satisfied (updated with `## Cost rollup` section).
+
 ## [2026-05-25] create-theme | claude-harness cycle 1 reflection — 5 themes, 1 cycle archive
 
 Reflected on `INIT-2026-05-24-claude-trail-scaffold` (claude-harness project, cycle 1).

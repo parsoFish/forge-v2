@@ -70,6 +70,16 @@ export type LoopInput = {
    * at iter 2 after 2 read-only iters.
    */
   wedgedNoProgressIterations?: number;
+  /**
+   * Default `true` — see runner main loop. The per-WI Ralph WANTS
+   * this on (catches PM-emitted hollow gates per 2026-05-24
+   * claude-harness audit: a gate passing before any agent work means
+   * it doesn't exercise the AC). Set to `false` for callers whose
+   * gate is naturally always-true at iter 0 — currently no such
+   * caller, but the unifier might want it if a re-run finds a leftover
+   * DEMO.md.
+   */
+  failOnHollowIter0Gate?: boolean;
 };
 
 /**
@@ -177,15 +187,31 @@ export async function run(input: LoopInput, agent: AgentInvocation = stubAgent):
     filesChangedHistory: [],
   };
 
+  // Caller-overridable iter-0 hollow-gate detection. Defaults to TRUE
+  // for per-WI Ralphs (per the 2026-05-24 claude-harness audit: a gate
+  // that passes BEFORE the agent has done any work is by definition
+  // not exercising the WI's acceptance criteria; fail the WI early
+  // with a clear classification rather than wasting iters on a hollow
+  // gate). The unifier sets this FALSE because its gate (`pr_self_
+  // contained`) checks for DEMO.md + pr-description.md, neither of
+  // which can exist before the agent writes them — the unifier's
+  // iter-0 gate-pass condition would be a no-op false positive.
+  const failOnHollowGate = input.failOnHollowIter0Gate ?? true;
+
   for (;;) {
-    // F-26: skip the `quality-gates-pass` check on iteration 0. A gate that
-    // passes before any work means either (a) the WI is a no-op (the agent
-    // should still verify and write a brain-cite for the trace) or (b) the
-    // gate isn't actually capturing the WI's acceptance criteria (file moves,
-    // structural refactors, deletions — all common shapes that don't break a
-    // build/test gate). Either way, force at least one agent invocation.
-    // Other stop conditions (iteration-budget, cost-budget, wedged) can't fire
-    // before iteration 1 anyway, so leaving them in is safe.
+    // Iter-0: run the full set including quality-gates-pass. If it
+    // passes here, the gate is hollow — bail with a synthetic stop
+    // condition the caller surfaces as `gate-too-loose`.
+    if (state.iteration === 0 && failOnHollowGate) {
+      const passed = await Promise.resolve(qualityGate());
+      if (passed) {
+        // stop_reason is the discriminator string — callers
+        // (developer-loop, cycle.ts, failure-classifier) read this to
+        // surface the human-friendly explanation.
+        return finalize(state, startedAt, 'gate-too-loose', agentMdPath, fixPlanPath);
+      }
+    }
+
     const conditionsForThisCheck =
       state.iteration === 0
         ? conditions.filter((c) => c.kind !== 'quality-gates-pass')
@@ -274,6 +300,9 @@ function finalize(
       : stopReason === 'wedged'
         ? 'wedged'
         : 'failed';
+  // gate-too-loose surfaces as a failed WI; the caller (developer-loop)
+  // reads stop_reason and classifies the failure mode for the cycle
+  // report + the failure-classifier.
   const filesChanged = uniqueFiles(state.filesChangedHistory);
   return {
     status,

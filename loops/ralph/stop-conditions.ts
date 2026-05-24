@@ -14,7 +14,13 @@ export type StopCondition =
   | { kind: 'quality-gates-pass' }
   | { kind: 'iteration-budget'; max: number }
   | { kind: 'cost-budget'; maxUsd: number }
-  | { kind: 'wedged'; noProgressIterations: number };
+  | { kind: 'wedged'; noProgressIterations: number }
+  // 2026-05-24 (claude-harness cycle 1 audit): synthetic condition the
+  // runner emits on iter-0 if the gate passes BEFORE any agent work.
+  // Means the WI's quality_gate_cmd doesn't exercise its acceptance
+  // criteria — PM must rewrite the gate. Distinct from `wedged` (which
+  // is mid-loop no-progress); this fires before any iter has run.
+  | { kind: 'gate-too-loose'; reason: string };
 
 export type LoopState = {
   worktreePath: string;
@@ -88,6 +94,12 @@ async function checkOne(
       return { stop: false };
     }
 
+    case 'gate-too-loose':
+      // This condition is never CHECKED in the per-iteration loop — the
+      // runner detects it inline at iter 0 (gate passes before any work)
+      // and synthesises a finalize() call. The case exists only for
+      // discriminated-union exhaustiveness.
+      return { stop: false };
   }
 }
 

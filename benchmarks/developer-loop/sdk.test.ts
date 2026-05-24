@@ -116,7 +116,7 @@ test('worktreeRelative: absolute → relative; outside → null', () => {
   assert.equal(worktreeRelative('./src/foo.ts', wt), 'src/foo.ts');
 });
 
-test('runDevLoop: completes when quality gate passes, returns parsed WI', async () => {
+test('runDevLoop: gate-too-loose fires when gate passes before agent runs (2026-05-24 audit)', async () => {
   const seed = makeSeed();
   const input: RunDevInput = {
     fixtureId: 'demo',
@@ -131,16 +131,18 @@ test('runDevLoop: completes when quality gate passes, returns parsed WI', async 
   try {
     assert.equal(out.runnerError, undefined);
     assert.ok(out.result, 'result returned');
-    // F-26: the runner now requires ≥1 agent invocation before checking the
-    // `quality-gates-pass` condition — a gate that passes before any work
-    // means either the WI is a no-op (agent should still verify) or the
-    // gate isn't capturing the WI's acceptance criteria. After running once,
-    // the gate passes on iteration 1's check and the loop exits cleanly.
-    assert.equal(out.result?.status, 'complete');
-    assert.equal(out.result?.iterations, 1);
-    assert.equal(out.result?.stop_reason, 'quality-gates-pass');
+    // Post-audit (2026-05-24, claude-harness cycle 1): a gate that passes
+    // BEFORE any agent work is by definition hollow — it doesn't exercise
+    // the WI's acceptance_criteria. The runner now fails the WI on iter 0
+    // with `gate-too-loose` so PM has to rewrite the gate. Previously
+    // (F-26) this was masked as "force at least one iteration"; that
+    // masked the operator-visible failure mode the claude-harness audit
+    // surfaced (PM emits WIs with default-`npm test` gates that pass on
+    // the baseline test, agent passes the gate without delivering ACs).
+    assert.equal(out.result?.status, 'failed');
+    assert.equal(out.result?.iterations, 0);
+    assert.equal(out.result?.stop_reason, 'gate-too-loose');
     assert.equal(out.workItem?.work_item_id, 'WI-1');
-    assert.equal(out.regressionPassed, true);
   } finally {
     cleanupTempdir(out.tempdir);
     rmSync(seed, { recursive: true, force: true });

@@ -215,14 +215,20 @@ export function validateWorkItem(w: WorkItem, opts: ValidateOptions = {}): strin
     errors.push(`estimated_iterations must be > 0: got ${w.estimated_iterations}`);
   }
 
-  // S3 refinement (C5): validate the new optional fields. All four are
-  // optional — but if present, they must be well-formed.
-  if (w.quality_gate_cmd !== undefined) {
-    if (!Array.isArray(w.quality_gate_cmd) || w.quality_gate_cmd.length === 0) {
-      errors.push('quality_gate_cmd must be a non-empty array of strings when set');
-    } else if (!w.quality_gate_cmd.every((s) => typeof s === 'string' && s.length > 0)) {
-      errors.push('quality_gate_cmd entries must be non-empty strings');
-    }
+  // 2026-05-24 (claude-harness cycle 1 audit): quality_gate_cmd is now
+  // REQUIRED. The previous "fall back to project default `npm test`"
+  // produced hollow gates — a WI could mark complete without exercising
+  // its acceptance criteria because the project's baseline test passed
+  // regardless. Forcing per-WI gates pushes the bug back to PM-quality
+  // (where it belongs) instead of letting it propagate to a unifier-
+  // wedge or a partially-landed PR. PM must write a gate that EXERCISES
+  // the WI's ACs — see skills/project-manager/SKILL.md.
+  if (!Array.isArray(w.quality_gate_cmd) || w.quality_gate_cmd.length === 0) {
+    errors.push(
+      'quality_gate_cmd is required: must be a non-empty array of strings whose execution exercises this WI\'s acceptance_criteria (must FAIL on a clean tree before the agent does any work — otherwise the gate is hollow)',
+    );
+  } else if (!w.quality_gate_cmd.every((s) => typeof s === 'string' && s.length > 0)) {
+    errors.push('quality_gate_cmd entries must be non-empty strings');
   }
   if (w.non_goals !== undefined) {
     if (!Array.isArray(w.non_goals)) {

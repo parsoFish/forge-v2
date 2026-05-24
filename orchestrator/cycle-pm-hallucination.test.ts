@@ -87,6 +87,7 @@ files_in_scope:
   - ${fname}
 creates:
   - ${fname}
+quality_gate_cmd: ['node', '--test', 'tests/${opts.wiId.toLowerCase()}.test.ts']
 estimated_iterations: 1
 ---
 

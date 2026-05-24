@@ -35,6 +35,11 @@ function fixture(overrides: Partial<WorkItem> = {}): WorkItem {
     // F1.I5 compliance: code-file WI must declare creates so gate-tightening fires.
     creates: ['src/handler.ts'],
     estimated_iterations: 2,
+    // 2026-05-24 (claude-harness audit): quality_gate_cmd is REQUIRED on
+    // every WI. Fixture sets a plausible per-WI gate so existing tests
+    // continue to validate the surrounding logic; tests that care about
+    // the required-ness override this to undefined.
+    quality_gate_cmd: ['node', '--test', 'tests/handler.test.ts'],
     body: 'Implement the handler.',
     ...overrides,
   };
@@ -229,21 +234,22 @@ test('parseWorkItem: throws on missing required field', () => {
 // quality_gate_cmd, non_goals, verification_artifact, creates.
 // All omit-on-undefined; round-trip preservation is load-bearing.
 
-test('round-trip: a pre-amendment WI (no new fields) serialises byte-identically', () => {
-  // Pre-amendment shape — only docs in files_in_scope so the F1.I5
-  // mandatory-creates rule (which fires for code files) doesn't apply.
-  // This keeps the test's original intent: a WI with NO new fields
-  // round-trips byte-identically.
+test('round-trip: a minimal WI (only required fields) serialises byte-identically', () => {
+  // Minimal-required shape — docs-only files_in_scope + an explicit
+  // quality_gate_cmd (which is now mandatory). This keeps the test's
+  // original intent: round-tripping is byte-stable for the smallest
+  // legal WI; the OPTIONAL fields (non_goals, verification_artifact,
+  // creates) don't leak when unset.
   const w = fixture({
     files_in_scope: ['README.md'],
     creates: undefined,
+    quality_gate_cmd: ['node', '--test', 'tests/x.test.ts'],
   });
   const md1 = serializeWorkItem(w);
   const reparsed = parseWorkItem(md1);
   const md2 = serializeWorkItem(reparsed);
   assert.equal(md1, md2, 'round-trip must be byte-identical');
-  // Belt-and-braces: confirm no new keys leaked into frontmatter when undefined.
-  assert.ok(!md1.includes('quality_gate_cmd'), 'quality_gate_cmd must not appear when undefined');
+  // The optional fields that remain unset must not leak into the frontmatter.
   assert.ok(!md1.includes('non_goals'), 'non_goals must not appear when undefined');
   assert.ok(!md1.includes('verification_artifact'), 'verification_artifact must not appear when undefined');
   assert.ok(!md1.includes('\ncreates:'), 'creates must not appear when undefined');

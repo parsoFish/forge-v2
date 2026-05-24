@@ -101,6 +101,25 @@ export async function fetchEvents(cycleId: string): Promise<EventLogEntry[]> {
   return body.events;
 }
 
+export type CostSummary = {
+  cycleId: string;
+  totalUsd: number;
+  perPhase: Record<string, { cost_usd: number; iterations: number; duration_ms: number }>;
+  perSkill: Record<string, { invocations: number; cost_usd: number; duration_ms: number }>;
+};
+
+export async function fetchCost(cycleId: string): Promise<CostSummary | null> {
+  const base = await resolveBridgeUrl();
+  if (!base) return null;
+  try {
+    const res = await fetch(`${base}/api/cost/${encodeURIComponent(cycleId)}`);
+    if (!res.ok) return null;
+    return (await res.json()) as CostSummary;
+  } catch {
+    return null;
+  }
+}
+
 export type SchedulerStatus = {
   running: boolean;
   pid?: number;

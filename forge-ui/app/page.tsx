@@ -2,9 +2,11 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
+  fetchCost,
   fetchCycles,
   fetchEvents,
   subscribe,
+  type CostSummary,
   type Cycle,
   type CycleListSnapshot,
   type EventLogEntry,
@@ -59,6 +61,21 @@ export default function Page() {
     return () => { cancelled = true; };
   }, [activeCycleId]);
 
+  // U1: cost summary per cycle. Re-fetched whenever the active cycle
+  // changes; also re-fetched every 10s so live cycles show their cost
+  // ticking up. Cheap (just reads the events.jsonl server-side).
+  const [cost, setCost] = useState<CostSummary | null>(null);
+  useEffect(() => {
+    if (!activeCycleId) { setCost(null); return; }
+    let cancelled = false;
+    const refresh = (): void => {
+      fetchCost(activeCycleId).then((c) => { if (!cancelled) setCost(c); });
+    };
+    refresh();
+    const id = setInterval(refresh, 10000);
+    return () => { cancelled = true; clearInterval(id); };
+  }, [activeCycleId]);
+
   const allCycles = useMemo(() => [...snapshot.live, ...snapshot.recent], [snapshot]);
   const defaultActive = useMemo(
     () => snapshot.live[0] ?? snapshot.recent[0] ?? null,
@@ -102,11 +119,22 @@ export default function Page() {
       data-active-cycle-id={activeCycleId ?? ''}
       data-active-cycle-status={activeCycle?.status ?? ''}
       data-active-cycle-events={events.length}
+      data-active-cycle-cost-usd={cost?.totalUsd ?? ''}
       data-page-ready={connState === 'open' || connState === 'no-bridge' ? 'true' : 'false'}
     >
       <header style={{ display: 'flex', alignItems: 'baseline', gap: 16, marginBottom: 18 }}>
         <h1 style={{ margin: 0, fontSize: 18, letterSpacing: 0.4 }}>forge</h1>
         <ConnectionBadge state={connState} />
+        {cost && (
+          <span
+            data-cost-badge
+            data-cost-usd={cost.totalUsd}
+            style={{ fontSize: 12, color: '#d2a8ff', fontFamily: 'ui-monospace, Menlo, monospace' }}
+            title={`Per-phase: ${Object.entries(cost.perPhase).map(([p, m]) => `${p}=$${m.cost_usd.toFixed(2)}`).join(' · ')}`}
+          >
+            ${cost.totalUsd.toFixed(2)}
+          </span>
+        )}
         {connState !== 'open' && bridgeUrlDebug && (
           <span
             data-bridge-url-visible

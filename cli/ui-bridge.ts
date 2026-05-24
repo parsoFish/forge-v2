@@ -338,6 +338,23 @@ async function handleHttp(
     }
     return;
   }
+  if (method === 'GET' && url.startsWith('/api/cost/')) {
+    // U1: cost summary per cycle (total + per-phase + per-skill).
+    const cycleId = decodeURIComponent(url.slice('/api/cost/'.length));
+    try {
+      const { summariseCycle } = await import('./metrics.ts');
+      const m = summariseCycle(cycleId, ctx.logsRoot);
+      sendJson(res, 200, {
+        cycleId,
+        totalUsd: m.total_cost_usd,
+        perPhase: m.per_phase, // { phase: { cost_usd, iterations, duration_ms } }
+        perSkill: m.per_skill, // { skill: { invocations, cost_usd, duration_ms } }
+      });
+    } catch (err) {
+      sendJson(res, 500, { error: String(err) });
+    }
+    return;
+  }
   if (method === 'GET' && url.startsWith('/api/graph/')) {
     const cycleId = decodeURIComponent(url.slice('/api/graph/'.length));
     const filePath = join(ctx.logsRoot, cycleId, 'work-items-snapshot', '_graph.md');

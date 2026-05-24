@@ -35,9 +35,17 @@
  *                                           the manifest moved to pending/.
  *
  * Usage:
- *   node scripts/forge-ui-harness.mjs              # run all scenarios
+ *   node scripts/forge-ui-harness.mjs              # run all scenarios headless
  *   node scripts/forge-ui-harness.mjs --only S3    # run a single scenario
  *   node scripts/forge-ui-harness.mjs --keep-going # don't bail on first fail
+ *   node scripts/forge-ui-harness.mjs --showcase   # operator-watchable mode:
+ *                                                  # no headless chromium,
+ *                                                  # operator opens browser
+ *                                                  # at http://localhost:4124,
+ *                                                  # each scenario narrates +
+ *                                                  # pauses 4s between steps
+ *                                                  # so the UI's reaction
+ *                                                  # is visible in real time.
  *
  * Exits 0 if every scenario passes, 1 otherwise.
  */
@@ -62,11 +70,16 @@ const args = process.argv.slice(2);
 const flags = {
   only: arg('--only'),
   keepGoing: args.includes('--keep-going'),
+  showcase: args.includes('--showcase'),
 };
 function arg(name) {
   const i = args.indexOf(name);
   return i >= 0 ? args[i + 1] : null;
 }
+
+// Inter-step pause in showcase mode (ms). Long enough for a human to
+// see the UI react; short enough that the full suite finishes in ~1min.
+const SHOWCASE_PAUSE_MS = 4000;
 
 // ---- shared infra --------------------------------------------------------
 
@@ -216,9 +229,21 @@ function cleanupCycle(cycle) {
 
 /**
  * Navigate the page to the seeded cycle and wait until the UI fully
- * settles on it (data-active-cycle-id + WS reports open).
+ * settles on it (data-active-cycle-id + WS reports open). In showcase
+ * mode (page === null) skip the click and instead poll the bridge until
+ * the cycle is visible — the operator's browser will auto-select the
+ * most recent live cycle, which is the one we just seeded.
  */
 async function focusCycle(page, ui, cycle, timeoutMs = 15000) {
+  if (!page) {
+    // Showcase: wait until the bridge lists this cycle, then pause so the
+    // operator's browser has time to render the new tab + flip its
+    // default selection to it.
+    await waitForBridgeCycle(ui, cycle.cycleId, timeoutMs);
+    await narrate(`        ↳ cycle now visible at ${ui.uiUrl} (auto-selected as the most recent live)`);
+    await sleep(SHOWCASE_PAUSE_MS);
+    return;
+  }
   await page.goto(ui.uiUrl, { waitUntil: 'domcontentloaded' });
   await page.waitForFunction(
     () => document.querySelector('main')?.getAttribute('data-page-ready') === 'true',
@@ -243,6 +268,60 @@ async function focusCycle(page, ui, cycle, timeoutMs = 15000) {
   throw new Error(`cycle button [data-cycle-id="${cycle.cycleId}"] never appeared`);
 }
 
+/**
+ * Showcase-mode narration: prints to stdout in a chatty format the
+ * operator can follow live alongside their browser.
+ */
+async function narrate(msg) {
+  if (!flags.showcase) return;
+  console.log(`        ${msg}`);
+}
+
+/**
+ * Poll the bridge's /api/cycles until the given cycleId appears (or the
+ * timeout fires). Used by showcase mode in lieu of DOM polling.
+ */
+async function waitForBridgeCycle(ui, cycleId, timeoutMs = 15000) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    try {
+      const res = await fetch(`${ui.bridgeUrl}/api/cycles`);
+      if (res.ok) {
+        const body = await res.json();
+        const all = [...(body.live ?? []), ...(body.recent ?? [])];
+        if (all.some((c) => c.cycleId === cycleId)) return;
+      }
+    } catch { /* bridge still warming up */ }
+    await sleep(500);
+  }
+  throw new Error(`bridge /api/cycles never listed ${cycleId} within ${timeoutMs}ms`);
+}
+
+/**
+ * Poll the bridge until the cycle reaches the expected status. Used by
+ * showcase mode to confirm propagation before pausing for the operator.
+ */
+async function waitForBridgeStatus(ui, cycleId, expected, timeoutMs = 15000) {
+  const deadline = Date.now() + timeoutMs;
+  let last = '(none)';
+  while (Date.now() < deadline) {
+    try {
+      const res = await fetch(`${ui.bridgeUrl}/api/cycles`);
+      if (res.ok) {
+        const body = await res.json();
+        const all = [...(body.live ?? []), ...(body.recent ?? [])];
+        const c = all.find((x) => x.cycleId === cycleId);
+        if (c) {
+          last = c.status;
+          if (c.status === expected) return;
+        }
+      }
+    } catch { /* try again */ }
+    await sleep(500);
+  }
+  throw new Error(`bridge never showed ${cycleId} as ${expected} (last seen: ${last})`);
+}
+
 // ---- assertion helpers ---------------------------------------------------
 
 function fail(scen, msg) {
@@ -252,6 +331,12 @@ function fail(scen, msg) {
 }
 
 async function expect(scen, page, fn, descr, timeoutMs = 10000) {
+  // Showcase: no headless page — DOM-level checks are skipped. The
+  // narration + the operator's own browser is the verification surface.
+  if (!page) {
+    await narrate(`(showcase: skipping DOM check "${descr}" — verify visually)`);
+    return;
+  }
   try {
     await page.waitForFunction(fn, undefined, { timeout: timeoutMs });
   } catch {
@@ -271,16 +356,19 @@ async function S1(ui, page) {
   const cycle = newCycle('S1');
   try {
     log('S1', `cycle=${cycle.cycleId}`);
+    await narrate('Watch the cycles tab — a new "harness" cycle appears, then walks pending → in-flight → ready-for-review → done.');
     writeManifest('pending', cycle.initiativeId);
     await focusCycle(page, ui, cycle);
     await expectStatus('S1', page, cycle.cycleId, 'pending');
     log('S1', 'pending ✓');
 
+    await narrate('Step: pending → in-flight. The state-machine row for "architect" should flip to active (▶).');
     moveManifest('pending', 'in-flight', cycle.initiativeId);
     appendEvent(cycle, 'architect', 'start', 'architect start');
     await expectStatus('S1', page, cycle.cycleId, 'in-flight');
     log('S1', 'in-flight ✓');
 
+    await narrate('Step: in-flight → ready-for-review. Verdict form should appear; activity sidebar gains "developer-loop".');
     appendEvent(cycle, 'architect', 'end', 'architect end');
     appendEvent(cycle, 'developer-loop', 'start', 'dev start');
     appendEvent(cycle, 'developer-loop', 'end', 'dev end');
@@ -288,6 +376,7 @@ async function S1(ui, page) {
     await expectStatus('S1', page, cycle.cycleId, 'ready-for-review');
     log('S1', 'ready-for-review ✓');
 
+    await narrate('Step: ready-for-review → done. Cycle moves out of "live", verdict form disappears, final toast fires.');
     moveManifest('ready-for-review', 'done', cycle.initiativeId);
     appendEvent(cycle, 'closure', 'end', 'merged');
     await expectStatus('S1', page, cycle.cycleId, 'done');
@@ -298,6 +387,21 @@ async function S1(ui, page) {
 }
 
 async function expectStatus(scen, page, cycleId, status) {
+  // Showcase: poll the bridge instead, then pause so the operator's
+  // browser visibly transitions before the next step kicks off.
+  if (!page) {
+    // The `ui` object is captured in the showcase driver closure — fall
+    // back to a global stash set in main() to keep this signature stable.
+    const ui = globalShowcaseUi;
+    try {
+      await waitForBridgeStatus(ui, cycleId, status, 15000);
+    } catch (err) {
+      fail(scen, err.message);
+    }
+    await narrate(`        ↳ bridge confirms ${status}; pausing ${SHOWCASE_PAUSE_MS / 1000}s for the UI`);
+    await sleep(SHOWCASE_PAUSE_MS);
+    return;
+  }
   try {
     await page.waitForFunction(
       ({ id, s }) => document.querySelector(`[data-cycle-id="${id}"]`)?.getAttribute('data-cycle-status') === s,
@@ -313,6 +417,10 @@ async function expectStatus(scen, page, cycleId, status) {
   }
 }
 
+// Stashed in main() before scenarios run so showcase-mode helpers (which
+// receive a null `page`) can still reach the bridge URL.
+let globalShowcaseUi = null;
+
 /**
  * S2 — failed-unifier cycle. Simulates the F1.I1 betterado regression:
  * cycle goes in-flight, emits reviewer.pr-open-failed, lands in failed/.
@@ -322,6 +430,7 @@ async function S2(ui, page) {
   const cycle = newCycle('S2');
   try {
     log('S2', `cycle=${cycle.cycleId}`);
+    await narrate('This regression-tests the F1.I1 bug: a cycle whose unifier never opened a PR USED TO show as "ready-for-review" with no PR. Now it lands as "failed". Watch the cycle tab — the new cycle should appear with a ✗ glyph (failed), NOT ⏸ (ready-for-review).');
     writeManifest('in-flight', cycle.initiativeId);
     appendEvent(cycle, 'review-loop', 'start', 'review start');
     appendEvent(
@@ -338,12 +447,18 @@ async function S2(ui, page) {
     log('S2', 'failed ✓');
 
     // Negative check: must NOT be tagged ready-for-review (the regression).
-    const status = await page.evaluate(
-      (id) => document.querySelector(`[data-cycle-id="${id}"]`)?.getAttribute('data-cycle-status'),
-      cycle.cycleId,
-    );
-    if (status === 'ready-for-review') {
-      fail('S2', `cycle ${cycle.cycleId} regressed to ready-for-review (the F1.I1 bug)`);
+    // The positive check above already confirms status=failed, but in
+    // headless we double-check the DOM literal to guard against a
+    // hypothetical regression that returns BOTH (which expectStatus would
+    // tolerate). Showcase skips it since `page` is null.
+    if (page) {
+      const status = await page.evaluate(
+        (id) => document.querySelector(`[data-cycle-id="${id}"]`)?.getAttribute('data-cycle-status'),
+        cycle.cycleId,
+      );
+      if (status === 'ready-for-review') {
+        fail('S2', `cycle ${cycle.cycleId} regressed to ready-for-review (the F1.I1 bug)`);
+      }
     }
   } finally {
     cleanupCycle(cycle);
@@ -359,6 +474,7 @@ async function S3(ui, page) {
   const cycle = newCycle('S3');
   try {
     log('S3', `cycle=${cycle.cycleId}`);
+    await narrate('Cost telemetry. Three phase-end events fire with cost metadata totalling $1.51. Watch: (a) the purple $1.51 badge in the page header, (b) the hex canvas should grow per-phase cost pills (architect $0.12, pm $0.34, dev $1.05).');
     writeManifest('in-flight', cycle.initiativeId);
     appendEvent(cycle, 'architect', 'end', 'architect end', { cost_usd: 0.12, duration_ms: 1000 });
     appendEvent(cycle, 'project-manager', 'end', 'pm end', { cost_usd: 0.34, duration_ms: 2000 });
@@ -390,9 +506,9 @@ async function S3(ui, page) {
       },
       'expected data-active-cycle-cost-usd > 0 on <main>',
     );
-    const headerCost = await page.evaluate(() =>
-      document.querySelector('main')?.getAttribute('data-active-cycle-cost-usd'),
-    );
+    const headerCost = page
+      ? await page.evaluate(() => document.querySelector('main')?.getAttribute('data-active-cycle-cost-usd'))
+      : '(showcase — verify visually)';
     log('S3', `UI header cost ✓ ($${headerCost})`);
 
     // hex per-phase pill: at least one phase shows data-phase-cost-usd
@@ -428,6 +544,7 @@ async function S4(ui, page) {
   const cycle = newCycle('S4');
   try {
     log('S4', `cycle=${cycle.cycleId}`);
+    await narrate('Three new UI components prove themselves: hex canvas with 6 phase hexes, WI dep-graph below it with WI-1 → WI-2 + WI-3, and the activity panel with chip filters. Try clicking WI-2 in the graph — the activity panel should auto-filter to that work item.');
     writeManifest('in-flight', cycle.initiativeId);
     appendEvent(cycle, 'architect', 'end', 'architect end', { cost_usd: 0.1 });
     appendEvent(cycle, 'project-manager', 'end', 'pm end', { cost_usd: 0.2 });
@@ -475,10 +592,10 @@ async function S4(ui, page) {
       },
       'expected [data-section="wi-graph"][data-state="ready"]',
     );
-    const wiCount = await page.evaluate(() =>
-      document.querySelector('[data-section="wi-graph"]')?.getAttribute('data-wi-count'),
-    );
-    if (parseInt(wiCount ?? '0', 10) < 3) {
+    const wiCount = page
+      ? await page.evaluate(() => document.querySelector('[data-section="wi-graph"]')?.getAttribute('data-wi-count'))
+      : '(showcase — verify visually)';
+    if (page && parseInt(wiCount ?? '0', 10) < 3) {
       fail('S4', `expected data-wi-count >= 3, got "${wiCount}"`);
     }
     log('S4', `WiGraphCanvas ✓ (wi-count=${wiCount})`);
@@ -494,9 +611,9 @@ async function S4(ui, page) {
       },
       'expected [data-component="activity-panel"][data-events-shown > 0]',
     );
-    const shown = await page.evaluate(() =>
-      document.querySelector('[data-component="activity-panel"]')?.getAttribute('data-events-shown'),
-    );
+    const shown = page
+      ? await page.evaluate(() => document.querySelector('[data-component="activity-panel"]')?.getAttribute('data-events-shown'))
+      : '(showcase — verify visually)';
     log('S4', `ActivityPanel ✓ (events-shown=${shown})`);
   } finally {
     cleanupCycle(cycle);
@@ -523,6 +640,7 @@ WI-1 missed the boundary check.
   const feedbackPath = join('/tmp', `harness-S5-${cycle.initiativeId}.md`);
   try {
     log('S5', `cycle=${cycle.cycleId}`);
+    await narrate('CLI-only — `forge send-back <id> --feedback <f>` writes a parseable verdict-response.md. Nothing happens in the browser; check the stdout for ✓.');
     writeManifest('ready-for-review', cycle.initiativeId);
     writeFileSync(feedbackPath, feedback);
 
@@ -565,6 +683,7 @@ async function S6(_ui, _page) {
   const cycle = newCycle('S6');
   try {
     log('S6', `cycle=${cycle.cycleId}`);
+    await narrate('CLI-only — `forge requeue <id>` moves a failed manifest back to pending/. Watch the cycle tab: the new failed cycle flips into pending after the command runs.');
     writeManifest('failed', cycle.initiativeId);
     if (!existsSync(manifestPath('failed', cycle.initiativeId))) {
       fail('S6', `precondition: manifest not in failed/`);
@@ -618,7 +737,23 @@ async function main() {
   let browser = null;
   let page = null;
 
-  if (needsBrowser) {
+  if (flags.showcase) {
+    // Operator-watchable mode: bring up forge watch, hand the URL to
+    // the operator, and let their browser observe each transition.
+    console.log('[harness:showcase] starting forge watch (this takes ~15s)…');
+    watch = await startWatch();
+    globalShowcaseUi = watch;
+    console.log('');
+    console.log('═══════════════════════════════════════════════════════════');
+    console.log(`  👉 OPEN ${watch.uiUrl} IN YOUR BROWSER NOW`);
+    console.log('═══════════════════════════════════════════════════════════');
+    console.log(`  bridge: ${watch.bridgeUrl}`);
+    console.log('  Scenarios will run with 4s pauses between transitions so');
+    console.log('  you can watch each one react. Ctrl-C to abort cleanup.');
+    console.log('═══════════════════════════════════════════════════════════');
+    console.log('');
+    await sleep(5000); // give the operator a moment to open the URL
+  } else if (needsBrowser) {
     console.log('[harness] starting forge watch (this takes ~15s)…');
     watch = await startWatch();
     console.log(`[harness] watch ready: ui=${watch.uiUrl} bridge=${watch.bridgeUrl}`);
@@ -630,12 +765,19 @@ async function main() {
 
   const results = [];
   for (const scen of filtered) {
+    if (flags.showcase) {
+      console.log('');
+      console.log(`┌──────────────────────────────────────────────────────────`);
+      console.log(`│ ▶ ${scen.id} — ${scen.name}`);
+      console.log(`└──────────────────────────────────────────────────────────`);
+    }
     const t0 = Date.now();
     try {
       await scen.run(watch, page);
       const ms = Date.now() - t0;
       results.push({ id: scen.id, name: scen.name, ok: true, ms });
       console.log(`[harness] ✓ ${scen.id} ${scen.name} (${ms}ms)`);
+      if (flags.showcase) await sleep(SHOWCASE_PAUSE_MS);
     } catch (err) {
       const ms = Date.now() - t0;
       results.push({ id: scen.id, name: scen.name, ok: false, ms, err: err.message });

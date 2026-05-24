@@ -15,7 +15,9 @@ import {
 import { derivePhaseStates, PHASE_ORDER, type PhaseState } from '@/lib/phases';
 import { Sidebar } from '@/components/Sidebar';
 import { CycleToasts } from '@/components/Toasts';
-import { WiGraphPanel } from '@/components/WiGraph';
+import { WiGraphCanvas } from '@/components/WiGraphCanvas';
+import { AgentHexCanvas } from '@/components/AgentHexCanvas';
+import { ActivityPanel } from '@/components/ActivityPanel';
 import { VerdictForm } from '@/components/VerdictForm';
 import { SchedulerBanner } from '@/components/SchedulerBanner';
 
@@ -60,6 +62,10 @@ export default function Page() {
     fetchEvents(activeCycleId).then((rows) => { if (!cancelled) setEvents(rows); });
     return () => { cancelled = true; };
   }, [activeCycleId]);
+
+  // Operator-selected WI (set by clicking a WI node in WiGraphCanvas).
+  // Flows into the ActivityPanel as the default work-item filter.
+  const [selectedWiId, setSelectedWiId] = useState<string | null>(null);
 
   // U1: cost summary per cycle. Re-fetched whenever the active cycle
   // changes; also re-fetched every 10s so live cycles show their cost
@@ -156,14 +162,21 @@ export default function Page() {
         </section>
       )}
 
+      <section style={{ marginTop: 24 }}>
+        <AgentHexCanvas phaseStates={phaseStates} cost={cost} />
+      </section>
+
       <section style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24, marginTop: 24 }}>
         <StateMachine phaseStates={phaseStates} />
         <Sidebar events={events} />
       </section>
 
-      <section style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24, marginTop: 24 }}>
-        <WiGraphPanel cycleId={activeCycleId} />
-        <EventTail events={events} />
+      <section style={{ marginTop: 24 }}>
+        <WiGraphCanvas cycleId={activeCycleId} events={events} onSelectWi={setSelectedWiId} />
+      </section>
+
+      <section style={{ marginTop: 24 }}>
+        <ActivityPanel events={events} selectedWiId={selectedWiId} />
       </section>
 
       <CycleToasts snapshot={snapshot} />
@@ -262,38 +275,6 @@ function StateMachine({ phaseStates }: { phaseStates: PhaseState[] }) {
           );
         })}
       </ol>
-    </div>
-  );
-}
-
-function EventTail({ events }: { events: EventLogEntry[] }) {
-  const recent = events.slice(-50);
-  return (
-    <div style={panelStyle} data-section="event-tail" data-events-total={events.length}>
-      <h2 style={panelTitle}>event tail ({events.length} total · last 50 shown)</h2>
-      <div style={{ maxHeight: 480, overflowY: 'auto', fontFamily: 'ui-monospace, Menlo, monospace', fontSize: 11 }}>
-        {recent.length === 0 ? (
-          <div style={{ color: '#8b949e' }} data-events-empty="true">(no events yet for this cycle)</div>
-        ) : (
-          recent.map((e) => (
-            <div
-              key={e.event_id}
-              data-event-id={e.event_id}
-              data-event-phase={e.phase}
-              data-event-type={e.event_type}
-              style={{ padding: '2px 0', borderBottom: '1px solid #21262d' }}
-            >
-              <span style={{ color: '#8b949e' }}>{shortTime(e.started_at)}</span>
-              {' '}
-              <span style={{ color: phaseColor(e.phase) }}>{e.phase}</span>
-              {' '}
-              <span>{e.event_type}</span>
-              {' '}
-              <span>{e.message ?? ''}</span>
-            </div>
-          ))
-        )}
-      </div>
     </div>
   );
 }

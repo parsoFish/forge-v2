@@ -14,6 +14,27 @@ Types: `ingest`, `create-theme`, `update-theme`, `lint`, `structural`, `seed`.
 
 ---
 
+## [2026-05-25] create-theme | claude-harness cycle 5 reflection — 4 new themes, 1 cycle archive
+
+Reflected on `INIT-2026-05-25-claude-trail-format-flag` (claude-harness, cycle 5 / "format flag").
+Event log sparse — fifth consecutive cycle with only `reflector.start`; git archaeology primary evidence.
+81/81 tests pass; `--format json|markdown` flag shipped; `tests/format-flag.test.ts` created (332 lines, 18 tests).
+**New antipattern**: `gitignored-scratchpad-committed` — `AGENT.md` + `fix_plan.md` (both in `.gitignore`) committed into branch by dev-loop.
+**Safety-net rate hit 100%** (2/2 non-boundary commits); escalated in `autocommit-rate-100pct-five-cycles`.
+**Sparse log** escalated (fifth cycle) in `sparse-event-log-fifth-cycle` — operator action now blocking, no further brain escalation possible.
+**New pattern**: `single-wi-single-pass-delivery` — 1 WI = 1 boundary, no dual-boundary repeat.
+Cycle archive: `brain/_raw/cycles/INIT-2026-05-25-claude-trail-format-flag.md`.
+
+## [2026-05-25] create-theme | claude-harness cycle 3 reflection — 3 new themes, 1 updated, 1 cycle archive
+
+Reflected on `INIT-2026-05-25-claude-trail-git-enrich` (claude-harness project, cycle 3 / "git enrichment").
+Event log sparse again — third consecutive cycle with only `reflector.start`; git history primary evidence.
+46/46 tests passed at merge; `## Git activity` section shipped with `### Commits` + `### Files touched`.
+**Themes written (3 new):** `sparse-event-log-third-cycle` (antipattern — 3-cycle structural confirmation),
+`sharp-gate-omission` (antipattern — mandated integration test file not created despite explicit directive),
+`retry-with-gate-tightening` (pattern — retry framing + SHARP-GATE directive resolved cycle-2A failure mode).
+**Themes updated (1):** `autocommit-rate-worsening-multi-wi` — extended to include cycle-3 data (63.6% safety-net rate, trend confirmed worsening). Cycle archive: `brain/_raw/cycles/INIT-2026-05-25-claude-trail-git-enrich.md`.
+
 ## [2026-05-25] create-theme | claude-harness cycle 2 reflection — 4 themes, 1 cycle archive
 
 Reflected on `INIT-2026-05-25-claude-trail-cost-only` (claude-harness project, cycle 2).
@@ -990,3 +1011,12 @@ Migration:
 The forge brain is now **fully on graphify's actual mechanism** — no
 stop-gap walker, no schema-only-compatibility layer, no per-cycle
 fragmentation between the basic LLM wiki and graphify.
+
+## [2026-05-25] create-theme | claude-harness cycle 4 reflection — 4 new themes, 1 cycle archive
+
+Reflected on `INIT-2026-05-25-claude-trail-since-flag` (claude-harness project, cycle 4 / "--since flag").
+Event log sparse for fourth consecutive cycle; git-log archaeology primary evidence.
+New themes: `sharp-gate-honoured-when-new-file-named` (pattern), `dual-boundary-two-pass-delivery` (pattern),
+`sparse-event-log-fourth-cycle` (antipattern — escalated; operator action overdue),
+`autocommit-rate-unactioned-flag` (antipattern — 45%→67% across 4 cycles, fix still unapplied).
+Safety-net rate now 67%. Gate directive honoured (since-flag.test.ts created). 53/53 tests pass.

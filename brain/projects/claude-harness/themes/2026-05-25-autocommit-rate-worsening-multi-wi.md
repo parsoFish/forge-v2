@@ -1,6 +1,6 @@
 ---
-title: Safety-net autocommit rate worsened to 60% in cycle 2 — WI-2 had zero self-commits
-description: Dev-loop self-committed for WI-1 (2 files) but issued zero git commits across all of WI-2 (4 files); safety-net rate rose from 45% in cycle 1 to 60% in cycle 2, and the pattern is WI-scope-selective rather than random.
+title: Safety-net autocommit rate worsening across cycles — 45% → 60% → 63.6%
+description: Dev-loop safety-net rate has increased across every claude-harness cycle; in cycle 3 WI-2 had zero self-commits (5 safety nets) while WI-1 self-committed cleanly, confirming the antipattern is WI-position-selective and worsening, not random.
 category: antipattern
 created_at: '2026-05-25'
 updated_at: '2026-05-25'
@@ -37,8 +37,9 @@ treating "I still have more to do" as precluding a commit, even after the WI is 
 
 - Cycle 1: 5/11 safety-nets (45%) — WIs 2, 4, 5 each had safety-nets
 - Cycle 2: 3/5 safety-nets (60%) — WI-2 (4-file) entirely safety-net
+- Cycle 3: 7/11 safety-nets (63.6%) — WI-1 self-committed; WI-2 had zero self-commits across 5 iterations
 
-Both cycles: semantic commit rate correlates with WI scope narrowness.
+All three cycles: semantic commit rate correlates with WI position (first WI commits; subsequent WIs don't). Trend is worsening, not stabilising.
 
 ## Recommended fix
 
@@ -48,5 +49,7 @@ Add an explicit example: "WI-N done → `git commit -m 'feat: ...'` → move to 
 
 ## Sources
 
-- `_logs/INIT-2026-05-25-claude-trail-cost-only/events.jsonl` — cycle log
-- `brain/_raw/cycles/INIT-2026-05-25-claude-trail-cost-only.md` — cycle archive (commit table)
+- `_logs/INIT-2026-05-25-claude-trail-cost-only/events.jsonl` — cycle 2 log
+- `brain/_raw/cycles/INIT-2026-05-25-claude-trail-cost-only.md` — cycle 2 archive (commit table)
+- `_logs/INIT-2026-05-25-claude-trail-git-enrich/events.jsonl` — cycle 3 log
+- `brain/_raw/cycles/INIT-2026-05-25-claude-trail-git-enrich.md` — cycle 3 archive

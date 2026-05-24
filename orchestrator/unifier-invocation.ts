@@ -52,8 +52,20 @@ export const UNIFIER_DISALLOWED_TOOLS: UnifierDisallowedTool[] = [
 ];
 export const UNIFIER_MODEL = 'claude-sonnet-4-6';
 
-/** Default unifier iteration cap per CONTRACTS.md C19 (no $ cap; iteration cap is the only bound). */
-export const UNIFIER_DEFAULT_ITERATION_CAP = 3;
+/**
+ * Default unifier iteration cap per CONTRACTS.md C19 (no $ cap;
+ * iteration cap is the only bound).
+ *
+ * Bumped from 3 → 6 (2026-05-24, claude-harness cycle 1 + operator
+ * feedback): the unifier's task is *fundamentally different* from a
+ * per-WI Ralph — it has to read every WI's output holistically, judge
+ * whether the initiative was met, generate a project-shape-specific
+ * demo, AND compose a PR description. That exploration legitimately
+ * spans more turns than a 2–3-file WI fix. Three iterations was a
+ * "match the per-WI cap" choice that left no room for the multi-step
+ * read → write → review → revise rhythm the unifier actually does.
+ */
+export const UNIFIER_DEFAULT_ITERATION_CAP = 6;
 
 let cachedSkillText: string | null = null;
 function loadSkillText(): string {

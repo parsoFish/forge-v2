@@ -695,6 +695,12 @@ export async function runUnifier(
         cycleId: logger.cycleId,
         initiativeId: input.initiativeId,
         qualityGate: unifierGate,
+        // Disable wedged: the unifier's task includes read-only
+        // iterations (read every WI's output, judge holistically)
+        // before writing — false-fired in claude-harness cycle 1 at
+        // iter 2 after 2 read-only iters even though the agent was
+        // legitimately exploring.
+        wedgedNoProgressIterations: Number.POSITIVE_INFINITY,
         onIteration: (iteration, info) => {
           logger.emit({
             initiative_id: input.initiativeId,

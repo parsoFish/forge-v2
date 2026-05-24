@@ -57,6 +57,19 @@ export type LoopInput = {
     iteration: number,
     info: AgentIterationInfo,
   ) => void | Promise<void>;
+  /**
+   * Override the default wedged-detection window (3 iterations of
+   * no-progress). Unifier sets this higher (or to a sentinel that
+   * disables the check) because its task legitimately includes
+   * read-only iterations before the write — e.g. read all WI outputs
+   * → judge → compose demo + PR description. The per-WI Ralph keeps
+   * the default 3.
+   *
+   * Set to `Infinity` to disable wedged-detection entirely.
+   * 2026-05-24 — surfaced by claude-harness cycle 1 unifier wedging
+   * at iter 2 after 2 read-only iters.
+   */
+  wedgedNoProgressIterations?: number;
 };
 
 /**
@@ -141,11 +154,17 @@ export async function run(input: LoopInput, agent: AgentInvocation = stubAgent):
   const startedAt = Date.now();
   const { promptPath, agentMdPath, fixPlanPath } = prepareWorkspace(input);
 
+  // wedgedNoProgressIterations: caller-overridable (unifier sets 6+ so
+  // its legitimate read-only iters don't false-fire the wedged check).
+  // Infinity → disabled (no wedged check at all).
+  const wedgedWindow = input.wedgedNoProgressIterations ?? 3;
   const conditions: StopCondition[] = [
     { kind: 'quality-gates-pass' },
     { kind: 'iteration-budget', max: input.initiativeBudget.iterations },
     { kind: 'cost-budget', maxUsd: input.initiativeBudget.usd },
-    { kind: 'wedged', noProgressIterations: 3 },
+    ...(Number.isFinite(wedgedWindow)
+      ? [{ kind: 'wedged' as const, noProgressIterations: wedgedWindow }]
+      : []),
   ];
 
   const qualityGate = input.qualityGate ?? (() => defaultQualityGates(input.worktreePath));

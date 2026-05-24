@@ -24,6 +24,13 @@
  */
 
 import { execFileSync } from 'node:child_process';
+
+import {
+  shimPrCreate,
+  shimPrMerge,
+  shimPrViewForRef,
+  shimPrViewState,
+} from './gh-shim.ts';
 import {
   existsSync,
   mkdirSync,
@@ -246,6 +253,15 @@ export function openPullRequest(
     // .forge/pr-description.md add/add conflict across parallel initiatives).
     stripForgeScratchFromBranch(worktreePath);
 
+    // No-origin path: the gh-shim writes the same _pr-metadata.json
+    // that real `gh pr create` would have written, returns a
+    // synthetic URL. Skips both the push and the gh subprocess.
+    // 2026-05-24 (claude-harness cycle 1).
+    if (!hasOriginRemote(worktreePath)) {
+      const r = shimPrCreate(worktreePath, { bodyFile, title });
+      return r.ok ? r.stdout : null;
+    }
+
     // Push to origin (set-upstream so gh pr create knows the head ref).
     // Failures here propagate to the catch — a non-pushable branch is a
     // genuine merge blocker, not a soft warning.
@@ -283,6 +299,19 @@ export type PrRef = { owner: string; repo: string; number: number; url: string }
 export function prRef(worktreePath: string): PrRef | null {
   const branch = currentBranch(worktreePath);
   if (!branch) return null;
+  // No-origin path: read _pr-metadata.json via the shim. Same OPEN-vs-
+  // MERGED signal a real gh would surface.
+  if (!hasOriginRemote(worktreePath)) {
+    const r = shimPrViewForRef(worktreePath);
+    if (!r.ok) return null;
+    try {
+      const parsed = JSON.parse(r.stdout) as { n: number; u: string; s: string };
+      if (parsed.s !== 'OPEN') return null;
+      return { owner: 'local', repo: 'forge', number: parsed.n, url: parsed.u };
+    } catch {
+      return null;
+    }
+  }
   try {
     const originUrl = execFileSync('git', ['-C', worktreePath, 'remote', 'get-url', 'origin'], {
       stdio: 'pipe',
@@ -341,6 +370,14 @@ export function ensurePullRequest(
  * unless the GitHub repo has "auto-delete head branches" enabled.
  */
 export function mergePullRequest(worktreePath: string): boolean {
+  // No-origin path: the shim does the local fast-forward + marks
+  // metadata merged. Same end-state as `gh pr merge` against a real
+  // remote (the cycle's branch is merged into main, ff-only).
+  if (!hasOriginRemote(worktreePath)) {
+    const r = shimPrMerge(worktreePath);
+    if (!r.ok) process.stderr.write(`[mergePullRequest:gh-shim] ${r.stderr}\n`);
+    return r.ok;
+  }
   try {
     execFileSync('gh', ['pr', 'merge', '--merge'], {
       cwd: worktreePath,
@@ -590,6 +627,18 @@ export function assertLocalRemoteSynced(worktreePath: string): LocalRemoteInvari
  * NOT be treated as merged. The caller routes a false to `ready-for-review/`.
  */
 export function confirmPrMerged(worktreePath: string): boolean {
+  // No-origin path: the shim's metadata is the only state. MERGED iff
+  // `mergePullRequest` (the shim's pr-merge) was previously dispatched.
+  if (!hasOriginRemote(worktreePath)) {
+    const r = shimPrViewState(worktreePath);
+    if (!r.ok) return false;
+    try {
+      const parsed = JSON.parse(r.stdout) as { state?: unknown };
+      return parsed.state === 'MERGED';
+    } catch {
+      return false;
+    }
+  }
   try {
     const out = execFileSync('gh', ['pr', 'view', '--json', 'state'], {
       cwd: worktreePath,

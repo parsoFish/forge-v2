@@ -14,6 +14,16 @@ Types: `ingest`, `create-theme`, `update-theme`, `lint`, `structural`, `seed`.
 
 ---
 
+## [2026-05-25] create-theme | claude-harness cycle 1 reflection — 5 themes, 1 cycle archive
+
+Reflected on `INIT-2026-05-24-claude-trail-scaffold` (claude-harness project, cycle 1).
+Event log sparse (1 event); git history used as primary evidence source.
+**Themes written (5):** `autocommit-safety-net-dominance` (antipattern),
+`sparse-event-log-observability-gap` (antipattern), `golden-file-binary-acceptance` (pattern),
+`six-requeue-silent-failure` (antipattern), `fixture-brain-dir-vs-real-brain-dir` (antipattern).
+Cycle archive: `brain/_raw/cycles/INIT-2026-05-24-claude-trail-scaffold.md`.
+28 tests passed at merge; binary golden-file criterion satisfied.
+
 ## [2026-05-10] structural | reflection phase closed — bench 5/5 in one pass; pass-1 closure of all six phases
 
 **Outcome:** the reflection phase is closed end-to-end. Bench at **5/5 (100%)** on the **first** real run, every gate (`manifest_provided` / `log_parseable` / `retro_emitted` / `brain_consulted` / `no_brain_corruption`) and every weighted criterion (`themes_emitted` / `themes_evidence_grounded` / `theme_categories_balanced` / `cycle_archived` / `retro_three_sections` / `brain_gaps_addressed`) passing at 100%. Total spend **$3.68/run**; p95 cost $1.04, p95 elapsed 442s. With this closure, **all six phases of forge v2 (brain → architect → project-manager → developer-loop → review-loop → reflection) are closed for pass 1.**

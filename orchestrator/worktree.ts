@@ -10,7 +10,7 @@
  */
 
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdirSync } from 'node:fs';
+import { existsSync, mkdirSync, rmSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 
 export type WorktreeHandle = {
@@ -27,6 +27,14 @@ export function add(opts: {
 }): WorktreeHandle {
   const path = resolve(opts.worktreesRoot, opts.initiativeId);
   if (!existsSync(dirname(path))) mkdirSync(dirname(path), { recursive: true });
+
+  // F1.I4 self-heal: a prior cycle may have left a stale `git worktree`
+  // registry entry pointing at `path` (e.g., the dir was deleted out from
+  // under git, or `forge requeue` removed it but the registry still has
+  // the entry). Without these two steps, the subsequent `worktree add`
+  // fails with "<path> already exists" or "is not a working tree". Both
+  // are idempotent — no-op when the situation is clean.
+  selfHealWorktreeState(opts.projectRepoPath, path);
 
   // Create branch off main and a worktree pointing at it.
   // -b creates the branch; if it already exists, we just point at it.
@@ -47,6 +55,38 @@ export function add(opts: {
   execFileSync('git', args, { stdio: 'pipe' });
 
   return { path, branch: opts.branch, projectRepoPath: opts.projectRepoPath };
+}
+
+/**
+ * F1.I4: clear stale state before `git worktree add` to avoid collisions
+ * with leftovers from prior cycles or manual operator intervention.
+ *
+ * Two cases handled:
+ *   1. Stale registry entry: a previous `worktree add` recorded `path` in
+ *      `.git/worktrees/`, but the dir is now gone. `git worktree prune`
+ *      garbage-collects those entries.
+ *   2. Orphan directory: `path` exists on disk but git doesn't know about
+ *      it (someone `rm -rf'd then mkdir'd, or the registry entry was
+ *      pruned earlier but the dir survived). Without removing the dir,
+ *      `worktree add` fails with "already exists". We `rm -rf` it.
+ *
+ * Both calls are best-effort; production paths swallow errors.
+ */
+export function selfHealWorktreeState(projectRepoPath: string, path: string): void {
+  try {
+    execFileSync('git', ['-C', projectRepoPath, 'worktree', 'prune'], { stdio: 'pipe' });
+  } catch {
+    /* non-fatal */
+  }
+  // If `path` exists but is NOT in `git worktree list`, it's an orphan.
+  // Removing it is the only safe option — a fresh `worktree add` would
+  // EADDR otherwise.
+  if (existsSync(path)) {
+    const known = list(projectRepoPath).some((w) => resolve(w.path) === resolve(path));
+    if (!known) {
+      try { rmSync(path, { recursive: true, force: true }); } catch { /* */ }
+    }
+  }
 }
 
 export function remove(handle: WorktreeHandle, opts: { force?: boolean } = {}): void {

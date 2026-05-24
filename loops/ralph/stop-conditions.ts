@@ -255,10 +255,12 @@ function runGateCapturing(
           passed = false;
           exitCode = -2; // synthetic — distinguishes tightening rejection from a real non-zero exit
           rejectReason = 'no-work-indicator';
+          // F1.I2 prescriptive: tell the agent WHAT TO DO, not just what failed.
           stderr =
             stderr +
             (stderr.endsWith('\n') ? '' : '\n') +
-            `[forge gate-tightening] rejected: stdout/stderr contains no-work indicator "${ind}" — the runner exited 0 without executing any tests.`;
+            `[forge gate-tightening] REJECTED: gate exited 0 but stdout/stderr contains no-work indicator "${ind}". The test runner found no tests to execute.\n` +
+            `  ACTION REQUIRED before exiting this iteration: write at least one test that actually runs against the code you just changed (or the code declared in files_in_scope). A test that runs and asserts on real behaviour — not a placeholder. Do NOT exit until the gate sees executed tests.`;
           break;
         }
       }
@@ -272,10 +274,16 @@ function runGateCapturing(
         passed = false;
         exitCode = -3;
         rejectReason = 'required-paths-missing';
+        // F1.I2 prescriptive: agent now reads exactly which file to create.
+        const required = options.requiredPaths;
+        const pathBullets = required.map((p) => `    - ${p}`).join('\n');
         stderr =
           stderr +
           (stderr.endsWith('\n') ? '' : '\n') +
-          `[forge gate-tightening] rejected: none of the WI's required paths appear in 'git diff --name-only main...HEAD'. Required: ${JSON.stringify(options.requiredPaths)}.`;
+          `[forge gate-tightening] REJECTED: 'git diff --name-only main...HEAD' shows NONE of this work item's required output paths.\n` +
+          `  ACTION REQUIRED before exiting this iteration — create AT LEAST ONE of these files in the worktree, then re-run the gate:\n` +
+          pathBullets + '\n' +
+          `  A compiling stub satisfies the path requirement; the substantive test/code body comes second. Without one of these paths in your diff, the iteration WILL fail. Do not exit until at least one is present in 'git diff'.`;
       }
     }
   }

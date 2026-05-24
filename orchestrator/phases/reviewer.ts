@@ -57,10 +57,29 @@ export async function runReviewer(input: CycleInput, logger: EventLogger): Promi
   });
 
   // Post-S4: no Ralph, no verdict gate, no send-back loop here. The router
-  // is invoked separately via /forge-review (operator-initiated). The
-  // outcome is simply pr-open (success) or ready-for-review (PR open failed).
-  const outcome: ReviewerOutcome = prUrl ? 'pr-open' : 'ready-for-review';
+  // is invoked separately via /forge-review (operator-initiated).
+  //
+  // F1.I1 (2026-05-24 followups): when the unifier doesn't author the PR
+  // (DEMO.md missing → openPullRequest fails), we previously returned
+  // 'ready-for-review' here and the operator-facing UI rendered a verdict
+  // form for a phantom PR. That's the architectural lie. Now: throw. The
+  // cycle's catch block classifies as terminal and the manifest moves to
+  // _queue/failed/.
+  if (!prUrl) {
+    logger.emit({
+      initiative_id: input.initiativeId,
+      parent_event_id: start.event_id,
+      phase: 'review-loop',
+      skill: 'review-router',
+      event_type: 'end',
+      input_refs: [input.worktreePath],
+      output_refs: [input.worktreePath],
+      metadata: { outcome: 'failed', pr_url: null },
+    });
+    throw new Error('reviewer.pr-open-failed: unifier did not author a PR — DEMO.md or pr-description.md missing. Dev-loop work items must produce their declared `creates:` paths before the unifier can build a demo bundle.');
+  }
 
+  const outcome: ReviewerOutcome = 'pr-open';
   logger.emit({
     initiative_id: input.initiativeId,
     parent_event_id: start.event_id,
@@ -68,7 +87,7 @@ export async function runReviewer(input: CycleInput, logger: EventLogger): Promi
     skill: 'review-router',
     event_type: 'end',
     input_refs: [input.worktreePath],
-    output_refs: prUrl ? [prUrl] : [input.worktreePath],
+    output_refs: [prUrl],
     metadata: { outcome, pr_url: prUrl },
   });
 

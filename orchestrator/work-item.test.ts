@@ -32,6 +32,8 @@ function fixture(overrides: Partial<WorkItem> = {}): WorkItem {
       { given: 'a request', when: 'the handler runs', then: 'it returns 200' },
     ],
     files_in_scope: ['src/handler.ts'],
+    // F1.I5 compliance: code-file WI must declare creates so gate-tightening fires.
+    creates: ['src/handler.ts'],
     estimated_iterations: 2,
     body: 'Implement the handler.',
     ...overrides,
@@ -206,7 +208,7 @@ test('readWorkItemsFromDir: parses all .md files except _graph.md', () => {
   const dir = mkdtempSync(join(tmpdir(), 'forge-wi-'));
   try {
     writeWorkItem(fixture({ work_item_id: 'WI-1' }), dir);
-    writeWorkItem(fixture({ work_item_id: 'WI-2', files_in_scope: ['src/other.ts'] }), dir);
+    writeWorkItem(fixture({ work_item_id: 'WI-2', files_in_scope: ['src/other.ts'], creates: ['src/other.ts'] }), dir);
     writeFileSync(join(dir, '.forge', 'work-items', '_graph.md'), '# graph');
 
     const { items, parseErrors } = readWorkItemsFromDir(join(dir, '.forge', 'work-items'));
@@ -228,10 +230,14 @@ test('parseWorkItem: throws on missing required field', () => {
 // All omit-on-undefined; round-trip preservation is load-bearing.
 
 test('round-trip: a pre-amendment WI (no new fields) serialises byte-identically', () => {
-  const w = fixture();
-  // First serialise → parse → re-serialise. Without any new fields, the
-  // bytes must be identical to today's PM output shape (i.e., none of the
-  // new keys leak into frontmatter).
+  // Pre-amendment shape — only docs in files_in_scope so the F1.I5
+  // mandatory-creates rule (which fires for code files) doesn't apply.
+  // This keeps the test's original intent: a WI with NO new fields
+  // round-trips byte-identically.
+  const w = fixture({
+    files_in_scope: ['README.md'],
+    creates: undefined,
+  });
   const md1 = serializeWorkItem(w);
   const reparsed = parseWorkItem(md1);
   const md2 = serializeWorkItem(reparsed);
@@ -324,8 +330,49 @@ test('requiredVerificationPaths: returns union of creates + verification_artifac
 });
 
 test('requiredVerificationPaths: empty when neither field set (no gate tightening)', () => {
-  const wi = fixture(); // no creates, no verification_artifact
+  // Use a docs-only WI (F1.I5 mandatory-creates rule doesn't apply to
+  // pure-docs WIs, so creates can legitimately be unset here).
+  const wi = fixture({ files_in_scope: ['README.md'], creates: undefined });
   assert.deepEqual(requiredVerificationPaths(wi), []);
+});
+
+// F1.I5: PM creates: mandatory for code-file WIs
+test('validateWorkItem F1.I5: rejects code-file WI without creates / verification_artifact', () => {
+  const errors = validateWorkItem(fixture({
+    files_in_scope: ['azuredevops/internal/service/release/resource_release_definition.go'],
+    creates: undefined,
+    verification_artifact: undefined,
+  }));
+  assert.ok(
+    errors.some((e) => e.includes('at least one code file in files_in_scope must appear in creates: or verification_artifact:')),
+    `expected mandatory-creates error; got ${JSON.stringify(errors)}`,
+  );
+});
+
+test('validateWorkItem F1.I5: accepts code-file WI when creates includes a code file', () => {
+  const errors = validateWorkItem(fixture({
+    files_in_scope: ['src/handler.ts'],
+    creates: ['src/handler.ts'],
+  }));
+  assert.deepEqual(errors, []);
+});
+
+test('validateWorkItem F1.I5: accepts code-file WI when verification_artifact covers it', () => {
+  const errors = validateWorkItem(fixture({
+    files_in_scope: ['src/handler.ts'],
+    creates: undefined,
+    verification_artifact: 'src/handler.ts',
+  }));
+  assert.deepEqual(errors, []);
+});
+
+test('validateWorkItem F1.I5: exempts pure-docs WI', () => {
+  const errors = validateWorkItem(fixture({
+    files_in_scope: ['docs/foo.md', 'README.md'],
+    creates: undefined,
+    verification_artifact: undefined,
+  }));
+  assert.deepEqual(errors, []);
 });
 
 test('requiredVerificationPaths: false-pass scenario — creates declared but diff is empty would fail the gate', () => {

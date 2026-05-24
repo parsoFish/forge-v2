@@ -208,7 +208,11 @@ test('makeQualityGateFromCmd: requiredPaths NOT matched in diff → rejects (the
     );
     assert.equal(gate(), false);
     assert.equal(captured?.rejectReason, 'required-paths-missing');
-    assert.match(captured?.stderrTail ?? '', /required paths/);
+    // F1.I2: rejection message is now prescriptive — must include the
+    // ACTION + the specific required path so the agent can act on it.
+    assert.match(captured?.stderrTail ?? '', /REJECTED/);
+    assert.match(captured?.stderrTail ?? '', /ACTION REQUIRED/);
+    assert.match(captured?.stderrTail ?? '', /expected_test\.go/);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

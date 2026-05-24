@@ -35,6 +35,7 @@ export function classifyCycleFailure(events: readonly EventLogEntry[]): FailureC
   let pmBudgetExhausted = false, pmFeatureHallucination = false;
   let gateMissingScript = false, worktreeNoDeps = false;
   let agentThrew = false, devLoopTotalFailure = false, reviewFailed = false;
+  let unifierNoDemo = false;
 
   for (const e of events) {
     const md = (e.metadata ?? {}) as Record<string, unknown>;
@@ -63,7 +64,13 @@ export function classifyCycleFailure(events: readonly EventLogEntry[]): FailureC
     }
     if (e.phase === 'orchestrator' && e.event_type === 'error') {
       if (msg.includes('developer-loop') && msg.includes('total failure')) { devLoopTotalFailure = true; ev(e); }
-      if (msg.includes('review') && msg.includes('failed')) { reviewFailed = true; ev(e); }
+      // F1.I1: distinguish unifier-no-demo from generic reviewer failure.
+      // Order matters — check the more specific signature first.
+      if (msg.includes('reviewer.pr-open-failed') || msg.includes('DEMO.md') || msg.includes('pr-description.md')) {
+        unifierNoDemo = true; ev(e);
+      } else if (msg.includes('review') && msg.includes('failed')) {
+        reviewFailed = true; ev(e);
+      }
     }
   }
 
@@ -75,6 +82,7 @@ export function classifyCycleFailure(events: readonly EventLogEntry[]): FailureC
   if (pmBudgetExhausted) return T('terminal', 'PM exhausted its budget cap', evidence);
   if (agentThrew) return T('terminal', 'agent threw a non-rate-limit error', evidence);
   if (devLoopTotalFailure) return T('terminal', 'dev-loop completed 0/N work items', evidence);
+  if (unifierNoDemo) return T('terminal', 'unifier did not author the PR — DEMO.md / pr-description.md missing because dev-loop WIs failed to produce their declared paths', evidence);
   if (reviewFailed) return T('terminal', 'reviewer-Ralph failed to converge', evidence);
 
   // Transient — auto-retry within MAX_AUTO_RETRIES.

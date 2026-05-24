@@ -85,6 +85,8 @@ acceptance_criteria:
     then: "it returns a value"
 files_in_scope:
   - ${fname}
+creates:
+  - ${fname}
 estimated_iterations: 1
 ---
 

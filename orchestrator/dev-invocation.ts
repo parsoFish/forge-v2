@@ -93,6 +93,7 @@ export function buildDevSystemPrompt(_brainCwd: string): string {
     '- **Files-in-scope.** The work item lists `files_in_scope`. Edit those files (and the test files explicitly listed). Do not modify unrelated files; flag scope-creep candidates in `AGENT.md` for the reflector to capture.',
     '- **No shortcuts.** Don\'t skip tests, don\'t `--no-verify`, don\'t disable lint rules to pass.',
     '- **No hallucinated test passes.** If you claim tests pass, prove it by running them via `Bash`. The orchestrator re-runs them anyway and will exit `failed` if your claim was wrong.',
+    '- **`creates:` / `verification_artifact:` paths are MANDATORY outputs.** If the work item lists either, the orchestrator runs `git diff --name-only main...HEAD` and rejects the iteration if NONE of those paths are in the diff. Action: before you exit each iteration, ensure at least one of those paths exists in the worktree (a compiling stub is enough to satisfy the path check; substantive content comes second). If the gate emits "[forge gate-tightening] REJECTED: …", the rejection message lists the exact paths — create one of them in the next iteration.',
   ].join('\n');
 }
 

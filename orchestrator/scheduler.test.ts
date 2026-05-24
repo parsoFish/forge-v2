@@ -510,6 +510,22 @@ test('classifyCycleFailure: pm capped AND degenerate → terminal (no auto-retry
   assert.match(cls.reason, /never converged/i);
 });
 
+// F1.I1 (2026-05-24 followups): reviewer.pr-open-failed → unifier-no-demo,
+// NOT generic reviewer-failed. Distinguished so the failure report points
+// at the actual upstream cause (dev-loop WIs that didn't write their files).
+test('classifyCycleFailure: reviewer.pr-open-failed → terminal "unifier did not author the PR"', async () => {
+  const { classifyCycleFailure } = await import('./failure-classifier.ts');
+  const events = [
+    { event_id: 'e1', cycle_id: 'c', initiative_id: 'i', started_at: '', phase: 'orchestrator', skill: 'cycle', event_type: 'error', input_refs: [], output_refs: [], message: 'reviewer.pr-open-failed: unifier did not author a PR — DEMO.md or pr-description.md missing.' },
+  ];
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const cls = classifyCycleFailure(events as any);
+  assert.equal(cls.kind, 'terminal');
+  assert.match(cls.reason, /unifier did not author the PR/i);
+  // Should NOT be classified as the generic 'reviewer-Ralph failed to converge'.
+  assert.doesNotMatch(cls.reason, /failed to converge/i);
+});
+
 // ---- F-28: dispatchTerminalStatus must NOT signal cleanup for ready-for-review ----
 
 test('dispatchTerminalStatus: send-back-cap-exhausted → no manifest move (cycle.ts owns it)', async () => {

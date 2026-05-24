@@ -65,7 +65,7 @@ export const UNIFIER_MODEL = 'claude-sonnet-4-6';
  * "match the per-WI cap" choice that left no room for the multi-step
  * read → write → review → revise rhythm the unifier actually does.
  */
-export const UNIFIER_DEFAULT_ITERATION_CAP = 6;
+export const UNIFIER_DEFAULT_ITERATION_CAP = 10;
 
 let cachedSkillText: string | null = null;
 function loadSkillText(): string {

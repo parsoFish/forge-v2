@@ -35,7 +35,7 @@ import {
   type FSWatcher,
 } from 'node:fs';
 import { spawn } from 'node:child_process';
-import { join, resolve } from 'node:path';
+import { join, resolve, sep } from 'node:path';
 import lockfile from 'proper-lockfile';
 import { WebSocketServer, type WebSocket } from 'ws';
 
@@ -365,6 +365,47 @@ async function handleHttp(
     try {
       const raw = readFileSync(filePath, 'utf8');
       sendJson(res, 200, { cycleId, mermaid: raw });
+    } catch (err) {
+      sendJson(res, 500, { error: String(err) });
+    }
+    return;
+  }
+  // Cycle-scoped artifact (PLAN.md / DEMO.md / etc.). The UI's /plan
+  // and /demo sub-pages fetch these so the operator's interaction
+  // points (verdict form) link to richer in-app views instead of
+  // having to dig into the filesystem.
+  // Path normalisation + a startsWith(logsRoot) check defeat
+  // ../-escape attempts.
+  if (method === 'GET' && url.startsWith('/api/artifact/')) {
+    const rest = decodeURIComponent(url.slice('/api/artifact/'.length));
+    const slash = rest.indexOf('/');
+    if (slash < 0) {
+      sendJson(res, 400, { error: 'expected /api/artifact/<cycleId>/<filename>' });
+      return;
+    }
+    const cycleId = rest.slice(0, slash);
+    const filename = rest.slice(slash + 1);
+    if (!cycleId || !filename) {
+      sendJson(res, 400, { error: 'cycleId and filename are required' });
+      return;
+    }
+    const requested = join(ctx.logsRoot, cycleId, 'artifacts', filename);
+    const safeBase = join(ctx.logsRoot, cycleId, 'artifacts') + sep;
+    if (!requested.startsWith(safeBase)) {
+      sendJson(res, 400, { error: 'path escape rejected' });
+      return;
+    }
+    if (!existsSync(requested)) {
+      sendJson(res, 404, { error: 'artifact not found', cycleId, filename });
+      return;
+    }
+    try {
+      const body = readFileSync(requested, 'utf8');
+      res.writeHead(200, {
+        'content-type': 'text/plain; charset=utf-8',
+        'access-control-allow-origin': '*',
+      });
+      res.end(body);
     } catch (err) {
       sendJson(res, 500, { error: String(err) });
     }

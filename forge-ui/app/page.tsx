@@ -158,7 +158,7 @@ export default function Page() {
 
       {activeCycle?.status === 'ready-for-review' && (
         <section style={{ marginTop: 24 }} data-section="verdict-form">
-          <VerdictForm initiativeId={activeCycle.initiativeId} />
+          <VerdictForm initiativeId={activeCycle.initiativeId} cycleId={activeCycle.cycleId} />
         </section>
       )}
 

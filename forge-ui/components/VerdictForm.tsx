@@ -10,7 +10,7 @@ import { submitVerdict, type AcceptanceCriterion } from '@/lib/bridge-client';
  * Approve = rationale only. Send-back = rationale + 1+ acceptance
  * criteria, each `GIVEN ... WHEN ... THEN ...`.
  */
-export function VerdictForm({ initiativeId }: { initiativeId: string }) {
+export function VerdictForm({ initiativeId, cycleId }: { initiativeId: string; cycleId: string | null }) {
   const [kind, setKind] = useState<'approve' | 'send-back'>('approve');
   const [rationale, setRationale] = useState('');
   const [acs, setAcs] = useState<AcceptanceCriterion[]>([{ given: '', when: '', then: '' }]);
@@ -69,6 +69,34 @@ export function VerdictForm({ initiativeId }: { initiativeId: string }) {
       <div style={{ fontSize: 11, color: '#8b949e', marginBottom: 12 }}>
         Initiative <code>{initiativeId}</code> is awaiting your decision.
       </div>
+
+      {cycleId && (
+        <div
+          style={{ display: 'flex', gap: 10, marginBottom: 14 }}
+          data-component="verdict-artifact-links"
+        >
+          <a
+            href={`/plan/${encodeURIComponent(cycleId)}`}
+            data-action="view-plan"
+            style={linkButtonStyle}
+            title="Open the architect's PLAN.md for this cycle in a new tab"
+            target="_blank"
+            rel="noreferrer"
+          >
+            📋 view plan
+          </a>
+          <a
+            href={`/demo/${encodeURIComponent(cycleId)}`}
+            data-action="view-demo"
+            style={linkButtonStyle}
+            title="Open the unifier's DEMO.md for this cycle in a new tab"
+            target="_blank"
+            rel="noreferrer"
+          >
+            🎬 view demo
+          </a>
+        </div>
+      )}
 
       <fieldset style={{ border: 'none', padding: 0, margin: 0, marginBottom: 12, display: 'flex', gap: 12 }}>
         <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13 }}>
@@ -167,4 +195,17 @@ const buttonStyle: React.CSSProperties = {
   fontSize: 12,
   color: '#fff',
   cursor: 'pointer',
+};
+
+const linkButtonStyle: React.CSSProperties = {
+  display: 'inline-flex',
+  alignItems: 'center',
+  gap: 6,
+  fontSize: 12,
+  padding: '6px 12px',
+  background: '#0d1117',
+  border: '1px solid #30363d',
+  borderRadius: 6,
+  color: '#58a6ff',
+  textDecoration: 'none',
 };

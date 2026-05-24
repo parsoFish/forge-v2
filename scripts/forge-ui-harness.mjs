@@ -51,9 +51,20 @@
  *                                                  # records video + per-step
  *                                                  # screenshots to
  *                                                  # forge-ui/.demo-shots/
- *                                                  # harness/. Same scenarios,
- *                                                  # longer pauses, no DOM
- *                                                  # check disabling.
+ *                                                  # harness/. Runs the 6
+ *                                                  # regression scenarios.
+ *   node scripts/forge-ui-harness.mjs --demo       # the marketing recording:
+ *                                                  # ONE synthetic cycle walks
+ *                                                  # through every phase
+ *                                                  # (architect → pm → dev →
+ *                                                  # review → closure →
+ *                                                  # reflection) continuously,
+ *                                                  # showing interaction
+ *                                                  # points (verdict form,
+ *                                                  # /plan and /demo sub-
+ *                                                  # pages). Saves under
+ *                                                  # forge-ui/.demo-shots/
+ *                                                  # journey/.
  *
  * Exits 0 if every scenario passes, 1 otherwise.
  */
@@ -81,6 +92,7 @@ const flags = {
   keepGoing: args.includes('--keep-going'),
   showcase: args.includes('--showcase'),
   record: args.includes('--record'),
+  demo: args.includes('--demo'),
 };
 function arg(name) {
   const i = args.indexOf(name);
@@ -97,6 +109,14 @@ const RECORD_PAUSE_MS = 3000;
 const RECORD_DIR = resolve(FORGE_ROOT, 'forge-ui/.demo-shots/harness');
 const RECORD_VIDEO_DIR = join(RECORD_DIR, 'video');
 const RECORD_FRAMES_DIR = join(RECORD_DIR, 'frames');
+
+// Inter-step pause for --demo. Slightly longer than regression record
+// because the journey video is for explanation, not coverage — humans
+// need time to read what's on screen.
+const JOURNEY_PAUSE_MS = 3500;
+const JOURNEY_DIR = resolve(FORGE_ROOT, 'forge-ui/.demo-shots/journey');
+const JOURNEY_VIDEO_DIR = join(JOURNEY_DIR, 'video');
+const JOURNEY_FRAMES_DIR = join(JOURNEY_DIR, 'frames');
 
 // ---- shared infra --------------------------------------------------------
 
@@ -314,6 +334,30 @@ async function pauseAndCapture(page, name) {
   } catch (err) {
     console.error(`[harness:record] screenshot ${frame} failed: ${err.message}`);
   }
+}
+
+let journeySeq = 0;
+async function pauseAndCaptureJourney(page, name) {
+  if (!flags.demo || !page) return;
+  await sleep(JOURNEY_PAUSE_MS);
+  journeySeq += 1;
+  const frame = `${String(journeySeq).padStart(2, '0')}-${name}.png`;
+  try {
+    await page.screenshot({ path: join(JOURNEY_FRAMES_DIR, frame), fullPage: true });
+  } catch (err) {
+    console.error(`[harness:demo] screenshot ${frame} failed: ${err.message}`);
+  }
+}
+
+/**
+ * Write a cycle-scoped artifact to _logs/<cycleId>/artifacts/<name>.
+ * The bridge's /api/artifact/ endpoint serves these for the /plan and
+ * /demo sub-pages.
+ */
+function writeArtifact(cycle, filename, content) {
+  const dir = join(cycle.logDir, 'artifacts');
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(join(dir, filename), content);
 }
 
 /**
@@ -785,6 +829,269 @@ async function S6(_ui, _page) {
   }
 }
 
+// ---- journey: single end-to-end cycle ------------------------------------
+
+const JOURNEY_PLAN_MD = `# PLAN — claude-greeting-svc
+
+> A 1-file TypeScript greeting service the forge harness uses as a
+> stand-in real project. The architect's brief here would normally
+> come from a council interview; the harness pre-populates it so the
+> demo video can show the operator how the architect → PM → dev-loop
+> hand-off looks.
+
+## Vision
+
+Expose \`greet(name: string, locale: 'en'|'es'|'ja' = 'en'): string\`
+that returns a localised greeting. Single export, one source file,
+one matching test file.
+
+## Scope
+
+### In
+- \`src/greet.ts\` — the \`greet()\` function + tiny locale table
+- \`src/greet.test.ts\` — node:test cases for every locale + the
+  default-locale fallback
+- \`README.md\` — one paragraph + usage example
+
+### Out
+- HTTP transport, persistence, locale negotiation, anything async.
+
+## Acceptance
+
+1. \`greet('Ada')\` returns \`'Hello, Ada'\`.
+2. \`greet('Ada', 'es')\` returns \`'Hola, Ada'\`.
+3. \`greet('Ada', 'ja')\` returns \`'こんにちは、Ada'\`.
+4. \`npm test\` exits 0 with \`>= 4\` test rows.
+5. README documents the locale table.
+
+## Risk register
+
+| Risk | Severity | Mitigation |
+|---|---|---|
+| Unicode handling for ja | Low | use literal string, no encoding step |
+| Default-locale ambiguity | Low | second arg defaulted in the type sig |
+`;
+
+const JOURNEY_DEMO_MD = `# DEMO — claude-greeting-svc
+
+## Before
+
+\`\`\`
+$ npx ts-node -e "console.log('greet does not exist yet')"
+greet does not exist yet
+\`\`\`
+
+## After
+
+\`\`\`
+$ npm test
+> claude-greeting-svc@0.1.0 test
+> node --test --experimental-strip-types src/greet.test.ts
+
+ok 1 - greet defaults to english
+ok 2 - greet en
+ok 3 - greet es
+ok 4 - greet ja
+# tests 4 — pass 4
+\`\`\`
+
+\`\`\`
+$ node --experimental-strip-types -e "import('./src/greet.ts').then(m => console.log(m.greet('Ada', 'ja')))"
+こんにちは、Ada
+\`\`\`
+
+## PR Diff (highlights)
+
+\`\`\`diff
++ // src/greet.ts
++ export function greet(name: string, locale: 'en'|'es'|'ja' = 'en'): string {
++   const table = { en: 'Hello, ', es: 'Hola, ', ja: 'こんにちは、' } as const;
++   return table[locale] + name;
++ }
+\`\`\`
+
+Reviewer notes: meets all 5 acceptance criteria; no extra dependencies;
+tests cover every locale + the default fallback.
+`;
+
+const JOURNEY_GRAPH_MD = `# Work-item dependency graph
+
+\`\`\`mermaid
+graph TD
+    WI-1["WI-1: scaffold + greet() core"]
+    WI-2["WI-2: locale table + tests"]
+    WI-3["WI-3: README + usage example"]
+
+    WI-1 --> WI-2
+    WI-1 --> WI-3
+\`\`\`
+`;
+
+/**
+ * Demo journey: ONE synthetic cycle for the fake "claude-greeting-svc"
+ * project, walked through every forge phase end-to-end so the operator
+ * sees a continuous story rather than 6 jump-cut scenarios:
+ *
+ *   pending → in-flight (architect active → green) → (PM active → green
+ *   with WI dep graph) → (dev-loop active with WI-1..3 iterations →
+ *   green) → (review-loop active → ready-for-review with verdict form +
+ *   plan/demo sub-page links) → (approve) → (closure → green) →
+ *   (reflection → green) → done.
+ *
+ * Captures a screenshot at each phase transition plus a side-trip into
+ * /plan/<cycleId> and /demo/<cycleId> when the verdict form opens.
+ */
+async function JOURNEY(ui, page) {
+  const cycle = newCycle('journey');
+  try {
+    log('JOURNEY', `cycle=${cycle.cycleId}`);
+    await narrate('Step 1: pending. A new cycle for claude-greeting-svc enters the queue.');
+    writeManifest('pending', cycle.initiativeId, 'claude-greeting-svc');
+    await focusCycle(page, ui, cycle);
+    await expectStatus('JOURNEY', page, cycle.cycleId, 'pending');
+    await pauseAndCaptureJourney(page, 'J01-pending');
+
+    await narrate('Step 2: in-flight. Scheduler claims it; the architect phase begins.');
+    moveManifest('pending', 'in-flight', cycle.initiativeId);
+    appendEvent(cycle, 'orchestrator', 'log', 'cycle.start', { origin: 'architect' });
+    appendEvent(cycle, 'architect', 'start', 'architect phase start');
+    appendEvent(cycle, 'architect', 'tool_use', 'brain-query: claude-greeting-svc');
+    await expectStatus('JOURNEY', page, cycle.cycleId, 'in-flight');
+    await pauseAndCaptureJourney(page, 'J02-architect-active');
+
+    await narrate('Step 3: architect produces PLAN.md and closes.');
+    appendEvent(cycle, 'architect', 'tool_use', 'Glob projects/claude-greeting-svc/**/*.ts');
+    appendEvent(cycle, 'architect', 'log', 'PLAN.md written: 5 acceptance criteria, 0 risks blocking');
+    writeArtifact(cycle, 'PLAN.md', JOURNEY_PLAN_MD);
+    appendEvent(cycle, 'architect', 'end', 'architect.end', { cost_usd: 0.18, duration_ms: 24000 });
+    await pauseAndCaptureJourney(page, 'J03-architect-complete');
+
+    await narrate('Step 4: project-manager decomposes the plan into 3 work items.');
+    appendEvent(cycle, 'project-manager', 'start', 'pm phase start');
+    appendEvent(cycle, 'project-manager', 'tool_use', 'brain-query: ts-test-conventions');
+    appendEvent(cycle, 'project-manager', 'tool_use', 'Glob projects/claude-greeting-svc/**');
+    await pauseAndCaptureJourney(page, 'J04-pm-active');
+
+    await narrate('Step 5: pm.end fires with the WI graph (WI-1 → WI-2 + WI-3).');
+    mkdirSync(join(cycle.logDir, 'work-items-snapshot'), { recursive: true });
+    writeFileSync(join(cycle.logDir, 'work-items-snapshot', '_graph.md'), JOURNEY_GRAPH_MD);
+    appendEvent(cycle, 'project-manager', 'end', 'pm.end', {
+      cost_usd: 0.34, duration_ms: 31000,
+      metadata: { work_item_count: 3, per_item_error_count: 0 },
+    });
+    await pauseAndCaptureJourney(page, 'J05-pm-complete-wi-graph');
+
+    await narrate('Step 6: dev-loop iterates WI-1 (core).');
+    appendEvent(cycle, 'developer-loop', 'start', 'dev-loop start');
+    appendEvent(cycle, 'developer-loop', 'iteration', 'WI-1 iter 1', { metadata: { work_item_id: 'WI-1' } });
+    appendEvent(cycle, 'developer-loop', 'tool_use', 'Write src/greet.ts',     { metadata: { work_item_id: 'WI-1' } });
+    appendEvent(cycle, 'developer-loop', 'tool_use', 'Bash node --test',       { metadata: { work_item_id: 'WI-1' } });
+    await pauseAndCaptureJourney(page, 'J06-dev-wi-1');
+
+    await narrate('Step 7: WI-2 (locale table + tests) and WI-3 (README) finish.');
+    appendEvent(cycle, 'developer-loop', 'iteration', 'WI-2 iter 1', { metadata: { work_item_id: 'WI-2' } });
+    appendEvent(cycle, 'developer-loop', 'tool_use', 'Write src/greet.test.ts', { metadata: { work_item_id: 'WI-2' } });
+    appendEvent(cycle, 'developer-loop', 'iteration', 'WI-3 iter 1', { metadata: { work_item_id: 'WI-3' } });
+    appendEvent(cycle, 'developer-loop', 'tool_use', 'Write README.md',         { metadata: { work_item_id: 'WI-3' } });
+    appendEvent(cycle, 'developer-loop', 'end', 'dev-loop end', { cost_usd: 1.42, duration_ms: 187000 });
+    await pauseAndCaptureJourney(page, 'J07-dev-complete');
+
+    await narrate('Step 8: review-loop runs the unifier, drafts a PR + DEMO.md.');
+    appendEvent(cycle, 'review-loop', 'start', 'review iteration 1');
+    appendEvent(cycle, 'review-loop', 'tool_use', 'Bash gh pr create --draft');
+    appendEvent(cycle, 'review-loop', 'tool_use', 'Write DEMO.md');
+    writeArtifact(cycle, 'DEMO.md', JOURNEY_DEMO_MD);
+    await pauseAndCaptureJourney(page, 'J08-review-active');
+
+    await narrate('Step 9: manifest moves to ready-for-review/. The verdict form appears with links to /plan and /demo.');
+    moveManifest('in-flight', 'ready-for-review', cycle.initiativeId);
+    await expectStatus('JOURNEY', page, cycle.cycleId, 'ready-for-review');
+    // Wait for the verdict form to materialise.
+    if (page) {
+      await page.waitForSelector('[data-component="verdict-form"]', { timeout: 5000 }).catch(() => { /* */ });
+      await page.waitForSelector('[data-action="view-plan"]', { timeout: 3000 }).catch(() => { /* */ });
+    }
+    await pauseAndCaptureJourney(page, 'J09-verdict-form');
+
+    await narrate('Step 10: operator clicks "view plan" — opens /plan/<cycleId>.');
+    if (page) {
+      try {
+        // The link opens in a new tab (target=_blank). Drive the
+        // navigation manually so the existing video tracks it.
+        await page.goto(`${ui.uiUrl}/plan/${encodeURIComponent(cycle.cycleId)}`, { waitUntil: 'domcontentloaded' });
+        await page.waitForFunction(
+          () => document.querySelector('main[data-page="plan"]')?.getAttribute('data-state') === 'ready',
+          undefined,
+          { timeout: 5000 },
+        ).catch(() => { /* may render in error/missing — capture either way */ });
+      } catch (err) {
+        log('JOURNEY', `plan navigation skipped: ${err.message}`);
+      }
+    }
+    await pauseAndCaptureJourney(page, 'J10-plan-subpage');
+
+    await narrate('Step 11: operator clicks "view demo" — opens /demo/<cycleId>.');
+    if (page) {
+      try {
+        await page.goto(`${ui.uiUrl}/demo/${encodeURIComponent(cycle.cycleId)}`, { waitUntil: 'domcontentloaded' });
+        await page.waitForFunction(
+          () => document.querySelector('main[data-page="demo"]')?.getAttribute('data-state') === 'ready',
+          undefined,
+          { timeout: 5000 },
+        ).catch(() => { /* */ });
+      } catch (err) {
+        log('JOURNEY', `demo navigation skipped: ${err.message}`);
+      }
+    }
+    await pauseAndCaptureJourney(page, 'J11-demo-subpage');
+
+    await narrate('Step 12: operator returns to the main page and approves.');
+    if (page) {
+      await page.goto(ui.uiUrl, { waitUntil: 'domcontentloaded' });
+      await page.waitForFunction(
+        (id) => document.querySelector(`[data-cycle-id="${id}"]`),
+        cycle.cycleId,
+        { timeout: 5000 },
+      ).catch(() => { /* */ });
+      await page.locator(`[data-cycle-id="${cycle.cycleId}"]`).first().click().catch(() => { /* */ });
+      await sleep(1000);
+      // Type a tiny rationale + click approve.
+      try {
+        await page.locator('[data-component="verdict-form"] textarea').first().fill('LGTM — meets every acceptance criterion.');
+        await page.locator('[data-component="verdict-form"] button:has-text("approve")').first().click();
+        // Synthetically write the verdict file ourselves too (the
+        // bridge's POST will be racing — having the file on disk is
+        // what closure picks up).
+        writeFileSync(
+          join(QDIR('ready-for-review'), `${cycle.initiativeId}.verdict-response.md`),
+          '---\nverdict: approve\nrationale: |\n  LGTM — meets every acceptance criterion.\n---\n',
+        );
+      } catch (err) {
+        log('JOURNEY', `approve click skipped: ${err.message}`);
+      }
+    }
+    await pauseAndCaptureJourney(page, 'J12-verdict-submitted');
+
+    await narrate('Step 13: closure merges the PR; cycle moves to done.');
+    moveManifest('ready-for-review', 'done', cycle.initiativeId);
+    appendEvent(cycle, 'review-loop', 'end', 'review-loop end', { cost_usd: 0.21, duration_ms: 42000 });
+    appendEvent(cycle, 'closure', 'start', 'merging PR');
+    appendEvent(cycle, 'closure', 'end', 'merged into main', { cost_usd: 0.04, duration_ms: 6000 });
+    await expectStatus('JOURNEY', page, cycle.cycleId, 'done');
+    await pauseAndCaptureJourney(page, 'J13-closure-merged');
+
+    await narrate('Step 14: reflection writes a theme back into the brain. Cycle complete.');
+    appendEvent(cycle, 'reflection', 'start', 'reflecting on the merged cycle');
+    appendEvent(cycle, 'reflection', 'tool_use', 'Write brain/projects/claude-greeting-svc/themes/2026-05-24-locale-table-pattern.md');
+    appendEvent(cycle, 'reflection', 'end', 'reflection.end', { cost_usd: 0.12, duration_ms: 18000 });
+    await pauseAndCaptureJourney(page, 'J14-reflection-complete');
+
+    log('JOURNEY', 'walked architect → reflection ✓');
+  } finally {
+    cleanupCycle(cycle);
+  }
+}
+
 // ---- driver --------------------------------------------------------------
 
 const SCENARIOS = [
@@ -796,14 +1103,18 @@ const SCENARIOS = [
   { id: 'S6', name: 'requeue-cli',          needsBrowser: false, run: S6 },
 ];
 
+const JOURNEY_SCENARIO = [
+  { id: 'JOURNEY', name: 'architect-to-reflection', needsBrowser: true, run: JOURNEY },
+];
+
 /**
  * --record output is easier to review through a single page: video at
  * top, then the screenshots in capture order with their scenario tags.
  * Captions match the file names so the operator can correlate against
  * the harness log.
  */
-function writeIndexHtml(results) {
-  const frames = readdirSync(RECORD_FRAMES_DIR)
+function writeIndexHtml(rootDir, framesDir, videoName, results, subtitle) {
+  const frames = readdirSync(framesDir)
     .filter((f) => f.endsWith('.png'))
     .sort();
   const passed = results.filter((r) => r.ok).length;
@@ -815,7 +1126,7 @@ function writeIndexHtml(results) {
     .map((f) => `<figure><img src="frames/${f}" loading="lazy" /><figcaption><code>${f}</code></figcaption></figure>`)
     .join('\n');
   const html = `<!doctype html>
-<html><head><meta charset="utf-8"><title>forge-ui harness — recording</title>
+<html><head><meta charset="utf-8"><title>forge-ui harness — ${subtitle}</title>
 <style>
   body { background: #0d1117; color: #e6edf3; font: 14px ui-sans-serif, system-ui, sans-serif; margin: 32px auto; max-width: 1640px; padding: 0 24px; }
   h1, h2 { letter-spacing: 0.4px; }
@@ -829,7 +1140,7 @@ function writeIndexHtml(results) {
   code { color: #d2a8ff; }
 </style></head>
 <body>
-  <h1>forge-ui harness — recording</h1>
+  <h1>forge-ui harness — ${subtitle}</h1>
   <div class="summary">
     <p>${passed} passed, ${failed} failed. Recorded ${new Date().toISOString()}.</p>
     <ul>
@@ -837,15 +1148,18 @@ ${summaryRows}
     </ul>
   </div>
   <h2>video</h2>
-  <video src="harness-demo.webm" controls autoplay muted loop></video>
+  <video src="${videoName}" controls autoplay muted loop></video>
   <h2>frames (in capture order)</h2>
 ${frameRows}
 </body></html>`;
-  writeFileSync(join(RECORD_DIR, 'index.html'), html);
+  writeFileSync(join(rootDir, 'index.html'), html);
 }
 
 async function main() {
-  const filtered = flags.only ? SCENARIOS.filter((s) => s.id === flags.only) : SCENARIOS;
+  // --demo runs the JOURNEY scenario instead of the regression set; it's
+  // the "marketing video" mode focused on explaining forge end-to-end.
+  const allScenarios = flags.demo ? JOURNEY_SCENARIO : SCENARIOS;
+  const filtered = flags.only ? allScenarios.filter((s) => s.id === flags.only) : allScenarios;
   if (filtered.length === 0) {
     console.error(`no scenario matches --only=${flags.only}`);
     process.exit(1);
@@ -856,7 +1170,24 @@ async function main() {
   let browser = null;
   let page = null;
 
-  if (flags.record) {
+  if (flags.demo) {
+    // Journey mode: same chromium-driven flow as record, separate
+    // output dir so the regression record and the journey video
+    // don't stomp on each other.
+    console.log('[harness:demo] starting forge watch (this takes ~15s)…');
+    watch = await startWatch();
+    console.log(`[harness:demo] watch ready: ui=${watch.uiUrl} bridge=${watch.bridgeUrl}`);
+    rmSync(JOURNEY_DIR, { recursive: true, force: true });
+    mkdirSync(JOURNEY_VIDEO_DIR, { recursive: true });
+    mkdirSync(JOURNEY_FRAMES_DIR, { recursive: true });
+    browser = await chromium.launch();
+    const ctx = await browser.newContext({
+      viewport: { width: 1600, height: 1000 },
+      recordVideo: { dir: JOURNEY_VIDEO_DIR, size: { width: 1600, height: 1000 } },
+    });
+    page = await ctx.newPage();
+    page.on('pageerror', (err) => console.error(`[harness:pageerror] ${err.message}`));
+  } else if (flags.record) {
     // Recording mode: same chromium-driven flow as headless, plus a
     // recorded video + per-step screenshots saved under
     // forge-ui/.demo-shots/harness/.
@@ -923,27 +1254,39 @@ async function main() {
     }
   }
 
-  // In --record we want the video file to land at a STABLE path
-  // (harness-demo.webm) so the operator can find it without digging
-  // through playwright's random filenames. Capture the video object
-  // before closing the page (after .close() it returns null), then
-  // rename once the context flush completes.
+  // We want the video file to land at a STABLE path so the operator
+  // can find it without digging through playwright's random filenames.
+  // Capture the video object before closing the page (after .close() it
+  // returns null), then rename once the context flush completes.
   let videoSrc = null;
-  if (flags.record && page) {
+  if ((flags.record || flags.demo) && page) {
     try { videoSrc = await page.video()?.path(); } catch { /* no video */ }
   }
   if (browser) await browser.close();
   if (watch) await stopWatch(watch.proc);
+
   if (flags.record && videoSrc && existsSync(videoSrc)) {
     const dest = join(RECORD_DIR, 'harness-demo.webm');
     try {
       renameSync(videoSrc, dest);
-      writeIndexHtml(results);
+      writeIndexHtml(RECORD_DIR, RECORD_FRAMES_DIR, 'harness-demo.webm', results, 'regression scenarios');
       console.log(`\n[harness:record] video → ${dest}`);
       console.log(`[harness:record] frames → ${RECORD_FRAMES_DIR}/`);
       console.log(`[harness:record] index  → ${join(RECORD_DIR, 'index.html')}`);
     } catch (err) {
       console.error(`[harness:record] failed to move video: ${err.message}`);
+    }
+  }
+  if (flags.demo && videoSrc && existsSync(videoSrc)) {
+    const dest = join(JOURNEY_DIR, 'journey.webm');
+    try {
+      renameSync(videoSrc, dest);
+      writeIndexHtml(JOURNEY_DIR, JOURNEY_FRAMES_DIR, 'journey.webm', results, 'architect → reflection');
+      console.log(`\n[harness:demo] video → ${dest}`);
+      console.log(`[harness:demo] frames → ${JOURNEY_FRAMES_DIR}/`);
+      console.log(`[harness:demo] index  → ${join(JOURNEY_DIR, 'index.html')}`);
+    } catch (err) {
+      console.error(`[harness:demo] failed to move video: ${err.message}`);
     }
   }
 

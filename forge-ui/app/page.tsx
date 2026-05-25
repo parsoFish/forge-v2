@@ -5,21 +5,22 @@ import {
   fetchCost,
   fetchCycles,
   fetchEvents,
+  fetchManifest,
   subscribe,
   type CostSummary,
   type Cycle,
   type CycleListSnapshot,
   type EventLogEntry,
   type ConnectionState,
+  type InitiativeFeature,
 } from '@/lib/bridge-client';
 import { derivePhaseStates, type PhaseState } from '@/lib/phases';
 import { CycleToasts } from '@/components/Toasts';
-import { WiGraphCanvas } from '@/components/WiGraphCanvas';
-import { AgentHexCanvas } from '@/components/AgentHexCanvas';
+import { AgentHexCanvas, type CanvasWorkItem } from '@/components/AgentHexCanvas';
 import { ActivityPanel } from '@/components/ActivityPanel';
 import { VerdictForm } from '@/components/VerdictForm';
 import { SchedulerBanner } from '@/components/SchedulerBanner';
-import { InitiativeInfo } from '@/components/InitiativeInfo';
+import { fetchWiGraph, type WiGraph } from '@/lib/wi-graph';
 
 export default function Page() {
   const [snapshot, setSnapshot] = useState<CycleListSnapshot>({ live: [], recent: [] });
@@ -98,6 +99,98 @@ export default function Page() {
     [allCycles, activeCycleId],
   );
 
+  // Manifest features for the active cycle. Hoisted to page-level (was
+  // in the now-removed InitiativeInfo panel) so AgentHexCanvas can render
+  // the feature tier below the dev-loop hex. Polls every 5s while
+  // missing — the manifest is filed at scheduler-claim time so it's
+  // usually present immediately, but new cycles can race the fetch.
+  const [features, setFeatures] = useState<InitiativeFeature[]>([]);
+  useEffect(() => {
+    setFeatures([]);
+    const initId = activeCycle?.initiativeId;
+    if (!initId) return;
+    let cancelled = false;
+    let loaded = false;
+    const attempt = (): void => {
+      if (loaded) return;
+      void fetchManifest(initId).then((m) => {
+        if (cancelled) return;
+        if (m) { setFeatures(m.features); loaded = true; }
+      });
+    };
+    attempt();
+    const id = setInterval(attempt, 5000);
+    return () => { cancelled = true; clearInterval(id); };
+  }, [activeCycle?.initiativeId]);
+
+  // WI graph for the active cycle (PM emits `_logs/<id>/work-items-
+  // snapshot/_graph.md` at pm.end). Hoisted from the now-removed
+  // WiGraphCanvas. Polls until the bridge serves the graph, then stops.
+  const [wiGraph, setWiGraph] = useState<WiGraph | null>(null);
+  useEffect(() => {
+    setWiGraph(null);
+    if (!activeCycleId) return;
+    let cancelled = false;
+    let loaded = false;
+    const attempt = (): void => {
+      if (loaded) return;
+      void fetchWiGraph(activeCycleId).then((g) => {
+        if (cancelled) return;
+        if (g) { setWiGraph(g); loaded = true; }
+      });
+    };
+    attempt();
+    const id = setInterval(attempt, 3000);
+    return () => { cancelled = true; clearInterval(id); };
+  }, [activeCycleId]);
+
+  // Event-driven materialisation per operator note 2026-05-25:
+  //   - Features show only when their `pm.feature-decomposed` event has
+  //     fired (PM is what actually decomposes them).
+  //   - WIs show only when their `pm.work-item-emitted` event has fired
+  //     (each event creates one WI hex; titles + dep edges come from
+  //     the wi-graph once that lands at pm.end).
+  // Pre-PM, both lists are empty. Per-feature / per-WI hexes can fill
+  // in incrementally as the events arrive.
+  const materialisedFeatures = useMemo(() => {
+    if (features.length === 0) return [];
+    const ack = new Set<string>();
+    for (const e of events) {
+      if (e.message !== 'pm.feature-decomposed') continue;
+      const fid = (e.metadata as { feature_id?: string } | undefined)?.feature_id;
+      if (fid) ack.add(fid);
+    }
+    if (ack.size === 0) return [];
+    return features.filter((f) => ack.has(f.featureId));
+  }, [features, events]);
+
+  const workItems = useMemo<CanvasWorkItem[]>(() => {
+    const wiFeature = new Map<string, string | undefined>();
+    for (const e of events) {
+      if (e.message !== 'pm.work-item-emitted') continue;
+      const wid = (e.metadata as { work_item_id?: string } | undefined)?.work_item_id;
+      const fid = (e.metadata as { feature_id?: string } | undefined)?.feature_id;
+      if (wid) wiFeature.set(wid, fid);
+    }
+    if (wiFeature.size === 0) return [];
+    const titleByWi = new Map<string, string>();
+    const depsByWi = new Map<string, string[]>();
+    if (wiGraph) {
+      for (const n of wiGraph.nodes) titleByWi.set(n.id, n.label);
+      for (const edge of wiGraph.edges) {
+        const arr = depsByWi.get(edge.to) ?? [];
+        arr.push(edge.from);
+        depsByWi.set(edge.to, arr);
+      }
+    }
+    return Array.from(wiFeature.entries()).map(([id, featureId]) => ({
+      id,
+      title: titleByWi.get(id) ?? id,
+      featureId,
+      dependsOn: depsByWi.get(id) ?? [],
+    }));
+  }, [wiGraph, events]);
+
   // Surface the resolved bridge URL in the DOM so the operator can
   // diagnose connectivity from view-source / dev-tools without needing
   // to instrument the browser. Updated once on mount.
@@ -162,18 +255,18 @@ export default function Page() {
         </section>
       )}
 
-      <section style={{ marginTop: 24 }}>
-        <AgentHexCanvas phaseStates={phaseStates} cost={cost} />
-      </section>
-
-      <InitiativeInfo
-        cycleId={activeCycleId}
-        initiativeId={activeCycle?.initiativeId ?? null}
-        phaseStates={phaseStates}
-      />
-
-      <section style={{ marginTop: 24 }}>
-        <WiGraphCanvas cycleId={activeCycleId} events={events} onSelectWi={setSelectedWiId} />
+      {/* Single cascading hex tree per 2026-05-25 operator note: phase
+          row at top, feature row branching off dev-loop (post-PM), WI
+          row below features (post-PM). Replaces the old StateMachine +
+          Sidebar + standalone WI graph + InitiativeInfo sections. */}
+      <section style={{ marginTop: 24 }} data-section="pipeline-tree">
+        <AgentHexCanvas
+          phaseStates={phaseStates}
+          cost={cost}
+          features={materialisedFeatures}
+          workItems={workItems}
+          cycleId={activeCycleId}
+        />
       </section>
 
       <section style={{ marginTop: 24 }}>

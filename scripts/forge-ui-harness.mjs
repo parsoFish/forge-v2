@@ -939,18 +939,89 @@ Reviewer notes: meets all 5 acceptance criteria; no extra dependencies;
 tests cover every locale + the default fallback.
 `;
 
-const JOURNEY_GRAPH_MD = `# Work-item dependency graph
+/**
+ * Generate a randomised journey shape so each run exercises a different
+ * feature + WI count + cross-WI dependency pattern. The point (operator
+ * note 2026-05-25): the canvas must render correctly from the actual
+ * event data, not from a hand-tuned 3-feature / 3-WI fixture.
+ *
+ * Returns:
+ *   - `features`: 2–5 features, each with a title + optional depends_on
+ *     chain (FEAT-2 may depend on FEAT-1, FEAT-3 on FEAT-1 or FEAT-2,
+ *     and so on).
+ *   - `workItems`: each feature gets 1–3 WIs. WIs are globally numbered
+ *     `WI-1`, `WI-2`, … and may have cross-feature `depends_on` edges
+ *     (e.g. WI-2 in FEAT-2 depending on WI-1 in FEAT-1).
+ *   - `graphMd`: mermaid `graph TD` rendering of the WI graph (the
+ *     same content PM writes at pm.end).
+ */
+function generateJourneyShape() {
+  const rng = makeRng();
+  const featTitles = [
+    'core domain logic', 'data validation', 'persistence layer',
+    'configuration parser', 'API surface', 'CLI command set',
+    'observability hooks', 'error reporting', 'authentication shim',
+    'rate-limit middleware', 'feature flag wiring', 'metrics adapter',
+  ];
+  const wiTitlesByCategory = [
+    'scaffold + types', 'happy-path implementation', 'edge case handling',
+    'unit tests', 'integration tests', 'README + usage', 'docstrings',
+    'error path', 'fixture wiring', 'graceful shutdown', 'logging hooks',
+    'retries + backoff',
+  ];
+  const featCount = 2 + Math.floor(rng() * 4); // 2..5
+  const features = [];
+  for (let i = 0; i < featCount; i += 1) {
+    const fid = `FEAT-${i + 1}`;
+    const title = featTitles[(Math.floor(rng() * featTitles.length)) % featTitles.length];
+    // 50% chance the next feature depends on a random earlier feature.
+    const depends_on = [];
+    if (i > 0 && rng() > 0.5) {
+      const target = Math.floor(rng() * i);
+      depends_on.push(`FEAT-${target + 1}`);
+    }
+    features.push({ feature_id: fid, title, depends_on });
+  }
+  const workItems = [];
+  let wiCounter = 0;
+  for (const f of features) {
+    const wiCount = 1 + Math.floor(rng() * 3); // 1..3
+    for (let j = 0; j < wiCount; j += 1) {
+      wiCounter += 1;
+      const wid = `WI-${wiCounter}`;
+      const title = wiTitlesByCategory[(Math.floor(rng() * wiTitlesByCategory.length)) % wiTitlesByCategory.length];
+      // First WI in the journey has no deps; later WIs may depend on
+      // a prior WI (most often the immediately-previous one to make
+      // the graph layered, but occasionally cross-feature).
+      const depends_on = [];
+      if (workItems.length > 0 && rng() > 0.3) {
+        const target = Math.floor(rng() * workItems.length);
+        depends_on.push(workItems[target].wi_id);
+      }
+      workItems.push({ wi_id: wid, feature_id: f.feature_id, title, depends_on });
+    }
+  }
+  const nodeLines = workItems.map((w) => `    ${w.wi_id}["${w.wi_id}: ${w.title}"]`).join('\n');
+  const edgeLines = workItems
+    .flatMap((w) => w.depends_on.map((d) => `    ${d} --> ${w.wi_id}`))
+    .join('\n');
+  const graphMd = `# Work-item dependency graph (randomised journey shape)
 
 \`\`\`mermaid
 graph TD
-    WI-1["WI-1: scaffold + greet() core"]
-    WI-2["WI-2: locale table + tests"]
-    WI-3["WI-3: README + usage example"]
+${nodeLines}
 
-    WI-1 --> WI-2
-    WI-1 --> WI-3
+${edgeLines}
 \`\`\`
 `;
+  return { features, workItems, graphMd };
+}
+
+/** Tiny seeded RNG so a `--seed N` flag could be added later. For now,
+ * just uses Math.random — the variance is the point. */
+function makeRng() {
+  return () => Math.random();
+}
 
 /**
  * Demo journey: ONE synthetic cycle for the fake "claude-greeting-svc"
@@ -972,12 +1043,12 @@ async function JOURNEY(ui, page) {
     log('JOURNEY', `cycle=${cycle.cycleId}`);
 
     // ---- 1: queue + claim ----
-    await narrate('Step 1: pending. A new cycle for claude-greeting-svc enters the queue.');
-    writeManifest('pending', cycle.initiativeId, 'claude-greeting-svc', [
-      { feature_id: 'FEAT-1', title: 'greet() core + locale table',          depends_on: [] },
-      { feature_id: 'FEAT-2', title: 'tests covering the locale table',     depends_on: ['FEAT-1'] },
-      { feature_id: 'FEAT-3', title: 'README + usage examples',             depends_on: ['FEAT-1'] },
-    ]);
+    // Randomise the journey shape so the canvas can't accidentally
+    // be hardcoded to a specific feature/WI count.
+    const journey = generateJourneyShape();
+    log('JOURNEY', `randomised shape: ${journey.features.length} features, ${journey.workItems.length} WIs`);
+    await narrate(`Step 1: pending. A new cycle for claude-greeting-svc enters the queue. (Randomised shape: ${journey.features.length} features / ${journey.workItems.length} WIs.)`);
+    writeManifest('pending', cycle.initiativeId, 'claude-greeting-svc', journey.features);
     await focusCycle(page, ui, cycle);
     await expectStatus('JOURNEY', page, cycle.cycleId, 'pending');
     await pauseAndCaptureJourney(page, 'J01-pending');
@@ -996,12 +1067,11 @@ async function JOURNEY(ui, page) {
     appendEvent(cycle, 'architect', 'log', 'PLAN.md written: 5 acceptance criteria, 0 risks blocking');
     writeArtifact(cycle, 'PLAN.md', JOURNEY_PLAN_MD);
     appendEvent(cycle, 'architect', 'end', 'architect.end', { cost_usd: 0.18, duration_ms: 24000 });
-    // 2026-05-25 (v2): state machine removed; plan badge now lives in
-    // the InitiativeInfo panel header (`[data-section="initiative-info"]`).
-    // Probe interval is 5s.
+    // 2026-05-25 (v3): InitiativeInfo panel removed; plan badge is now
+    // an overlay on the AgentHexCanvas, anchored above the architect hex.
     if (page) {
       await page.waitForFunction(
-        () => !!document.querySelector('[data-section="initiative-info"] [data-action="view-plan"]'),
+        () => !!document.querySelector('[data-overlay="plan-badge"] [data-action="view-plan"]'),
         undefined,
         { timeout: 8000 },
       ).catch(() => { /* */ });
@@ -1040,40 +1110,60 @@ async function JOURNEY(ui, page) {
     appendEvent(cycle, 'project-manager', 'tool_use', 'Glob projects/claude-greeting-svc/**');
     await pauseAndCaptureJourney(page, 'J05-pm-active');
 
-    // ---- 6: pm emits WI graph ----
-    await narrate('Step 6: pm.end fires with the WI graph (WI-1 → WI-2 + WI-3).');
+    // ---- 6: pm emits features + WIs + graph ----
+    await narrate(`Step 6: PM decomposes the manifest into ${journey.features.length} features and ${journey.workItems.length} work items. Per-feature and per-WI events fire so the canvas can materialise each hex from the actual event stream (no synthetic phase gates).`);
     mkdirSync(join(cycle.logDir, 'work-items-snapshot'), { recursive: true });
-    writeFileSync(join(cycle.logDir, 'work-items-snapshot', '_graph.md'), JOURNEY_GRAPH_MD);
+    writeFileSync(join(cycle.logDir, 'work-items-snapshot', '_graph.md'), journey.graphMd);
+    // pm.feature-decomposed events: one per feature. Each event makes
+    // the corresponding feature hex appear on the canvas.
+    for (const f of journey.features) {
+      appendEvent(cycle, 'project-manager', 'log', 'pm.feature-decomposed', {
+        metadata: { feature_id: f.feature_id },
+      });
+    }
+    // pm.work-item-emitted events: one per WI, carrying feature_id for
+    // the canvas's WI→feature grouping. Production PM emits these from
+    // pm-invocation.ts; the journey mirrors that.
+    for (const w of journey.workItems) {
+      appendEvent(cycle, 'project-manager', 'log', 'pm.work-item-emitted', {
+        metadata: { work_item_id: w.wi_id, feature_id: w.feature_id },
+      });
+    }
     appendEvent(cycle, 'project-manager', 'end', 'pm.end', {
       cost_usd: 0.34, duration_ms: 31000,
-      metadata: { work_item_count: 3, per_item_error_count: 0 },
+      metadata: { work_item_count: journey.workItems.length, per_item_error_count: 0 },
     });
+    // Wait for the canvas to render the full WI hex tier.
+    if (page) {
+      const expectedWi = journey.workItems.length;
+      await page.waitForFunction(
+        (n) => document.querySelectorAll('[data-component="agent-hex-canvas"] [data-wi-hex]').length >= n,
+        expectedWi,
+        { timeout: 8000 },
+      ).catch(() => { /* */ });
+    }
     await pauseAndCaptureJourney(page, 'J06-pm-complete-wi-graph');
 
-    // ---- 7: dev-loop iterates ----
-    await narrate('Step 7: dev-loop iterates WI-1 (core), then WI-2 (tests) and WI-3 (docs) in parallel. Note the iter-0 sharp-gate check fires FIRST and intentionally fails (the test file doesn\'t exist yet — that\'s the L2 must-fail check) — post-Bug-3 fix, that emits as event_type:\'log\' with expected_fail:true, so dev-loop stays active rather than flipping red.');
+    // ---- 7: dev-loop iterates each WI from the randomised journey ----
+    await narrate(`Step 7: dev-loop iterates each of the ${journey.workItems.length} work items. The iter-0 sharp-gate check fires FIRST for the first WI and intentionally fails (the L2 must-fail check) — post-Bug-3 fix, that emits as event_type:'log' with expected_fail:true, so dev-loop stays active rather than flipping red.`);
     appendEvent(cycle, 'developer-loop', 'start', 'dev-loop start');
-    // Bug 3 demo: iter-0 sharp-gate must-fail. Pre-fix this fired as
-    // event_type:'error' and the UI marked dev-loop as failed; post-fix
-    // it's event_type:'log' with expected_fail:true and the UI ignores it.
+    const firstWiId = journey.workItems[0]?.wi_id ?? 'WI-1';
+    // Bug 3 demo: iter-0 sharp-gate must-fail.
     appendEvent(cycle, 'developer-loop', 'log', 'gate.expected-fail', {
       metadata: {
-        work_item_id: 'WI-1',
+        work_item_id: firstWiId,
         gate_passed: false,
         gate_exit_code: 1,
-        gate_command: 'node --test tests/greet.test.ts',
-        gate_stderr_tail: "Could not find 'tests/greet.test.ts'\n",
+        gate_command: `node --test tests/${firstWiId.toLowerCase()}.test.ts`,
+        gate_stderr_tail: `Could not find 'tests/${firstWiId.toLowerCase()}.test.ts'\n`,
         iteration: 0,
         expected_fail: true,
       },
     });
-    appendEvent(cycle, 'developer-loop', 'iteration', 'WI-1 iter 1', { metadata: { work_item_id: 'WI-1' } });
-    appendEvent(cycle, 'developer-loop', 'tool_use', 'Write src/greet.ts',     { metadata: { work_item_id: 'WI-1' } });
-    appendEvent(cycle, 'developer-loop', 'tool_use', 'Bash node --test',       { metadata: { work_item_id: 'WI-1' } });
-    appendEvent(cycle, 'developer-loop', 'iteration', 'WI-2 iter 1', { metadata: { work_item_id: 'WI-2' } });
-    appendEvent(cycle, 'developer-loop', 'tool_use', 'Write src/greet.test.ts', { metadata: { work_item_id: 'WI-2' } });
-    appendEvent(cycle, 'developer-loop', 'iteration', 'WI-3 iter 1', { metadata: { work_item_id: 'WI-3' } });
-    appendEvent(cycle, 'developer-loop', 'tool_use', 'Write README.md',         { metadata: { work_item_id: 'WI-3' } });
+    for (const w of journey.workItems) {
+      appendEvent(cycle, 'developer-loop', 'iteration', `${w.wi_id} iter 1`, { metadata: { work_item_id: w.wi_id } });
+      appendEvent(cycle, 'developer-loop', 'tool_use', `Write ${w.title}`, { metadata: { work_item_id: w.wi_id } });
+    }
     appendEvent(cycle, 'developer-loop', 'end', 'dev-loop end', { cost_usd: 1.42, duration_ms: 187000 });
     await pauseAndCaptureJourney(page, 'J07-dev-complete');
 
@@ -1083,14 +1173,12 @@ async function JOURNEY(ui, page) {
     appendEvent(cycle, 'review-loop', 'tool_use', 'Bash gh pr create --draft');
     appendEvent(cycle, 'review-loop', 'tool_use', 'Write DEMO.md');
     writeArtifact(cycle, 'DEMO.md', JOURNEY_DEMO_MD);
-    // 2026-05-25 (v2): state machine removed; demo badge lives in
-    // the InitiativeInfo panel header next to the plan badge. It
-    // stays hidden until review-loop OR reflection is non-pending —
-    // by this step the review-loop start event has fired, so the
-    // badge will surface.
+    // 2026-05-25 (v3): demo badge is an overlay above the reflection
+    // hex on the AgentHexCanvas. Hidden until review-loop or reflection
+    // is non-pending — review-loop has just started here, so it shows.
     if (page) {
       await page.waitForFunction(
-        () => !!document.querySelector('[data-section="initiative-info"] [data-action="view-demo"]'),
+        () => !!document.querySelector('[data-overlay="demo-badge"] [data-action="view-demo"]'),
         undefined,
         { timeout: 8000 },
       ).catch(() => { /* */ });
@@ -1285,9 +1373,14 @@ async function main() {
     mkdirSync(JOURNEY_VIDEO_DIR, { recursive: true });
     mkdirSync(JOURNEY_FRAMES_DIR, { recursive: true });
     browser = await chromium.launch();
+    // Viewport sized so the post-PM cascading hex tree (phases →
+    // features → WIs) fills the visible area without dwarfing it.
+    // 1400x1400 is enough for a 2–5 feature × 1–3 WI shape plus the
+    // scheduler banner, cycles tab, and event tail; fullPage shots
+    // extend below if the event log is long.
     const ctx = await browser.newContext({
-      viewport: { width: 1600, height: 2400 },
-      recordVideo: { dir: JOURNEY_VIDEO_DIR, size: { width: 1600, height: 2400 } },
+      viewport: { width: 1400, height: 1400 },
+      recordVideo: { dir: JOURNEY_VIDEO_DIR, size: { width: 1400, height: 1400 } },
     });
     page = await ctx.newPage();
     page.on('pageerror', (err) => console.error(`[harness:pageerror] ${err.message}`));

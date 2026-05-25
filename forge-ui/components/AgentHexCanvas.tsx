@@ -25,6 +25,7 @@ import { useEffect, useRef } from 'react';
 
 import type { CostSummary, InitiativeFeature } from '@/lib/bridge-client';
 import { PHASE_ORDER, type Phase, type PhaseState, type PhaseStatus } from '@/lib/phases';
+import type { WiStatus } from '@/lib/wi-status';
 
 import { ArtifactBadge } from './CycleArtifacts';
 
@@ -35,6 +36,12 @@ export type CanvasWorkItem = {
   featureId?: string;
   /** WI IDs this one depends on (used to draw cross-column edges). */
   dependsOn: readonly string[];
+  /**
+   * Per-WI status — drives the hex's own colour. Independent from
+   * siblings (operator note 2026-05-25: a failing WI must not turn
+   * its siblings red). Defaults to 'pending' when omitted.
+   */
+  status?: WiStatus;
 };
 
 type Props = {
@@ -55,6 +62,13 @@ type Props = {
    * `dependsOn` edges render as thin lines between WI hexes.
    */
   workItems?: readonly CanvasWorkItem[];
+  /**
+   * Per-feature rolled-up status (worst-case of its WIs). When omitted
+   * the canvas falls back to inheriting from the dev-loop phase
+   * status. Operator note 2026-05-25: features render in their own
+   * status independent of sibling features.
+   */
+  featureStatuses?: Readonly<Record<string, WiStatus>>;
   /**
    * Active cycle id — when set, the canvas renders the plan + demo
    * artifact badges as overlays above the architect and reflection
@@ -109,17 +123,24 @@ const DEV_LOOP_INDEX = PHASE_ORDER.indexOf('developer-loop');
 
 // ---- colour palette ------------------------------------------------------
 
-const FILL: Record<PhaseStatus, string> = {
+// Hex fills + outlines per status. PhaseStatus is a subset of WiStatus
+// (WiStatus adds 'retrying' for the "had a transient error mid-cycle"
+// state). Phase hexes only ever read the four PhaseStatus keys; feature
+// + WI hexes read the full WiStatus map. Operator palette intent:
+// blue = working, green = done, yellow = retrying, red = full failure.
+const FILL: Record<WiStatus, string> = {
   pending: '#161b22',
   active: '#0d1f3a',
   complete: '#0c2117',
+  retrying: '#332a0a',
   failed: '#2d0d0f',
 };
 
-const OUTLINE: Record<PhaseStatus, string> = {
+const OUTLINE: Record<WiStatus, string> = {
   pending: '#30363d',
   active: '#58a6ff',
   complete: '#7ee787',
+  retrying: '#d29922',
   failed: '#f85149',
 };
 
@@ -142,7 +163,7 @@ const SHORT_LABEL: Record<Phase, string> = {
 
 // ---- component -----------------------------------------------------------
 
-export function AgentHexCanvas({ phaseStates, cost = null, features, workItems, cycleId = null }: Props): JSX.Element {
+export function AgentHexCanvas({ phaseStates, cost = null, features, workItems, featureStatuses, cycleId = null }: Props): JSX.Element {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
   // Always render the canonical six phases in canonical order. The prop
@@ -217,7 +238,8 @@ export function AgentHexCanvas({ phaseStates, cost = null, features, workItems, 
     // 2) Feature-tier branch tree: trunk from dev-loop hex bottom down
     //    to a horizontal junction, then per-feature branches down to
     //    each feature hex. Drawn before the hexes so the hexes overlap
-    //    the line ends cleanly.
+    //    the line ends cleanly. Trunk colour reflects the dev-loop
+    //    hex's own status; individual branches inherit it.
     if (hasFeatures) {
       const devLoopStatus = ordered[DEV_LOOP_INDEX].status;
       const branchColor = OUTLINE[devLoopStatus];
@@ -265,17 +287,15 @@ export function AgentHexCanvas({ phaseStates, cost = null, features, workItems, 
       ctx.fillText(state.status, cx, HEX_Y + 12);
     });
 
-    // 4) Feature hexes — smaller, status inherited from dev-loop (a
-    //    feature "lights up" the moment dev-loop becomes active; finer-
-    //    grained per-feature status will land when WI-level events
-    //    surface here).
+    // 4) Feature hexes — each in its OWN rolled-up status (operator
+    //    note 2026-05-25). A failing feature doesn't tint its siblings;
+    //    a green sibling stays green next to a yellow one.
     if (hasFeatures) {
       const devLoopStatus = ordered[DEV_LOOP_INDEX].status;
-      const featureFill = FILL[devLoopStatus];
-      const featureOutline = OUTLINE[devLoopStatus];
       featList.forEach((f, i) => {
         const cx = featurePositions[i];
-        drawHex(ctx, cx, FEATURE_HEX_Y, FEATURE_HEX_RADIUS, featureFill, featureOutline);
+        const status = featureStatuses?.[f.featureId] ?? devLoopStatus;
+        drawHex(ctx, cx, FEATURE_HEX_Y, FEATURE_HEX_RADIUS, FILL[status], OUTLINE[status]);
         ctx.fillStyle = TEXT_PRIMARY;
         ctx.font = '600 11px Inter, ui-sans-serif, system-ui, sans-serif';
         ctx.textAlign = 'center';
@@ -307,17 +327,17 @@ export function AgentHexCanvas({ phaseStates, cost = null, features, workItems, 
       ctx.restore();
     }
 
-    // 4b) WI tier — branch lines from each feature hex down to its WIs,
-    //     then the WI hexes themselves. Cross-feature `dependsOn` edges
-    //     render last as thin lines between WI centres so the deps are
-    //     visible even when WIs sit in different feature columns.
+    // 4b) WI tier — each WI hex in its OWN per-WI status. Operator
+    //     note 2026-05-25: one WI's failure doesn't propagate to its
+    //     siblings; yellow during retries; red only if the cycle as a
+    //     whole has failed. Branch lines + cross-WI dep edges still
+    //     follow the dev-loop tone for consistency with the tree.
     if (hasWis) {
       const devLoopStatus = ordered[DEV_LOOP_INDEX].status;
-      const wiFill = FILL[devLoopStatus];
-      const wiOutline = OUTLINE[devLoopStatus];
+      const treeOutline = OUTLINE[devLoopStatus];
 
       // Branch lines: feature hex bottom → each child WI hex top.
-      ctx.strokeStyle = wiOutline;
+      ctx.strokeStyle = treeOutline;
       ctx.lineWidth = 1.5;
       const wiByFeature = new Map<string, string[]>();
       for (const w of wiList) {
@@ -370,11 +390,13 @@ export function AgentHexCanvas({ phaseStates, cost = null, features, workItems, 
       }
       ctx.restore();
 
-      // WI hexes + labels.
+      // WI hexes + labels. Each hex gets its own per-WI status colour
+      // (independent from siblings + from the dev-loop phase hex).
       wiList.forEach((w) => {
         const pos = wiPositions.get(w.id);
         if (!pos) return;
-        drawHex(ctx, pos.x, pos.y, WI_HEX_RADIUS, wiFill, wiOutline);
+        const status = w.status ?? devLoopStatus;
+        drawHex(ctx, pos.x, pos.y, WI_HEX_RADIUS, FILL[status], OUTLINE[status]);
         ctx.fillStyle = TEXT_PRIMARY;
         ctx.font = '600 10px Inter, ui-sans-serif, system-ui, sans-serif';
         ctx.textAlign = 'center';
@@ -399,7 +421,7 @@ export function AgentHexCanvas({ phaseStates, cost = null, features, workItems, 
       const top = HEX_Y - HEX_RADIUS - PILL_GAP - PILL_H;
       drawPill(ctx, cx - PILL_W / 2, top, PILL_W, PILL_H, `$${phaseCost.toFixed(2)}`);
     });
-  }, [ordered, cost, canvasH, hasFeatures, featList, featurePositions, devLoopCx, hasWis, wiList, wiPositions]);
+  }, [ordered, cost, canvasH, hasFeatures, featList, featurePositions, devLoopCx, hasWis, wiList, wiPositions, featureStatuses]);
 
   const architectCx = FIRST_HEX_X + PHASE_ORDER.indexOf('architect') * HEX_SPACING;
   const reviewCx = FIRST_HEX_X + PHASE_ORDER.indexOf('review-loop') * HEX_SPACING;

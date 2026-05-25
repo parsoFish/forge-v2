@@ -21,6 +21,7 @@ import { ActivityPanel } from '@/components/ActivityPanel';
 import { VerdictForm } from '@/components/VerdictForm';
 import { SchedulerBanner } from '@/components/SchedulerBanner';
 import { fetchWiGraph, type WiGraph } from '@/lib/wi-graph';
+import { derivePerWiStatus, rollupStatus, type WiStatus } from '@/lib/wi-status';
 
 export default function Page() {
   const [snapshot, setSnapshot] = useState<CycleListSnapshot>({ live: [], recent: [] });
@@ -183,13 +184,37 @@ export default function Page() {
         depsByWi.set(edge.to, arr);
       }
     }
+    // Per-WI status derived from the event stream. Each WI carries its
+    // own colour in the canvas (operator note 2026-05-25: independent
+    // siblings; yellow during retries; red only after cycle-end failure).
+    const wiIds = Array.from(wiFeature.keys());
+    const statusById = derivePerWiStatus(events, wiIds);
     return Array.from(wiFeature.entries()).map(([id, featureId]) => ({
       id,
       title: titleByWi.get(id) ?? id,
       featureId,
       dependsOn: depsByWi.get(id) ?? [],
+      status: statusById[id],
     }));
   }, [wiGraph, events]);
+
+  // Per-feature rolled-up status — worst-case of that feature's WIs.
+  // Independent from sibling features so a yellow FEAT-2 doesn't tint
+  // a green FEAT-1.
+  const featureStatuses = useMemo<Record<string, WiStatus>>(() => {
+    const wisByFeature = new Map<string, WiStatus[]>();
+    for (const w of workItems) {
+      if (!w.featureId) continue;
+      const arr = wisByFeature.get(w.featureId) ?? [];
+      if (w.status) arr.push(w.status);
+      wisByFeature.set(w.featureId, arr);
+    }
+    const out: Record<string, WiStatus> = {};
+    for (const [fid, statuses] of wisByFeature.entries()) {
+      out[fid] = rollupStatus(statuses);
+    }
+    return out;
+  }, [workItems]);
 
   // Surface the resolved bridge URL in the DOM so the operator can
   // diagnose connectivity from view-source / dev-tools without needing
@@ -265,6 +290,7 @@ export default function Page() {
           cost={cost}
           features={materialisedFeatures}
           workItems={workItems}
+          featureStatuses={featureStatuses}
           cycleId={activeCycleId}
         />
       </section>

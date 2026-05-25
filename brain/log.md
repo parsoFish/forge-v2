@@ -14,6 +14,16 @@ Types: `ingest`, `create-theme`, `update-theme`, `lint`, `structural`, `seed`.
 
 ---
 
+## [2026-05-25] create-theme | claude-harness cycle 7 reflection — 4 new themes, 1 cycle archive
+
+Reflected on `INIT-2026-05-26-claude-trail-verify-cascade-v2` (claude-harness, cycle 7 / "verify cascade v2").
+118-event log. Duration: 38m 23s. Total cost: $19.76 vs $6.00 budget. Outcome: pr-open (unifier failed).
+New themes: ralph-cwd-hallucination-per-iteration (antipattern), unifier-preexisting-failures-second-cycle (antipattern),
+five-of-six-wi-single-iteration-delivery (pattern), pr-description-never-filled-under-gate-pressure (antipattern).
+Key finding: unifier wedged 16 iterations on pre-existing failures (second consecutive cycle); WI-5 cwd hallucination ate 4 extra iterations.
+
+---
+
 ## [2026-05-25] create-theme | claude-harness cycle 6 reflection — 4 new themes, 1 cycle archive
 
 Reflected on `INIT-2026-05-25-claude-trail-verify-cascade` (claude-harness, cycle 6 / "verify cascade").

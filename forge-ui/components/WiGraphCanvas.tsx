@@ -319,6 +319,7 @@ const STATUS_COLOURS: Record<WiStatus, { border: string }> = {
   pending: { border: '#30363d' },
   active: { border: '#1f6feb' },
   complete: { border: '#7ee787' },
+  retrying: { border: '#d29922' },
   failed: { border: '#f85149' },
 };
 

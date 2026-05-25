@@ -220,34 +220,21 @@ async function runOnePmPass(p: PmPassInput): Promise<PmPassOutcome> {
 
   const forgeRoot = resolve(import.meta.dirname, '..', '..');
   const systemPrompt = buildPmSystemPrompt(forgeRoot);
-  const featureCount = manifest.features.length;
-  // C5 sizing band. Operator policy (2026-05-25): forge should handle
-  // 1→N work items; PM is trusted to size the decomposition based on
-  // the manifest's shape. These values are **advisory hints surfaced in
-  // the prompt only** — there is no orchestrator-side rejection on
-  // count. The range derives from featureCount (≥1 WI per feature, up
-  // to ~2*fc+2) so a 1-feature initiative reads "1–4" and a 5-feature
-  // initiative reads "5–12". Sizing guidance lives upstream (architect
-  // chooses initiative scope) and emerges over time from brain themes,
-  // not from hard floors here.
-  const minWorkItems = Math.max(featureCount, 1);
-  const maxWorkItems = featureCount > 4
-    ? 2 * featureCount + 2
-    : Math.min(2 * featureCount + 2, 8);
   // 2026-05-25 (claude-harness cycle 8 audit): read the project-shape
   // context off-disk and inject it into the prompt. PM was hallucinating
   // tooling (jest in a node:test project, npm run build with no build
   // script) because "go read package.json" wasn't load-bearing —
   // inlining the contents makes it so.
   const projectContext = readProjectContext(input.worktreePath);
+  // 2026-05-25 (operator steer): numeric sizing hints (min/max WI count,
+  // parallel-fraction floor) removed — PM is trusted to size, and the
+  // reference for "what shape lands" is brain-query for past successful
+  // WIs, not thin-air bounds derived from feature count.
   let prompt = renderPmUserPrompt({
     initiativeId: input.initiativeId,
     manifestRelPath: input.manifestPath,
     worktreeRelPath: input.worktreePath,
     projectName: manifest.project,
-    minWorkItems,
-    maxWorkItems,
-    parallelFractionAtLeast: 0.3,
     manifestType: detectManifestType(manifest),
     knownFeatureIds: manifest.features.map((f) => f.feature_id),
     projectContext,

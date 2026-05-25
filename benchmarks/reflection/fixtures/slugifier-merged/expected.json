@@ -1,6 +1,0 @@
-{
-  "project": "slugifier",
-  "min_themes": 2,
-  "brain_gap_ids": [],
-  "notes": "Multi-feature merged cycle (3 features → 6 WIs) with 1 send-back round before approval. Expected ≥2 themes: ≥1 pattern (e.g. tight-AC-fast-cycles or parallel-feature-execution) AND ≥1 antipattern (the send-back triggers the categories_balanced criterion's antipattern requirement)."
-}

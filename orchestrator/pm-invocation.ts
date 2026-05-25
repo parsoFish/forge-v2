@@ -99,15 +99,6 @@ export type PmUserPromptInput = {
   /** Path to the worktree where work items will be written, relative to cwd. */
   worktreeRelPath: string;
   projectName: string;
-  /** Lower bound on work-item count (inclusive). Used as a discipline anchor. */
-  minWorkItems: number;
-  /** Upper bound on work-item count (inclusive). Used as an over-decomposition cap. */
-  maxWorkItems: number;
-  /**
-   * Minimum fraction (0-1) of work items that should be parallelisable
-   * (no `depends_on`). Used as a discipline anchor against linear chains.
-   */
-  parallelFractionAtLeast: number;
   /**
    * C27 manifest discriminator. `implementation` (default) = feature-decomposition
    * WIs; `exploration` = sweep-batch WIs (coarse → fine → regression → screenshot+doc).
@@ -248,9 +239,8 @@ export function renderPmUserPrompt(input: PmUserPromptInput): string {
     '## Output requirements',
     '',
     `- Write **one work-item file per atomic unit of work** to \`.forge/work-items/WI-<n>.md\` (cwd-relative). Use \`WI-1\`, \`WI-2\`, … contiguous and 1-indexed within this initiative.`,
-    `- Produce as many work items as the work's shape calls for. Advisory hint based on feature count: **${input.minWorkItems}–${input.maxWorkItems}**. Forge handles 1→N just fine; choose the shape that matches the work, not a number. If the manifest names 1 feature with one acceptance criterion, 1 WI is correct; if it names 5 features each with multiple ACs, 12 WIs is correct. Sizing happened upstream when the architect chose the initiative's scope — your job is to honour it, not to second-guess.`,
-    "- **Per-WI sizing.** If a single WI has more than 4 paths in `files_in_scope` OR more than 3 ACs OR mixes >2 distinct concerns (e.g. \"update fixture + wire renderer + update golden + integration test\"), split it along the largest seam (fixture-only, render-only, test-only). This is per-WI guidance, independent of total count — splitting grows the WI count, which is fine.",
-    `- Aim for **${Math.round(input.parallelFractionAtLeast * 100)}%+** of WIs to have empty \`depends_on\` (parallel-from-start) when the work shape allows it. The dev-loop runs WIs in topological order and parallelises every level of the DAG, so a chain of N WIs collapses that benefit. If the work is genuinely sequential, a linear chain is correct — don't force fake seams.`,
+    `- Decompose the initiative into the work items it actually needs. Forge handles 1→N WIs — choose the shape that matches the work. For sizing reference, **brain-query for past successful work items in this project** (or, if this is the project's first cycle, in similar projects). The brain themes under \`brain/projects/${input.projectName}/themes/\` and \`brain/forge/themes/\` are the source of truth for what shape lands; they accumulate over time as cycles complete.`,
+    `- Where the work allows it, prefer WIs with empty \`depends_on\` (parallel-from-start). The dev-loop runs WIs in topological order and parallelises every level of the DAG, so a chain of N WIs collapses that benefit. If the work is genuinely sequential, a linear chain is correct — don't force fake seams.`,
     "- **Inherit feature parallelism from the manifest.** Read each feature's `depends_on` field. If two manifest features have no edge connecting them (e.g., FEAT-2 and FEAT-3 both `depends_on: [FEAT-1]` but neither depends on the other), the work items implementing them MUST also be independent — no `depends_on` between FEAT-2's WIs and FEAT-3's WIs. The architect's feature graph is your skeleton; the WI graph refines it but does not over-serialise it. Putting a parallel pair into a chain is the most common PM antipattern and the one v1 trafficGame data flagged as causing 48% of job failures.",
     '- **File-scope discipline (load-bearing).** If two WIs would both edit the same file, choose in this priority order: (1) **Best — split the file** along the dimension that distinguishes the WIs (one file per impl; one file per concern; e.g., a `MergeStrategy` interface with `layered.ts` and `stacked.ts` siblings, not two impls jammed into the same `merge-strategy.ts`). (2) **Acceptable — merge the WIs** into one. (3) **Last resort — add a `depends_on` edge** serialising them. Two WIs touching the same file with no edge between them is a guaranteed merge conflict and fails `no_hidden_coupling`. Look at the worktree layout: if the existing code already has separate files per concern, mirror that.',
     '- Frontmatter (locked by ADR 015) — exactly these fields, all required:',

@@ -1,8 +1,0 @@
-{
-  "name": "slugifier",
-  "version": "0.1.0",
-  "type": "module",
-  "scripts": {
-    "test": "node --test --import=tsx tests/"
-  }
-}

@@ -43,7 +43,6 @@ Add to `CLAUDE.md` in `projects/claude-harness`:
 
 This instruction has been recommended in:
 - `2026-05-25-autocommit-safety-net-dominance.md` — cycle 1
-- `2026-05-25-autocommit-rate-worsening-multi-wi.md` — cycles 2-3
 - `2026-05-25-autocommit-rate-unactioned-flag.md` — cycle 4
 
 **It must be applied before cycle 6.**

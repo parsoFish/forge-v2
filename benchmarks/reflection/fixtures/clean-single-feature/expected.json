@@ -1,6 +1,0 @@
-{
-  "project": "healarr",
-  "min_themes": 1,
-  "brain_gap_ids": [],
-  "notes": "Minimal clean cycle: 1 feature, 1 WI, 1 dev iteration, 1 reviewer round, approve immediately, merge. No send-backs, no wedges, no brain-gaps. Reference 'healthy cycle' fixture. Expected ≥ 1 theme (e.g. 'tight-AC-single-iteration-converges' pattern). theme_categories_balanced auto-passes (no antipattern requirement)."
-}

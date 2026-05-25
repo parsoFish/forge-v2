@@ -50,7 +50,6 @@ checkpoints, not feature-completion markers.
 
 The brain has flagged this in:
 - `2026-05-25-autocommit-safety-net-dominance.md` — cycle 1
-- `2026-05-25-autocommit-rate-worsening-multi-wi.md` — cycles 2-3 combined
 
 The fix is a one-line change to `CLAUDE.md`. It has been three cycles. Apply it before cycle 5.
 
@@ -58,4 +57,3 @@ The fix is a one-line change to `CLAUDE.md`. It has been three cycles. Apply it 
 
 - `brain/_raw/cycles/INIT-2026-05-25-claude-trail-since-flag.md` — cycle 4 archive (commit table)
 - `_logs/INIT-2026-05-25-claude-trail-since-flag/events.jsonl` — cycle 4 event log
-- `brain/projects/claude-harness/themes/2026-05-25-autocommit-rate-worsening-multi-wi.md` — prior theme

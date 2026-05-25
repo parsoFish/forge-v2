@@ -1,6 +1,0 @@
-{
-  "project": "trafficGame",
-  "min_themes": 2,
-  "brain_gap_ids": [],
-  "notes": "TS project. Dev-loop wedged on WI-1 (3 iterations, stop_reason: wedged) before a fresh-context recovery attempt resolved it in 1 iteration. Expected ≥ 2 themes: ≥ 1 antipattern (oscillation pattern, or independent-edge-case-guards-in-one-WI), ≥ 1 pattern (fresh-context recovery). The wedge event satisfies the antipattern requirement of theme_categories_balanced."
-}

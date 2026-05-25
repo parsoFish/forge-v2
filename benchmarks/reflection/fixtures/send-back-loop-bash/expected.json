@@ -1,6 +1,0 @@
-{
-  "project": "simplarr",
-  "min_themes": 1,
-  "brain_gap_ids": [],
-  "notes": "Bash CLI fixture — non-TS project to validate cross-project theme path resolution (themes must land under brain/projects/simplarr/themes/). Two reviewer send-back rounds before approval, hitting the iteration cap. Expected: ≥1 theme with category: antipattern (the two-round send-back triggers the antipattern requirement)."
-}

@@ -175,8 +175,12 @@ emitted by the `forge architect commit` CLI, not by this skill.)
 
 ## Constraints
 
-- **Initiatives are small and releasable.** A 50-feature initiative is a
-  roadmap, not an initiative. Cap at ~5 features unless explicitly justified.
+- **Initiatives are coherent and releasable.** Size each one for the work it
+  actually needs — forge handles 1→N features just fine. The reference for
+  what shape lands is past successful initiatives in this project (or, for
+  a fresh project, similar projects): query `brain/projects/<project>/themes/`
+  and `brain/forge/themes/` via `brain-query` to see what has worked. Don't
+  invent caps or floors from thin air.
 - **Acceptance criteria are concrete.** Vague criteria propagate downstream
   and break the developer loop. Reject your own draft if you can't write a
   Given-When-Then for it.

@@ -221,15 +221,16 @@ async function runOnePmPass(p: PmPassInput): Promise<PmPassOutcome> {
   const forgeRoot = resolve(import.meta.dirname, '..', '..');
   const systemPrompt = buildPmSystemPrompt(forgeRoot);
   const featureCount = manifest.features.length;
-  // C5 sizing band. Floor restored to max(featureCount, 2) after the
-  // 2026-05-25 operator audit: the relaxed `minWorkItems = 1` floor +
-  // anti-decomposition prompt language pushed PM to consistently
-  // produce 1-WI cycles, defeating forge's value-prop (forge earns its
-  // keep when chunky operator initiatives are decomposed into a
-  // parallel-friendly DAG of small WIs — single-WI cycles are work the
-  // operator could have done directly). Ceiling stays at 2*fc+2 (cap 8
-  // for ≤4-feature initiatives).
-  const minWorkItems = Math.max(featureCount, 2);
+  // C5 sizing band. Operator policy (2026-05-25): forge should handle
+  // 1→N work items; PM is trusted to size the decomposition based on
+  // the manifest's shape. These values are **advisory hints surfaced in
+  // the prompt only** — there is no orchestrator-side rejection on
+  // count. The range derives from featureCount (≥1 WI per feature, up
+  // to ~2*fc+2) so a 1-feature initiative reads "1–4" and a 5-feature
+  // initiative reads "5–12". Sizing guidance lives upstream (architect
+  // chooses initiative scope) and emerges over time from brain themes,
+  // not from hard floors here.
+  const minWorkItems = Math.max(featureCount, 1);
   const maxWorkItems = featureCount > 4
     ? 2 * featureCount + 2
     : Math.min(2 * featureCount + 2, 8);

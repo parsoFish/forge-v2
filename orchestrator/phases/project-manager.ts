@@ -221,14 +221,15 @@ async function runOnePmPass(p: PmPassInput): Promise<PmPassOutcome> {
   const forgeRoot = resolve(import.meta.dirname, '..', '..');
   const systemPrompt = buildPmSystemPrompt(forgeRoot);
   const featureCount = manifest.features.length;
-  // C5 sizing band as ADVISORY range (operator note 2026-05-25: PM was
-  // hitting the cap formulaically, over-decomposing to "look thorough"
-  // instead of letting work-shape decide). Floor relaxed to 1 — a
-  // trivial single-WI initiative is legitimate. Ceiling kept (rough cap
-  // on cycle complexity) but PM may exceed if the work genuinely needs
-  // it. The hint is what's surfaced to the agent; no orchestrator-side
-  // rejection on count.
-  const minWorkItems = 1;
+  // C5 sizing band. Floor restored to max(featureCount, 2) after the
+  // 2026-05-25 operator audit: the relaxed `minWorkItems = 1` floor +
+  // anti-decomposition prompt language pushed PM to consistently
+  // produce 1-WI cycles, defeating forge's value-prop (forge earns its
+  // keep when chunky operator initiatives are decomposed into a
+  // parallel-friendly DAG of small WIs — single-WI cycles are work the
+  // operator could have done directly). Ceiling stays at 2*fc+2 (cap 8
+  // for ≤4-feature initiatives).
+  const minWorkItems = Math.max(featureCount, 2);
   const maxWorkItems = featureCount > 4
     ? 2 * featureCount + 2
     : Math.min(2 * featureCount + 2, 8);

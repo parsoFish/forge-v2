@@ -132,8 +132,28 @@ async function sleep(ms) {
  * Spawn `forge watch --no-open` in its own process group. Returns once the
  * UI is ready (Next.js logs "Ready in"). Reuses the discovered ui/bridge
  * URLs across all scenarios in a run.
+ *
+ * 2026-05-25: if a forge watch instance is already running on the default
+ * ports (4124 / 4123), reuse it instead of failing on EADDRINUSE. Lets
+ * the operator run the harness without tearing down their working session.
  */
 async function startWatch() {
+  // Probe for an existing forge watch on the conventional ports.
+  const probe = async (url) => {
+    try {
+      const c = new AbortController();
+      const t = setTimeout(() => c.abort(), 500);
+      const res = await fetch(url, { signal: c.signal });
+      clearTimeout(t);
+      return res.ok;
+    } catch { return false; }
+  };
+  const existingBridge = await probe('http://127.0.0.1:4123/api/cycles');
+  const existingUi = await probe('http://localhost:4124/');
+  if (existingBridge && existingUi) {
+    console.log('[harness] reusing existing forge watch (ui=http://localhost:4124 bridge=http://127.0.0.1:4123)');
+    return { proc: null, uiUrl: 'http://localhost:4124', bridgeUrl: 'http://127.0.0.1:4123' };
+  }
   return new Promise((res, rej) => {
     const proc = spawn(
       process.execPath,
@@ -160,6 +180,9 @@ async function startWatch() {
 }
 
 function stopWatch(proc) {
+  // Reused-existing-watch path (proc === null): nothing to stop; we
+  // didn't start it, the operator owns the process.
+  if (!proc) return Promise.resolve();
   return new Promise((res) => {
     let settled = false;
     const done = () => { if (settled) return; settled = true; res(); };
@@ -967,10 +990,13 @@ async function JOURNEY(ui, page) {
     appendEvent(cycle, 'architect', 'log', 'PLAN.md written: 5 acceptance criteria, 0 risks blocking');
     writeArtifact(cycle, 'PLAN.md', JOURNEY_PLAN_MD);
     appendEvent(cycle, 'architect', 'end', 'architect.end', { cost_usd: 0.18, duration_ms: 24000 });
-    // Give CycleArtifacts a probe interval (5s) to notice the artifact.
+    // 2026-05-25: post-Bug-4 fix, the plan link is an inline
+    // ArtifactBadge on the architect row of the StateMachine (not the
+    // old standalone CycleArtifacts banner). Wait for [data-action="view-plan"]
+    // to appear. Probe interval is still 5s.
     if (page) {
       await page.waitForFunction(
-        () => document.querySelector('[data-component="cycle-artifacts"]')?.getAttribute('data-plan-state') === 'present',
+        () => !!document.querySelector('[data-phase="architect"] [data-action="view-plan"]'),
         undefined,
         { timeout: 8000 },
       ).catch(() => { /* */ });
@@ -1020,8 +1046,22 @@ async function JOURNEY(ui, page) {
     await pauseAndCaptureJourney(page, 'J06-pm-complete-wi-graph');
 
     // ---- 7: dev-loop iterates ----
-    await narrate('Step 7: dev-loop iterates WI-1 (core), then WI-2 (tests) and WI-3 (docs) in parallel.');
+    await narrate('Step 7: dev-loop iterates WI-1 (core), then WI-2 (tests) and WI-3 (docs) in parallel. Note the iter-0 sharp-gate check fires FIRST and intentionally fails (the test file doesn\'t exist yet — that\'s the L2 must-fail check) — post-Bug-3 fix, that emits as event_type:\'log\' with expected_fail:true, so dev-loop stays active rather than flipping red.');
     appendEvent(cycle, 'developer-loop', 'start', 'dev-loop start');
+    // Bug 3 demo: iter-0 sharp-gate must-fail. Pre-fix this fired as
+    // event_type:'error' and the UI marked dev-loop as failed; post-fix
+    // it's event_type:'log' with expected_fail:true and the UI ignores it.
+    appendEvent(cycle, 'developer-loop', 'log', 'gate.expected-fail', {
+      metadata: {
+        work_item_id: 'WI-1',
+        gate_passed: false,
+        gate_exit_code: 1,
+        gate_command: 'node --test tests/greet.test.ts',
+        gate_stderr_tail: "Could not find 'tests/greet.test.ts'\n",
+        iteration: 0,
+        expected_fail: true,
+      },
+    });
     appendEvent(cycle, 'developer-loop', 'iteration', 'WI-1 iter 1', { metadata: { work_item_id: 'WI-1' } });
     appendEvent(cycle, 'developer-loop', 'tool_use', 'Write src/greet.ts',     { metadata: { work_item_id: 'WI-1' } });
     appendEvent(cycle, 'developer-loop', 'tool_use', 'Bash node --test',       { metadata: { work_item_id: 'WI-1' } });
@@ -1038,9 +1078,15 @@ async function JOURNEY(ui, page) {
     appendEvent(cycle, 'review-loop', 'tool_use', 'Bash gh pr create --draft');
     appendEvent(cycle, 'review-loop', 'tool_use', 'Write DEMO.md');
     writeArtifact(cycle, 'DEMO.md', JOURNEY_DEMO_MD);
+    // 2026-05-25: post-Bug-4 fix, the demo link is an inline
+    // ArtifactBadge on the REFLECTION row (the operator's "where the
+    // demo lives" mental model post-2026-05-25 steer), not the old
+    // standalone CycleArtifacts banner. The badge stays hidden until
+    // review-loop OR reflection is non-pending — by this step the
+    // review-loop start event has fired, so the badge will surface.
     if (page) {
       await page.waitForFunction(
-        () => document.querySelector('[data-component="cycle-artifacts"]')?.getAttribute('data-demo-state') === 'present',
+        () => !!document.querySelector('[data-phase="reflection"] [data-action="view-demo"]'),
         undefined,
         { timeout: 8000 },
       ).catch(() => { /* */ });

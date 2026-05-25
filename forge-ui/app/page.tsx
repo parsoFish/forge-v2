@@ -20,7 +20,7 @@ import { AgentHexCanvas } from '@/components/AgentHexCanvas';
 import { ActivityPanel } from '@/components/ActivityPanel';
 import { VerdictForm } from '@/components/VerdictForm';
 import { SchedulerBanner } from '@/components/SchedulerBanner';
-import { CycleArtifacts } from '@/components/CycleArtifacts';
+import { ArtifactBadge } from '@/components/CycleArtifacts';
 
 export default function Page() {
   const [snapshot, setSnapshot] = useState<CycleListSnapshot>({ live: [], recent: [] });
@@ -157,8 +157,6 @@ export default function Page() {
 
       <CyclesTab cycles={allCycles} activeId={activeCycleId} onSelect={setActiveCycleId} />
 
-      <CycleArtifacts cycleId={activeCycleId} />
-
       {activeCycle?.status === 'ready-for-review' && (
         <section style={{ marginTop: 24 }} data-section="verdict-form">
           <VerdictForm initiativeId={activeCycle.initiativeId} cycleId={activeCycle.cycleId} />
@@ -170,7 +168,7 @@ export default function Page() {
       </section>
 
       <section style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24, marginTop: 24 }}>
-        <StateMachine phaseStates={phaseStates} />
+        <StateMachine phaseStates={phaseStates} cycleId={activeCycleId} />
         <Sidebar events={events} />
       </section>
 
@@ -254,7 +252,16 @@ function CyclesTab({
   );
 }
 
-function StateMachine({ phaseStates }: { phaseStates: PhaseState[] }) {
+function StateMachine({ phaseStates, cycleId }: { phaseStates: PhaseState[]; cycleId: string | null }) {
+  // 2026-05-25: surface PLAN.md inline on the architect row and
+  // DEMO.md inline on the reflection row, per operator note ("plan
+  // should be shown after architect, demo should be shown as part of
+  // the reflect phase"). The demo is also revealed during review-loop
+  // (it's the operator's review surface) so the badge unhides once
+  // review-loop is active or later.
+  const reflectionStatus = phaseStates.find((p) => p.phase === 'reflection')?.status ?? 'pending';
+  const reviewStatus = phaseStates.find((p) => p.phase === 'review-loop')?.status ?? 'pending';
+  const demoVisible = reviewStatus !== 'pending' || reflectionStatus !== 'pending';
   return (
     <div style={panelStyle} data-section="state-machine">
       <h2 style={panelTitle}>state machine</h2>
@@ -273,6 +280,25 @@ function StateMachine({ phaseStates }: { phaseStates: PhaseState[] }) {
                 {phaseGlyph(status)}
               </span>
               <span style={{ flex: 1 }}>{phase}</span>
+              {phase === 'architect' && (
+                <ArtifactBadge
+                  cycleId={cycleId}
+                  filename="PLAN.md"
+                  href={`/plan/${encodeURIComponent(cycleId ?? '')}`}
+                  label="📋 plan"
+                  title="The architect's PLAN.md for this cycle"
+                />
+              )}
+              {phase === 'reflection' && (
+                <ArtifactBadge
+                  cycleId={cycleId}
+                  filename="DEMO.md"
+                  href={`/demo/${encodeURIComponent(cycleId ?? '')}`}
+                  label="🎬 demo"
+                  title="The unifier's DEMO.md (reviewable here from review-loop onward)"
+                  visible={demoVisible}
+                />
+              )}
               <span style={{ color: '#8b949e', fontSize: 11 }}>{status}</span>
             </li>
           );

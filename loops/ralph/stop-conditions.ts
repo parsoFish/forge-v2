@@ -37,7 +37,7 @@ export type StopResult =
 export async function checkStopConditions(
   state: LoopState,
   conditions: StopCondition[],
-  qualityGates: () => boolean | Promise<boolean>,
+  qualityGates: (ctx?: { iteration: number }) => boolean | Promise<boolean>,
 ): Promise<StopResult> {
   for (const condition of conditions) {
     const result = await checkOne(state, condition, qualityGates);
@@ -49,11 +49,11 @@ export async function checkStopConditions(
 async function checkOne(
   state: LoopState,
   condition: StopCondition,
-  qualityGates: () => boolean | Promise<boolean>,
+  qualityGates: (ctx?: { iteration: number }) => boolean | Promise<boolean>,
 ): Promise<StopResult> {
   switch (condition.kind) {
     case 'quality-gates-pass':
-      if (await qualityGates()) {
+      if (await qualityGates({ iteration: state.iteration })) {
         return { stop: true, reason: 'quality gates pass', condition: 'quality-gates-pass' };
       }
       return { stop: false };
@@ -124,6 +124,13 @@ export type GateRunInfo = {
    * code alone (the pre-tightening behaviour).
    */
   rejectReason?: 'no-work-indicator' | 'required-paths-missing';
+  /**
+   * The Ralph iteration this gate ran in. iter-0 is the sharp-gate
+   * must-fail check that runs BEFORE the agent has done any work; a
+   * failure there is expected and the emitter (developer-loop.ts)
+   * should classify it as a `log` event rather than an `error`.
+   */
+  iteration?: number;
 };
 
 const GATE_OUTPUT_MAX = 4096;
@@ -174,8 +181,9 @@ export type GateTighteningOptions = {
 export function defaultQualityGates(
   worktreePath: string,
   onRun?: (info: GateRunInfo) => void,
+  ctx?: { iteration: number },
 ): boolean {
-  return runGateCapturing(worktreePath, ['sh', '-c', 'npm test --silent'], onRun);
+  return runGateCapturing(worktreePath, ['sh', '-c', 'npm test --silent'], onRun, undefined, ctx?.iteration);
 }
 
 /**
@@ -198,8 +206,8 @@ export function makeQualityGateFromCmd(
   cmd: readonly string[],
   onRun?: (info: GateRunInfo) => void,
   options?: GateTighteningOptions,
-): () => boolean {
-  return () => runGateCapturing(worktreePath, cmd, onRun, options);
+): (ctx?: { iteration: number }) => boolean {
+  return (ctx) => runGateCapturing(worktreePath, cmd, onRun, options, ctx?.iteration);
 }
 
 /**
@@ -223,14 +231,15 @@ function runGateCapturing(
   cmd: readonly string[],
   onRun: ((info: GateRunInfo) => void) | undefined,
   options?: GateTighteningOptions,
+  iteration?: number,
 ): boolean {
   if (cmd.length === 0) {
-    onRun?.({ passed: false, exitCode: -1, durationMs: 0, stdoutTail: '', stderrTail: '', command: '' });
+    onRun?.({ passed: false, exitCode: -1, durationMs: 0, stdoutTail: '', stderrTail: '', command: '', iteration });
     return false;
   }
   const [head, ...rest] = cmd;
   if (!head) {
-    onRun?.({ passed: false, exitCode: -1, durationMs: 0, stdoutTail: '', stderrTail: '', command: '' });
+    onRun?.({ passed: false, exitCode: -1, durationMs: 0, stdoutTail: '', stderrTail: '', command: '', iteration });
     return false;
   }
   const command = cmd.join(' ');
@@ -308,6 +317,7 @@ function runGateCapturing(
     stderrTail: tail(stderr, GATE_OUTPUT_MAX),
     command,
     ...(rejectReason ? { rejectReason } : {}),
+    iteration,
   });
   return passed;
 }

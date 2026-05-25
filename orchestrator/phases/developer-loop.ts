@@ -552,16 +552,26 @@ function emitGateEvent(
   workItemId: string,
   info: GateRunInfo,
 ): void {
+  // 2026-05-25: iter-0 gate fails are EXPECTED (the L2 sharp-gate
+  // check proves the gate isn't hollow before the agent has done any
+  // work). Emit as `log` with `expected_fail: true` so the UI doesn't
+  // flip the dev-loop phase to red on a normal-path event. Real
+  // failures (iter >= 1 with the gate still failing) stay as `error`.
+  const isExpectedIter0Fail = !info.passed && info.iteration === 0;
   logger.emit({
     initiative_id: initiativeId,
     parent_event_id: parentEventId,
     phase: 'developer-loop',
     skill: 'developer-ralph',
-    event_type: info.passed ? 'log' : 'error',
+    event_type: info.passed || isExpectedIter0Fail ? 'log' : 'error',
     input_refs: [],
     output_refs: [],
     duration_ms: info.durationMs,
-    message: info.passed ? 'gate.pass' : 'gate.fail',
+    message: info.passed
+      ? 'gate.pass'
+      : isExpectedIter0Fail
+        ? 'gate.expected-fail'
+        : 'gate.fail',
     metadata: {
       work_item_id: workItemId,
       gate_passed: info.passed,
@@ -569,6 +579,8 @@ function emitGateEvent(
       gate_command: info.command,
       gate_stdout_tail: info.stdoutTail,
       gate_stderr_tail: info.stderrTail,
+      ...(info.iteration !== undefined ? { iteration: info.iteration } : {}),
+      ...(isExpectedIter0Fail ? { expected_fail: true } : {}),
     },
   });
 }

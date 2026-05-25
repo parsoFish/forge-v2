@@ -4,8 +4,8 @@
  * and by the monitor (tmux pane runs `forge status --watch`).
  */
 
-import { readFileSync, existsSync } from 'node:fs';
-import { join } from 'node:path';
+import { readFileSync, existsSync, readdirSync, statSync } from 'node:fs';
+import { join, resolve } from 'node:path';
 import { counts, listInFlight, getPaths } from '../orchestrator/queue.ts';
 import { loadAliases } from '../orchestrator/initiative-id.ts';
 
@@ -19,8 +19,38 @@ export type StatusSnapshot = {
     iteration: number;
     heartbeatAgeSec: number;
     worktreePath?: string;
+    /**
+     * Most recent `_logs/<timestamp>_<initiativeId>/` dir for this
+     * initiative, or undefined if none exists yet. Surfaced in
+     * `forge status` output so the operator never has to guess which
+     * log corresponds to a cycle on retry — the stale-log trap that
+     * tripped multiple sessions during the 2026-05-25 dogfood.
+     */
+    latestLogDir?: string;
   }>;
 };
+
+/**
+ * Find the most recent `_logs/*_<initiativeId>/` dir for an initiative.
+ * Returns the path relative to the forge root, or undefined when no
+ * matching cycle log exists yet. Picks by mtime so retries surface the
+ * freshest cycle.
+ */
+export function findLatestLogDir(initiativeId: string, logsRoot = '_logs'): string | undefined {
+  const root = resolve(logsRoot);
+  if (!existsSync(root)) return undefined;
+  let entries: string[];
+  try { entries = readdirSync(root); } catch { return undefined; }
+  const matches = entries
+    .filter((name) => name === initiativeId || name.endsWith(`_${initiativeId}`))
+    .map((name) => {
+      const abs = join(root, name);
+      try { return { name, abs, mtimeMs: statSync(abs).mtimeMs }; } catch { return undefined; }
+    })
+    .filter((x): x is { name: string; abs: string; mtimeMs: number } => x !== undefined)
+    .sort((a, b) => b.mtimeMs - a.mtimeMs);
+  return matches[0]?.abs;
+}
 
 export function snapshot(queueRoot = '_queue'): StatusSnapshot {
   const paths = getPaths(queueRoot);
@@ -30,7 +60,7 @@ export function snapshot(queueRoot = '_queue'): StatusSnapshot {
     inFlight: listInFlight(paths).map((filename) => {
       const row = parseInFlight(filename, paths.inFlight);
       const meta = aliases.by_canonical[row.initiativeId];
-      return { ...row, handle: meta?.handle ?? '' };
+      return { ...row, handle: meta?.handle ?? '', latestLogDir: findLatestLogDir(row.initiativeId) };
     }),
   };
 }
@@ -83,6 +113,9 @@ export function render(s: StatusSnapshot): string {
       lines.push(
         `  ${f.initiativeId.padEnd(31)} ${(f.handle || '-').padEnd(11)} ${f.project.padEnd(13)} ${f.phase.padEnd(21)} ${String(f.iteration).padStart(4)}  ${String(f.heartbeatAgeSec).padStart(5)}s`,
       );
+      if (f.latestLogDir) {
+        lines.push(`    log: ${f.latestLogDir}`);
+      }
     }
   }
   return lines.join('\n');

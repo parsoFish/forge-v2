@@ -74,10 +74,28 @@ The orchestrator currently enforces several things via runtime checks that start
 - The "Always do / Ask first / Never do" lists in CLAUDE.md are a mix of durable principles and diagnostic-of-the-day rules. Re-read each bullet against the "can the rule be justified from a durable principle" test.
 - Tier 0 already dropped the bench-anchored "Status of the scaffold". Re-check the rest of CLAUDE.md for similar bench-anchored claims.
 
-### Tier 4 — Brain themes audit (low impact, slow)
+### Tier 4 — Brain themes audit (split into a separate plan)
 
-- Walk `brain/projects/claude-harness/themes/` and `brain/forge/themes/` for themes that overgeneralise a single observation or telegraph a defensive shape. Tier 0 dropped 3; there are likely more.
-- Don't delete themes that record real defects fixed (e.g., the autocommit-rate themes are real evidence). Delete only the ones whose *generalisation* was wrong.
+Operator decision (2026-05-25): Tier 4 becomes its own plan once
+Tiers 1–3 land. The brain structure has grown organically over many
+cycles and warrants a holistic audit, not just spot-deletes. The new
+plan will live at `docs/planning/<date>-brain-audit/PLAN.md` and
+should cover:
+
+- **Structural audit** — directory layout (forge themes / project
+  themes / `_raw/cycles/` / `graphify-out/`), naming conventions,
+  retention policy. Has it accumulated dead structure? Is the
+  three-layer Karpathy wiki shape still holding?
+- **Content audit** — which themes overgeneralise a single observation,
+  which ones telegraph defensive shapes, which ones are stale because
+  the underlying behaviour has changed. Tier 0 dropped 3; there are
+  likely more.
+- **Reference integrity** — sibling-theme back-refs, raw-cycle
+  citations, INDEX.md state.
+
+Don't delete themes that record real defects fixed (e.g., the
+autocommit-rate themes are real evidence). Delete only the ones whose
+*generalisation* was wrong.
 
 ## Anti-goals (what NOT to do)
 
@@ -97,9 +115,31 @@ The orchestrator currently enforces several things via runtime checks that start
 Tier 0 removed the benches outright; they will need a replacement
 eventually. The right shape is unclear and intentionally deferred:
 
-- One option: derive bench fixtures from `brain/_raw/cycles/*.md` automatically (pick the last N successful merged cycles, replay their PM input through the current PM, check the output looks similar). Anchors the bench on real cycle artifacts.
-- Another: drop per-phase benches entirely; rely on real merged cycles as the only signal, with a `forge bench` CLI that just lists "what shipped" / "what wedged" across recent cycles.
-- Another: keep an e2e-only bench (one fixture, real initiative, full cycle) as a regression-detection canary.
+- **Derive bench fixtures from `brain/_raw/cycles/*.md` automatically** —
+  pick the last N successful merged cycles, replay their PM input
+  through the current PM, check the output looks similar. Anchors the
+  bench on real cycle artifacts.
+- **Drop per-phase benches entirely** — rely on real merged cycles as
+  the only signal, with a `forge bench` CLI that just lists "what
+  shipped" / "what wedged" across recent cycles.
+- **Keep an e2e-only bench** — one fixture, one real initiative, full
+  cycle — as a regression-detection canary.
+- **Rebuild-from-scratch self-bench** (operator idea, 2026-05-25): use
+  [`parsoFish/claude-harness`](https://github.com/parsoFish/claude-harness)
+  (or a snapshot of it) as the reference. Have forge rebuild the
+  project from a clean slate through the full cycle pipeline; judge
+  the resulting tree against the reference. Expensive (a single run
+  is a 10+ cycle / multi-hour journey) but high-signal: it directly
+  measures whether forge can take a known set of operator inputs and
+  reproduce a known-good output. Could be the load-bearing feedback
+  loop for forge-itself updates — if a forge change degrades the
+  rebuild, the change regressed something real.
+
+  Open sub-questions: how to score the resulting tree (structural
+  diff? test-pass parity? subjective Opus-judge?); how to seed the
+  initial roadmap deterministically; whether to use the public repo
+  or a frozen snapshot; whether to run it on every forge PR or
+  weekly. Worth a dedicated planning pass once the thinning is done.
 
 This is a Tier 5 decision; not blocking the current thinning pass.
 

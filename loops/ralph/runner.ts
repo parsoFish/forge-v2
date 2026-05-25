@@ -38,7 +38,7 @@ export type LoopInput = {
    * --silent`). The bench harness injects per-fixture commands (pytest / bats
    * / etc.).
    */
-  qualityGate?: () => boolean | Promise<boolean>;
+  qualityGate?: (ctx?: { iteration: number }) => boolean | Promise<boolean>;
   /**
    * F-14: optional per-iteration callback. Called immediately after each
    * agent invocation completes (before the next stop-condition check), with
@@ -177,7 +177,7 @@ export async function run(input: LoopInput, agent: AgentInvocation = stubAgent):
       : []),
   ];
 
-  const qualityGate = input.qualityGate ?? (() => defaultQualityGates(input.worktreePath));
+  const qualityGate = input.qualityGate ?? ((ctx) => defaultQualityGates(input.worktreePath, undefined, ctx));
 
   const state: LoopState = {
     worktreePath: input.worktreePath,
@@ -203,7 +203,7 @@ export async function run(input: LoopInput, agent: AgentInvocation = stubAgent):
     // passes here, the gate is hollow — bail with a synthetic stop
     // condition the caller surfaces as `gate-too-loose`.
     if (state.iteration === 0 && failOnHollowGate) {
-      const passed = await Promise.resolve(qualityGate());
+      const passed = await Promise.resolve(qualityGate({ iteration: 0 }));
       if (passed) {
         // stop_reason is the discriminator string — callers
         // (developer-loop, cycle.ts, failure-classifier) read this to

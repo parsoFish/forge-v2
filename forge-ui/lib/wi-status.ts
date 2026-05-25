@@ -84,7 +84,14 @@ function lastIndexOfType(events: readonly EventLogEntry[], type: string): number
 
 function hasErrorBetween(events: readonly EventLogEntry[], afterIdx: number, beforeIdx: number): boolean {
   for (let i = afterIdx + 1; i < beforeIdx; i++) {
-    if (events[i].event_type === 'error') return true;
+    if (events[i].event_type !== 'error') continue;
+    // Expected failures (e.g. iter-0 must-fail gate check) are emitted
+    // as `log` events per developer-loop.ts emitGateEvent — but be
+    // defensive: also treat any `error` event tagged
+    // `metadata.expected_fail: true` as non-terminal so the phase
+    // doesn't go red on what is a healthy code path.
+    if (events[i].metadata?.expected_fail === true) continue;
+    return true;
   }
   return false;
 }

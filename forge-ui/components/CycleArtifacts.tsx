@@ -4,105 +4,90 @@ import { useEffect, useState } from 'react';
 
 import { resolveBridgeUrl } from '@/lib/bridge-client';
 
-/**
- * Surface "view plan / view demo" links the moment the architect or
- * unifier has filed the corresponding artifact for a cycle. Earlier
- * this lived inside the VerdictForm (only visible at ready-for-review),
- * which buried the architect's plan until after dev-loop + review had
- * finished. The plan is the operator's hand-off acceptance criterion;
- * it should be readable the moment it exists.
- *
- * Probes /api/artifact/<cycleId>/<name> with a HEAD-ish GET; the bridge
- * returns 404 cheaply when the file isn't filed yet. Re-probes every
- * 5s while the cycle is live so the links appear as soon as the
- * artifact lands.
- */
-export function CycleArtifacts({ cycleId }: { cycleId: string | null }): JSX.Element | null {
-  const [plan, setPlan] = useState<'unknown' | 'present' | 'missing'>('unknown');
-  const [demo, setDemo] = useState<'unknown' | 'present' | 'missing'>('unknown');
+type Presence = 'unknown' | 'present' | 'missing';
 
+/**
+ * Hook: probe the bridge for an artifact's presence. Returns `present`
+ * once the file is filed, otherwise `missing` (probed) or `unknown` (no
+ * cycle, no bridge). Re-probes every 5s while the cycle is live so the
+ * link surfaces as soon as the artifact lands.
+ */
+export function useArtifactPresence(cycleId: string | null, filename: string): Presence {
+  const [state, setState] = useState<Presence>('unknown');
   useEffect(() => {
-    if (!cycleId) { setPlan('unknown'); setDemo('unknown'); return; }
+    if (!cycleId) { setState('unknown'); return; }
     let cancelled = false;
-    const probe = async (filename: string, setter: (s: 'present' | 'missing') => void): Promise<void> => {
+    const probe = async (): Promise<void> => {
       const base = await resolveBridgeUrl();
-      if (!base) return;
+      if (!base || cancelled) return;
       try {
         const res = await fetch(`${base}/api/artifact/${encodeURIComponent(cycleId)}/${encodeURIComponent(filename)}`);
         if (cancelled) return;
-        setter(res.ok ? 'present' : 'missing');
+        setState(res.ok ? 'present' : 'missing');
       } catch { /* bridge transient; will retry on next tick */ }
     };
-    const tick = (): void => {
-      void probe('PLAN.md', setPlan);
-      void probe('DEMO.md', setDemo);
-    };
-    tick();
-    const id = setInterval(tick, 5000);
+    void probe();
+    const id = setInterval(() => { void probe(); }, 5000);
     return () => { cancelled = true; clearInterval(id); };
-  }, [cycleId]);
+  }, [cycleId, filename]);
+  return state;
+}
 
-  if (!cycleId) return null;
-  if (plan !== 'present' && demo !== 'present') return null;
-
+/**
+ * Inline link badge — used by the StateMachine phase rows so the plan
+ * surfaces next to the architect row and the demo next to the
+ * reflection row (per operator's 2026-05-25 note: "plan should be
+ * shown after architect, demo should be shown as part of the reflect
+ * phase"). Returns null when the file isn't filed yet.
+ */
+export function ArtifactBadge({
+  cycleId,
+  filename,
+  href,
+  label,
+  title,
+  visible,
+}: {
+  cycleId: string | null;
+  filename: string;
+  href: string;
+  label: string;
+  title: string;
+  /**
+   * Phase-gated visibility hint. Pass `false` to hide the badge even
+   * when the file is present (e.g. demo gated on reflection-active so
+   * the operator isn't pulled to it during dev-loop iteration).
+   * Defaults to true.
+   */
+  visible?: boolean;
+}): JSX.Element | null {
+  const presence = useArtifactPresence(cycleId, filename);
+  if (presence !== 'present') return null;
+  if (visible === false) return null;
   return (
-    <div
-      style={containerStyle}
-      data-component="cycle-artifacts"
-      data-plan-state={plan}
-      data-demo-state={demo}
+    <a
+      href={href}
+      data-action={`view-${filename.replace(/\.md$/, '').toLowerCase()}`}
+      target="_blank"
+      rel="noreferrer"
+      style={badgeStyle}
+      title={title}
     >
-      <span style={{ fontSize: 11, color: '#8b949e', textTransform: 'uppercase', letterSpacing: 0.4 }}>
-        artifacts
-      </span>
-      {plan === 'present' && (
-        <a
-          href={`/plan/${encodeURIComponent(cycleId)}`}
-          data-action="view-plan"
-          target="_blank"
-          rel="noreferrer"
-          style={linkStyle}
-          title="The architect's PLAN.md for this cycle"
-        >
-          📋 view plan
-        </a>
-      )}
-      {demo === 'present' && (
-        <a
-          href={`/demo/${encodeURIComponent(cycleId)}`}
-          data-action="view-demo"
-          target="_blank"
-          rel="noreferrer"
-          style={linkStyle}
-          title="The unifier's DEMO.md for this cycle"
-        >
-          🎬 view demo
-        </a>
-      )}
-    </div>
+      {label}
+    </a>
   );
 }
 
-const containerStyle: React.CSSProperties = {
-  display: 'flex',
-  alignItems: 'center',
-  gap: 12,
-  marginTop: 14,
-  padding: '8px 12px',
-  background: '#0d1117',
-  border: '1px solid #21262d',
-  borderRadius: 6,
-};
-
-const linkStyle: React.CSSProperties = {
+const badgeStyle: React.CSSProperties = {
   display: 'inline-flex',
   alignItems: 'center',
-  gap: 6,
-  fontSize: 12,
-  padding: '4px 10px',
+  gap: 4,
+  fontSize: 11,
+  padding: '2px 8px',
   background: '#161b22',
   border: '1px solid #30363d',
-  borderRadius: 5,
+  borderRadius: 4,
   color: '#58a6ff',
   textDecoration: 'none',
+  marginLeft: 8,
 };

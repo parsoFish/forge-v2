@@ -23,7 +23,7 @@ import { execSync, spawn } from 'node:child_process';
 import { basename, join, resolve } from 'node:path';
 import { runCycle } from './cycle.ts';
 import { serve, status as schedulerStatus } from './scheduler.ts';
-import { snapshot, render } from '../cli/visualise.ts';
+import { snapshot, render, findLatestLogDir } from '../cli/visualise.ts';
 import { summariseCycle, summariseAll } from '../cli/metrics.ts';
 import { getPaths } from './queue.ts';
 import { parseManifest, validateManifest, writeManifest } from './manifest.ts';
@@ -98,11 +98,13 @@ process.chdir(FORGE_ROOT);
     case 'preflight':
       return cmdPreflight(args.slice(1));
     case 'review':
-      return cmdReview(args.slice(1));
+      return await cmdReview(args.slice(1));
     case 'reflect':
       return await cmdReflect(args.slice(1));
     case 'report':
       return cmdReport(args.slice(1));
+    case 'log':
+      return cmdLog(args.slice(1));
     case 'demo':
       return await cmdDemo(args.slice(1));
     case 'brain':
@@ -143,7 +145,12 @@ Usage:
   forge enqueue <project> <spec>          Drop an initiative manifest into _queue/pending/
   forge enqueue --from-manifest <path>    Validate + drop a pre-formed manifest
   forge enqueue --fixture                 Drop a smoke-test fixture into _queue/pending/
-  forge status [--watch]                  Print queue + in-flight snapshot
+  forge status [--watch]                  Print queue + in-flight snapshot (now also prints
+                                          each in-flight cycle's latest log dir to defeat stale-log mix-ups)
+  forge log <initiative> [--events|--tail N]
+                                          Print the latest _logs/<timestamp>_<id>/ dir for an
+                                          initiative. --events prints the events.jsonl path;
+                                          --tail [N=20] prints the last N event lines.
   forge metrics [<cycle-id>]              Per-cycle aggregates (or all cycles)
   forge preflight <project>               Check the C1–C6 forge↔project contract (declines, naming the failing clause)
   forge review <initiative-id-or-handle>  Print the open verdict prompt and the response file's path
@@ -477,7 +484,7 @@ function resolveOrExit(input: string, verb: string): string {
   process.exit(2);
 }
 
-function cmdReview(rest: string[]): void {
+async function cmdReview(rest: string[]): Promise<void> {
   const rawId = rest[0];
   if (!rawId) {
     console.error('forge review: missing <initiative-id-or-handle>');
@@ -492,7 +499,7 @@ function cmdReview(rest: string[]): void {
   // (b) force-merge a worktree the reviewer-Ralph couldn't approve itself,
   // (c) abandon a stuck initiative cleanly (move to failed/, drop worktree).
   if (rest.includes('--inspect')) return cmdReviewInspect(initiativeId);
-  if (rest.includes('--approve')) return cmdReviewApprove(initiativeId);
+  if (rest.includes('--approve')) return await cmdReviewApprove(initiativeId);
   if (rest.includes('--abandon')) return cmdReviewAbandon(initiativeId);
 
   // Default: print the verdict prompt (existing behaviour).
@@ -581,7 +588,7 @@ function cmdReviewInspect(initiativeId: string): void {
  * Performs a fast-forward merge and triggers the same cleanup the normal
  * merge path uses.
  */
-function cmdReviewApprove(initiativeId: string): void {
+async function cmdReviewApprove(initiativeId: string): Promise<void> {
   const queuePaths = getPaths();
   const located = locateInitiative(initiativeId, queuePaths);
   if (!located) {
@@ -625,6 +632,75 @@ function cmdReviewApprove(initiativeId: string): void {
     }
   }
   console.log(`Done. Manifest moved to ${doneTarget}.`);
+
+  // 2026-05-25: trigger reflection now that the merge is confirmed. In
+  // the unattended cycle path, runReflector fires inside runCycle when
+  // closure.merged === true; in the operator-driven path (this
+  // function), the cycle exited at `pr-open` and never re-entered the
+  // cycle process, so reflection has to be kicked here. Log-and-continue
+  // failure mode — a broken reflector should not roll back the merge.
+  try {
+    await invokeReflectorPostApprove(initiativeId, doneTarget, projectRepoPath);
+  } catch (err) {
+    console.error(`forge review --approve: reflection failed (non-fatal): ${err instanceof Error ? err.message : String(err)}`);
+  }
+}
+
+/**
+ * Find the cycle log dir for this initiative, build a logger that
+ * appends to its events.jsonl, and call runReflector. The cycle log
+ * dir name is `<timestamp>_<initiativeId>` per newCycleId in cycle.ts;
+ * if multiple cycles exist for one initiative (retries), pick the most
+ * recent by mtime. Falls back to a bare-initiativeId dir for legacy
+ * cycles.
+ */
+async function invokeReflectorPostApprove(
+  initiativeId: string,
+  manifestPath: string,
+  projectRepoPath: string,
+): Promise<void> {
+  const { readdirSync, statSync } = await import('node:fs');
+  const { resolve: nodeResolve } = await import('node:path');
+  const { createLogger } = await import('./logging.ts');
+  const { runReflector } = await import('./phases/reflector.ts');
+
+  const forgeRoot = nodeResolve(import.meta.dirname, '..');
+  const logsRoot = nodeResolve(forgeRoot, '_logs');
+
+  let cycleId: string;
+  try {
+    const entries = readdirSync(logsRoot);
+    const matches = entries
+      .filter((name) => name === initiativeId || name.endsWith(`_${initiativeId}`))
+      .map((name) => ({ name, mtimeMs: statSync(nodeResolve(logsRoot, name)).mtimeMs }))
+      .sort((a, b) => b.mtimeMs - a.mtimeMs);
+    if (matches.length === 0) {
+      console.error(`forge review --approve: no cycle log found for ${initiativeId}; skipping reflection`);
+      return;
+    }
+    cycleId = matches[0].name;
+  } catch (err) {
+    console.error(`forge review --approve: could not scan _logs/ (${err instanceof Error ? err.message : String(err)}); skipping reflection`);
+    return;
+  }
+
+  console.log(`Reflecting on cycle ${cycleId}…`);
+  const logger = createLogger(cycleId, logsRoot);
+  await runReflector(
+    {
+      initiativeId,
+      manifestPath,
+      projectRepoPath,
+      // Reflection runs against the merged project tree (the worktree
+      // was just torn down). Reflector reads files relative to
+      // worktreePath; pointing at projectRepoPath gives it the
+      // post-merge state.
+      worktreePath: projectRepoPath,
+      cycleId,
+    },
+    logger,
+  );
+  console.log('Reflection complete.');
 }
 
 /**
@@ -763,6 +839,51 @@ function cmdReport(rest: string[]): void {
     process.exit(1);
   }
   process.stdout.write(readFileSync(reportPath, 'utf8'));
+}
+
+/**
+ * 2026-05-25: print the latest `_logs/<timestamp>_<initiativeId>/`
+ * directory for a given initiative. Defensive against the stale-log
+ * trap — when a cycle has been retried, `_logs/` has multiple matching
+ * dirs and grepping by initiative name picks an arbitrary one. This
+ * always resolves to the freshest by mtime.
+ *
+ * Usage:
+ *   forge log <initiative-id-or-handle>     prints the latest log dir
+ *   forge log <id> --events                  prints `<dir>/events.jsonl`
+ *   forge log <id> --tail [N]                tails the last N lines of events.jsonl (default 20)
+ */
+function cmdLog(rest: string[]): void {
+  const rawId = rest[0];
+  if (!rawId) {
+    console.error('forge log: missing <initiative-id-or-handle>');
+    console.error('Usage: forge log <initiative-id-or-handle> [--events | --tail [N]]');
+    process.exit(2);
+  }
+  const initiativeId = resolveOrExit(rawId, 'log');
+  const dir = findLatestLogDir(initiativeId);
+  if (!dir) {
+    console.error(`forge log: no cycle log found for ${initiativeId} under _logs/`);
+    process.exit(1);
+  }
+  const eventsPath = join(dir, 'events.jsonl');
+  if (rest.includes('--events')) {
+    console.log(eventsPath);
+    return;
+  }
+  const tailIdx = rest.indexOf('--tail');
+  if (tailIdx >= 0) {
+    const nRaw = rest[tailIdx + 1];
+    const n = nRaw && /^\d+$/.test(nRaw) ? Number(nRaw) : 20;
+    if (!existsSync(eventsPath)) {
+      console.error(`forge log: events.jsonl missing at ${eventsPath}`);
+      process.exit(1);
+    }
+    const lines = readFileSync(eventsPath, 'utf8').split('\n').filter((l) => l.length > 0);
+    for (const line of lines.slice(-n)) console.log(line);
+    return;
+  }
+  console.log(dir);
 }
 
 function flagValue(rest: string[], flag: string): string | undefined {

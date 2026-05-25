@@ -14,6 +14,16 @@ Types: `ingest`, `create-theme`, `update-theme`, `lint`, `structural`, `seed`.
 
 ---
 
+## [2026-05-25] create-theme | claude-harness cycle 6 reflection — 4 new themes, 1 cycle archive
+
+Reflected on `INIT-2026-05-25-claude-trail-verify-cascade` (claude-harness, cycle 6 / "verify cascade").
+Full 90-event log — sparse-event-log antipattern confirmed resolved.
+New themes: sparse-event-log-resolved (pattern), unifier-wedge-preexisting-test-failures (antipattern),
+wi-gate-vs-unifier-gate-mismatch (antipattern), pm-underdecomposition-clean-ship (reference).
+Key finding: unifier wedged 15 iterations on pre-existing test failures ($9.90 of $13.65 total).
+
+---
+
 ## [2026-05-25] create-theme | claude-harness cycle 5 reflection — 4 new themes, 1 cycle archive
 
 Reflected on `INIT-2026-05-25-claude-trail-format-flag` (claude-harness, cycle 5 / "format flag").

@@ -12,11 +12,11 @@
 > human moment** (slash command, not a wired phase); (b) **brain-first
 > is narrowed** — the planner and reflector read the brain; the dev-loop
 > and reviewer do not (see [ADR 010](./docs/decisions/010-brain-first.md)
-> + `brain/forge/themes/brain-read-policy.md`); (c) the **review-phase
+> + `brain/cycles/themes/brain-read-policy.md`); (c) the **review-phase
 > redesign has LANDED** — no auto-merge; the GitHub PR is the operator's
 > surface; `closure.ts` is the single terminal-move authority and
 > reflection fires only on a confirmed merge
-> (`brain/forge/themes/review-phase-target-design.md`; the snapshot's §G
+> (`brain/cycles/themes/review-phase-target-design.md`; the snapshot's §G
 > is now the as-built, not a target).
 
 ## Overview
@@ -69,9 +69,15 @@ main ◄── (review loop merges) ──── initiative branch ◄── fea
 
 The brain is the system's memory. It is a **Karpathy-style LLM wiki** with three layers:
 
-1. **`brain/_raw/`** — immutable raw sources (research, logs, ingested third-party docs). Ground truth.
-2. **`brain/forge/themes/` and `brain/projects/<name>/themes/`** — small (~15-40 line) theme pages indexing the raw layer.
-3. **`brain/INDEX.md` + `brain/forge/{patterns,antipatterns,decisions,operations}.md` + per-project `profile.md`** — category indexes pointing to theme pages.
+After the **Tier 4 three-brain restructure (2026-05-26)**, three scoped brains:
+- **Brain 1 (forge-dev):** `brain/forge-dev/` — forge TypeScript source knowledge + ADRs + engineering notes.
+- **Brain 2 (cycles):** `brain/cycles/` — cycle-derived patterns, antipatterns, raw archives. `brain/cycles/_raw/` holds immutable cycle records.
+- **Brain 3 (per-project):** `<project-repo>/brain/` — lives inside each managed project's repo.
+
+Layer structure (each brain follows this pattern):
+1. **`_raw/`** — immutable raw sources. Ground truth.
+2. **`themes/`** — small (~15-40 line) theme pages indexing the raw layer.
+3. **Category indexes + `profile.md`** — navigation pointing to theme pages.
 
 The brain is **rendered as an Obsidian vault** so humans navigate the same graph the agents query.
 
@@ -98,7 +104,7 @@ via the **`/forge-architect`** slash command
 Its only handoff to forge is the files it writes
 (`_queue/pending/INIT-*.md` + roadmap rows); the scheduler picks those
 up unattended. Design of record:
-[`brain/forge/themes/human-interaction-via-own-session.md`](./brain/forge/themes/human-interaction-via-own-session.md)
+[`brain/cycles/themes/human-interaction-via-own-session.md`](./brain/cycles/themes/human-interaction-via-own-session.md)
 (resolves retro Q4; US-3.1 / US-1.0).
 
 ### 3. Project Manager *(unattended)*
@@ -144,7 +150,7 @@ The verdict gate (the developer-loop unifier sub-phase's quality gate in [`orche
 2. **Asks the verdict provider** — production: file-based handoff written by the operator via the **`/forge-review <id>`** slash command (the operator's own Claude session). Bench: simulator agent.
 3. **On approve** → the review *gate* is released (this is **not** a merge — Phase 6 / G9): `runReviewer` opens a demo-embedded PR on the project repo and **STOPS**. **On send-back** → feedback is appended to `fix_plan.md` as Given/When/Then ACs; loop continues.
 
-**Self-contained PR (2026-05-18).** `pr.ts:embedDemoInPr` commits the demo bundle to a tracked `demo/<id>/` on the branch (before the push) and writes a visibility-aware PR body — a relative-link `DEMO.md` for **private** repos (GitHub's image proxy can't fetch private raw URLs), inline raw images for public. The operator reviews entirely from the PR; iterating via PR comments is a supported lightweight loop (pattern: `brain/forge/themes/pr-as-sole-review-window.md`).
+**Self-contained PR (2026-05-18).** `pr.ts:embedDemoInPr` commits the demo bundle to a tracked `demo/<id>/` on the branch (before the push) and writes a visibility-aware PR body — a relative-link `DEMO.md` for **private** repos (GitHub's image proxy can't fetch private raw URLs), inline raw images for public. The operator reviews entirely from the PR; iterating via PR comments is a supported lightweight loop (pattern: `brain/cycles/themes/pr-as-sole-review-window.md`).
 
 **No auto-merge.** The GitHub PR is the operator's merge + feedback surface. The operator merges it in GitHub (or via `/forge-review`); a later `runClosure` confirms the merge (`gh pr view --json state` == `MERGED`), then `alignLocalToRemote` brings the **project's working tree** forward to the merged `main` (a guarded `merge --ff-only`, **stashing/restoring any uncommitted operator state** such as `roadmap.md` — never a bare ref move that strands the working tree) and prunes the branch, moves the manifest `in-flight/ → done/` (so **`done/` ⇒ MERGED**), and only then does reflection fire. `closure.ts` is the **single terminal-move authority**; the reviewer moves no manifest. Until the operator merges, the unattended cycle terminates at `pr-open` (not a failure).
 
@@ -169,7 +175,7 @@ All three feed `brain-ingest`, which is what makes forge learn cycle-over-cycle.
 Three human interaction points, each run in the **operator's own Claude
 session** as a slash command — never a forge-spawned agent and never a
 bench simulator in production
-([`brain/forge/themes/human-interaction-via-own-session.md`](./brain/forge/themes/human-interaction-via-own-session.md)):
+([`brain/cycles/themes/human-interaction-via-own-session.md`](./brain/cycles/themes/human-interaction-via-own-session.md)):
 
 | Moment | Command | File handoff |
 |---|---|---|
@@ -205,6 +211,6 @@ Each phase has a sample-input → measurable-output benchmark suite under `bench
 
 - It is not a job queue with priorities and dedup. (See ADR 011.)
 - It is not a resource controller. (`maxConcurrentInitiatives` is a static knob.)
-- It is not a per-project agent personality. (Skills are shared; per-project taste lives in `brain/projects/<name>/profile.md`.)
+- It is not a per-project agent personality. (Skills are shared; per-project taste lives in `<project-repo>/brain/profile.md`.)
 - It does not retry failed initiatives automatically. (Failure → human triage.)
 - It does not host its own model runtime, vector DB, or agent harness. (Claude Agent SDK does that.)

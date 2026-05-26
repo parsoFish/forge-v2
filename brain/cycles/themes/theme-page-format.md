@@ -53,7 +53,7 @@ related_themes: [other-theme-slug-1, other-theme-slug-2]
 
 ## Sources
 
-- [`brain/forge/themes/README.md`](./README.md) — the canonical format definition (in-repo).
+- [`brain/cycles/themes/README.md`](./README.md) — the canonical format definition (in-repo).
 - [`brain/LINT.md`](../../LINT.md) — structural rules `brain-lint` enforces.
 - [`karpathy-llm-wiki.md`](../../_raw/web/karpathy-llm-wiki.md) — the philosophy underneath the format (canonical gist, re-ingested 2026-05-23).
 

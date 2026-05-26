@@ -40,7 +40,7 @@ Forge v2 uses hooks for:
 
 - **Brain-first enforcement** — a `PreToolUse` hook can verify a `brain-query` event was emitted before allowing other skill actions (event-log enforcement per ADR 010).
 - **Cost / iteration tracking** — `PostToolUse` writes JSONL events.
-- **Context injection** — `SessionStart` can attach project-specific rules from `brain/projects/<name>/profile.md`.
+- **Context injection** — `SessionStart` can attach project-specific rules from `<project-repo>/brain/profile.md`.
 - **Auto-format / lint** — `PostToolUse` runs prettier/tsc after a Write.
 
 ## Sources

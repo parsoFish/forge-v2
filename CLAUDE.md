@@ -16,7 +16,7 @@ If the answer to (1) is no, the change must justify why. If (2) reveals a re-inv
 
 **Before** answering a question about how forge works, before designing, before implementing — **query the brain**. The brain is at [`brain/`](./brain/) and is queryable via the `brain-query` skill. If the brain doesn't know, research further AND log the gap so the next ingest pass can fill it.
 
-This rule binds the **planning** phases (architect / project-manager) and the **reflector**. The **dev-loop and reviewer deliberately do NOT read the brain** — the planner already encoded every relevant convention/antipattern into the work items, which are their single source of intent (amended 2026-05-16; see [ADR 010](./docs/decisions/010-brain-first.md) and [`brain/forge/themes/brain-read-policy.md`](./brain/forge/themes/brain-read-policy.md)).
+This rule binds the **planning** phases (architect / project-manager) and the **reflector**. The **dev-loop and reviewer deliberately do NOT read the brain** — the planner already encoded every relevant convention/antipattern into the work items, which are their single source of intent (amended 2026-05-16; see [ADR 010](./docs/decisions/010-brain-first.md) and [`brain/cycles/themes/brain-read-policy.md`](./brain/cycles/themes/brain-read-policy.md)).
 
 ## Architecture, principles, decisions
 
@@ -112,25 +112,25 @@ Where to look for as-built detail:
 
 ## graphify
 
-This project has a knowledge graph at `brain/graphify-out/` (canonical
-path per C21; `./graphify-out` at the forge root is a symlink to it
-per C21a). The graph spans the **whole forge architecture** —
-`orchestrator/`, `cli/`, `skills/`, `loops/`, `docs/`, `brain/`.
+Three knowledge graphs after the Tier 4 brain restructure (2026-05-26):
+- **Brain 1 (forge-dev):** `brain/forge-dev/graphify-out/` — forge TypeScript source + ADRs.
+- **Brain 2 (cycles):** `brain/cycles/graphify-out/` — cycle-derived themes + raw archives.
+- **Brain 3 (per-project):** `<project-repo>/brain/graphify-out/` — project-specific knowledge.
 
-The graph is a **power-tool, not a mandate** (2026-05-24
-rebuild-review): brain-query against markdown themes alone is enough
-for most lookups. Reach for the graph when grep is too noisy or you
+Legacy `brain/graphify-out/` (and the `./graphify-out` symlink) remain until Brain 1 + 2 graphs
+are confirmed healthy. The wrapper script `bash scripts/brain-graphify-all.sh` rebuilds Brain 1 + 2;
+use `--all` flag to also rebuild all managed project brains.
+
+The graphs are a **power-tool, not a mandate** (2026-05-24 rebuild-review): brain-query against
+markdown themes alone is enough for most lookups. Reach for a graph when grep is too noisy or you
 want a cross-cluster relationship — see
-[`skills/brain-graph/SKILL.md`](./skills/brain-graph/SKILL.md) for the
-query / path / explain commands.
-
-`GRAPH_REPORT.md` under `brain/graphify-out/` is the broad-architecture
-read.
+[`skills/brain-graph/SKILL.md`](./skills/brain-graph/SKILL.md) for the query / path / explain commands.
 
 After modifying code, run `cd /home/parso/forge && graphify update .`
-to keep the graph current (AST-only, no API cost; the installed
+to keep the legacy graph current (AST-only, no API cost; the installed
 post-commit hook does this in the background — manual invocation only
-needed if you skip the hook).
+needed if you skip the hook). Run `bash scripts/brain-graphify-all.sh`
+to rebuild the two new targeted graphs.
 
 ## forge-ui DOM-as-metrics convention
 

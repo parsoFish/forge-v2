@@ -51,7 +51,7 @@ The non-goals section of [`docs/decisions/`](./docs/decisions/) is also load-bea
   The **dev-loop and reviewer do not** — their intent is wholly in the
   work items the planner authored, so "research further" for them means
   reading the WI, not the brain. Rationale:
-  [`brain/forge/themes/brain-read-policy.md`](./brain/forge/themes/brain-read-policy.md).
+  [`brain/cycles/themes/brain-read-policy.md`](./brain/cycles/themes/brain-read-policy.md).
 - The `brain-query` skill logs gaps so the next ingest pass can fill them — a self-improving loop.
 
 ---

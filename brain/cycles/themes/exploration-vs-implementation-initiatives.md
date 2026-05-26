@@ -260,7 +260,7 @@ the finish.
 
 - PR #57 (merged 2026-05-23) — the trafficGame arc that ran as
   exploration but had no forge shape for it.
-- [`brain/projects/trafficGame/themes/2026-05-23-grading-frontier-infrastructure.md`](../../projects/trafficGame/themes/2026-05-23-grading-frontier-infrastructure.md) — the project-local instance.
+- [`projects/trafficGame/brain/themes/2026-05-23-grading-frontier-infrastructure.md`](../../projects/trafficGame/brain/themes/2026-05-23-grading-frontier-infrastructure.md) — the project-local instance.
 - [`brain/_raw/cycles/2026-05-23_trafficgame-elevation-grading-arc.md`](../../_raw/cycles/2026-05-23_trafficgame-elevation-grading-arc.md) — the cycle archive.
 
 ## See also

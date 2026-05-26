@@ -11,7 +11,7 @@
    ln -s ~/path/to/repo projects/<name>
    ```
 2. The first cycle on this project will:
-   - Create `brain/projects/<name>/profile.md` (initial taste profile, populated by Pass B or by the architect).
+   - Create `projects/<name>/brain/profile.md` (initial taste profile, populated by Pass B or by the architect).
    - Open the project's directory tree to the architect during ideation.
 3. From then on, the architect, project-manager, developer-loop, reviewer, and reflector all read this directory as the project's working tree.
 

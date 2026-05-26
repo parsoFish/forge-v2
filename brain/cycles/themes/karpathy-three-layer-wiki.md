@@ -24,9 +24,14 @@ related_themes:
 
 The brain is a Karpathy-style LLM wiki with three layers:
 
-1. **`brain/_raw/`** — immutable raw sources (research, logs, ingested docs). Append-only ground truth. Never modified, never deleted.
-2. **`brain/forge/themes/` and `brain/projects/<name>/themes/`** — 15-40-line theme pages indexing the raw layer. Annotated source links *are* the index. No paraphrasing of summaries.
-3. **`brain/INDEX.md` + `brain/forge/{patterns,antipatterns,decisions,operations}.md` + per-project `profile.md`** — category indexes pointing to theme pages.
+1. **`_raw/`** — immutable raw sources (research, logs, ingested docs). Append-only ground truth. Never modified, never deleted.
+2. **`themes/`** — 15-40-line theme pages indexing the raw layer. Annotated source links *are* the index. No paraphrasing of summaries.
+3. **Category indexes + `profile.md`** — navigation pointing to theme pages.
+
+After the **Tier 4 three-brain restructure (2026-05-26)**, forge uses three scoped brains:
+- **Brain 1 (forge-dev):** `brain/forge-dev/` — forge source + ADRs + engineering notes.
+- **Brain 2 (cycles):** `brain/cycles/` — cycle-derived patterns, antipatterns, raw archives.
+- **Brain 3 (per-project):** `<project-repo>/brain/` — lives inside each managed project's repo.
 
 The brain is rendered as an **Obsidian vault** so humans navigate the same graph the agents query. Three skills front it: `brain-ingest` (sole writer), `brain-lint` (structural integrity), `brain-query` (efficient lookup).
 

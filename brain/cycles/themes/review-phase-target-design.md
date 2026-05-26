@@ -70,7 +70,7 @@ GitHub-confirmed merge). Full graph + delta table:
 
 ## Sources
 
-- [`2026-05-16_trafficgame-arc-reflection.md`](../../_raw/cycles/2026-05-16_trafficgame-arc-reflection.md) — cycle archive: merge-boundary evidence.
+- [`2026-05-16_trafficgame-arc-reflection.md`](../_raw/2026-05-16_trafficgame-arc-reflection.md) — cycle archive: merge-boundary evidence.
 - [`architecture.md`](../../../_logs/2026-05-16_trafficgame-arc-reflection/architecture.md) — §C.3 as-built vs §G target, delta table, G8–G10.
 
 ## See also

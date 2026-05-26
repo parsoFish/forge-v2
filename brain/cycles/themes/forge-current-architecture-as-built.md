@@ -62,7 +62,7 @@ docs should be reconciled to this (closure goal G7).
 
 ## Sources
 
-- [`2026-05-16_trafficgame-arc-reflection.md`](../../_raw/cycles/2026-05-16_trafficgame-arc-reflection.md) — cycle archive: F-24…F-44 + audit basis.
+- [`2026-05-16_trafficgame-arc-reflection.md`](../_raw/2026-05-16_trafficgame-arc-reflection.md) — cycle archive: F-24…F-44 + audit basis.
 - [`retro.md`](../../../_logs/2026-05-16_trafficgame-arc-reflection/retro.md) — §4 as-built, §5 inconsistencies I1–I6, §6 goals G3/G5/G7.
 
 ## See also

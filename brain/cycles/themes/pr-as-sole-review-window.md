@@ -55,7 +55,7 @@ URLs** — an inline `![](https://github.com/o/r/raw/branch/...)` renders
   renders a committed markdown file (relative images) on the blob page for
   the authenticated reviewer **regardless of repo visibility**. The PR
   body links to it + points at the *Files changed* tab.
-- Inline `![](raw-url)` images **only when the repo is public** (confirm
+- Inline image embeds **only when the repo is public** (confirm
   via `gh repo view --json isPrivate`). **Default to private** if unknown
   — a broken inline image is worse than a link.
 

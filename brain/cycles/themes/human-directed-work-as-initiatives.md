@@ -54,7 +54,7 @@ about forge is confounded by the close-out work that produced it.
 
 ## Sources
 
-- [`2026-05-16_trafficgame-arc-reflection.md`](../../_raw/cycles/2026-05-16_trafficgame-arc-reflection.md) — cycle archive: autonomous-vs-handheld split with evidence.
+- [`2026-05-16_trafficgame-arc-reflection.md`](../_raw/2026-05-16_trafficgame-arc-reflection.md) — cycle archive: autonomous-vs-handheld split with evidence.
 - [`retro.md`](../../../_logs/2026-05-16_trafficgame-arc-reflection/retro.md) — finding I6, closure goal G6, user-question 2.
 
 ## See also

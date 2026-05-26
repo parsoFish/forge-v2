@@ -67,7 +67,7 @@ deliberate redesign.
 
 ## Sources
 
-- [`2026-05-16_trafficgame-arc-reflection.md`](../../_raw/cycles/2026-05-16_trafficgame-arc-reflection.md) — cycle archive: the F-24…F-44 change list.
+- [`2026-05-16_trafficgame-arc-reflection.md`](../_raw/2026-05-16_trafficgame-arc-reflection.md) — cycle archive: the F-24…F-44 change list.
 - [`retro.md`](../../../_logs/2026-05-16_trafficgame-arc-reflection/retro.md) — §2 "how forge shifted", I2/I4/I5 stale-surface findings.
 
 ## See also

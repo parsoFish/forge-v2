@@ -62,8 +62,8 @@ redefining it is gaming. The loop is resumable from
 
 ## Sources
 
-- [`2026-05-17_forge-self-closure-arc.md`](../../_raw/cycles/2026-05-17_forge-self-closure-arc.md) — the cycle archive (outcome + evidence).
-- [`2026-05-16_trafficgame-arc-reflection.md`](../../_raw/cycles/2026-05-16_trafficgame-arc-reflection.md) — the reflection that produced the plan this arc executed.
+- [`2026-05-17_forge-self-closure-arc.md`](../_raw/2026-05-17_forge-self-closure-arc.md) — the cycle archive (outcome + evidence).
+- [`2026-05-16_trafficgame-arc-reflection.md`](../_raw/2026-05-16_trafficgame-arc-reflection.md) — the reflection that produced the plan this arc executed.
 
 ## See also
 

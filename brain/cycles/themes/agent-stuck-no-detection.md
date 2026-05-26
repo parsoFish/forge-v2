@@ -36,7 +36,7 @@ Secondary benefit — **learning generation**: each stuck event produces a struc
 
 Agents can also self-report: *"If you are unable to make progress after 5 attempts at the same error, output STUCK: <structured diagnosis>."*
 
-In v2 the wedged-loop detector in [`loops/ralph/stop-conditions.ts`](../../loops/ralph/stop-conditions.ts) implements this heuristic: 3 consecutive iterations with no `fix_plan.md` progress AND no files changed → wedged. The diagnostic-capture and learning-generation surface land in the reflector skill.
+In v2 the wedged-loop detector in [`loops/ralph/stop-conditions.ts`](../../../loops/ralph/stop-conditions.ts) implements this heuristic: 3 consecutive iterations with no `fix_plan.md` progress AND no files changed → wedged. The diagnostic-capture and learning-generation surface land in the reflector skill.
 
 ## Sources
 

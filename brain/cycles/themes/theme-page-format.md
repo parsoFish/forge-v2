@@ -40,7 +40,7 @@ related_themes: [other-theme-slug-1, other-theme-slug-2]
 
 ## Sources
 
-- [`<path/to/raw-source.md>`](../../_raw/<path>) — one-line annotation describing what's in this source.
+- A source entry is a markdown link with the file path as display text and a relative path as href, followed by a one-line annotation.
 
 ## Rules
 

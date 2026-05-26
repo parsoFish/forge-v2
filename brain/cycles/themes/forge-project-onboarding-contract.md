@@ -65,7 +65,7 @@ trafficGame today; C6 is not met by forge.
 
 ## Sources
 
-- [`2026-05-16_trafficgame-arc-reflection.md`](../../_raw/cycles/2026-05-16_trafficgame-arc-reflection.md) — cycle archive: the structural-prerequisite evidence.
+- [`2026-05-16_trafficgame-arc-reflection.md`](../_raw/2026-05-16_trafficgame-arc-reflection.md) — cycle archive: the structural-prerequisite evidence.
 - [`retro.md`](../../../_logs/2026-05-16_trafficgame-arc-reflection/retro.md) — §3 contract derivation, §6 closure goals G2/G6.
 
 ## See also

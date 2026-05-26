@@ -79,7 +79,7 @@ only; no `benchmarks/e2e/scoring.ts` or any chained-only rubric).
 ## Sources
 
 - [`benchmark-alignment.md`](../../../_logs/2026-05-16_trafficgame-arc-reflection/benchmark-alignment.md) — §A drift table, §C corrected design, G11/G12.
-- [`2026-05-16_trafficgame-arc-reflection.md`](../../_raw/cycles/2026-05-16_trafficgame-arc-reflection.md) — cycle archive: the F-24…F-44 changes that caused the drift.
+- [`2026-05-16_trafficgame-arc-reflection.md`](../_raw/2026-05-16_trafficgame-arc-reflection.md) — cycle archive: the F-24…F-44 changes that caused the drift.
 
 ## See also
 

@@ -82,7 +82,7 @@ indeterminate (not pass).
 
 ## See also
 
-- [[file-isolation-constraint-enables-single-iteration]] — the related
+- `file-isolation-constraint-enables-single-iteration` — the related
   one-file-per-WI pattern that DOES correlate with single-iteration success.
 - [[pr-as-sole-review-window]] — the unifier's late-stage gate is the
   load-bearing catch.

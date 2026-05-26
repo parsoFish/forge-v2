@@ -61,7 +61,7 @@ is its first-class home.
 
 ## Sources
 
-- [`2026-05-16_trafficgame-arc-reflection.md`](../../_raw/cycles/2026-05-16_trafficgame-arc-reflection.md) — cycle archive: blurred-lines + auto-approve footgun evidence.
+- [`2026-05-16_trafficgame-arc-reflection.md`](../_raw/2026-05-16_trafficgame-arc-reflection.md) — cycle archive: blurred-lines + auto-approve footgun evidence.
 - [`architecture.md`](../../../_logs/2026-05-16_trafficgame-arc-reflection/architecture.md) — §A out-of-cycle architect, §G operator-driven PR, §H simplification candidate 7.
 
 ## See also

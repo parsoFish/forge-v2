@@ -1,7 +1,7 @@
 /**
  * brain-edge-inject — Stage 10 of brain-refinement-2026-05-23.
  *
- * Post-processes brain/graphify-out/graph.json to add `references` edges
+ * Post-processes brain/forge-dev/graphify-out/graph.json to add `references` edges
  * derived from authored cross-references that graphify's pure-AST extractor
  * doesn't pick up:
  *
@@ -28,7 +28,7 @@ import { join, basename, relative } from 'node:path';
 import matter from 'gray-matter';
 
 const FORGE = '/home/parso/forge';
-const GRAPH_PATH = join(FORGE, 'brain/graphify-out/graph.json');
+const GRAPH_PATH = join(FORGE, 'brain/forge-dev/graphify-out/graph.json');
 const INDEX_PATH = join(FORGE, 'brain/INDEX.md');
 
 type Edge = {

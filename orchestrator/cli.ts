@@ -174,7 +174,7 @@ Usage:
   forge brain index [--scope <project>]   Emit the brain navigation indexes as a single blob (cache-friendly prefix for prompts)
   forge brain index --write               Regenerate brain/INDEX.md from filesystem (counts + sub-wiki listing)
   forge brain lint [--scope <s>] [--fix]  Structural integrity checks on brain/ (7 checks, scopes: full|forge-only|project-only|single-file|cycle-touched-themes|cleanup-dry-run)
-                                          (structural graph owned by the real safishamsi/graphify CLI — run: cd brain && graphify update .)
+                                          (structural graph owned by the real safishamsi/graphify CLI — run: bash scripts/brain-graphify-all.sh)
   forge brain bench:promote --cycle <id>  Walk reflector-emitted brain-bench candidates past the operator; promote into benchmarks/brain/questions.json
                                           Caps: ≤1 per cycle, ≤4 per calendar month. Accuracy floor 94.4%; promotion reverted on regression.
   forge watch [--bridge-only] [--no-open] [--bridge-port <n>] [--ui-port <n>]
@@ -996,10 +996,11 @@ function cmdBrain(rest: string[]): void {
     // does NOT carry its own graph walker.
     console.error(
       `forge brain graph: this surface is owned by the real graphify CLI. Use it directly:
-  cd brain && graphify update .          # rebuild brain/graphify-out/graph.json
-  cd brain && graphify query "<q>"        # token-efficient BFS over the graph
-  cd brain && graphify path "<a>" "<b>"   # shortest connection
-  cd brain && graphify explain "<node>"   # describe a node + neighbours
+  bash scripts/brain-graphify-all.sh     # rebuild Brain 1 (forge-dev) + Brain 2 (cycles)
+  bash scripts/brain-graphify-all.sh --all  # also rebuild all Brain 3 (per-project)
+  graphify query "<q>" --graph brain/forge-dev/graphify-out/graph.json
+  graphify path "<a>" "<b>" --graph brain/forge-dev/graphify-out/graph.json
+  graphify explain "<node>" --graph brain/forge-dev/graphify-out/graph.json
 See skills/brain-graph/SKILL.md for the operator runbook.`,
     );
     process.exit(2);

@@ -18,7 +18,7 @@ This skill is invoked **first** by every other skill, per [ADR 010](../../docs/d
 
 Per C20 (dual-index), it consults **two** layers in order:
 
-1. **Structural graph** (`brain/graphify-out/graph.json`, owned by `brain-graph`, built by real `safishamsi/graphify` Python CLI) — answers questions about relationships, bridges, and cross-file connections via `graphify query` / `graphify path` / `graphify explain`.
+1. **Structural graph** (owned by `brain-graph`, built by real `safishamsi/graphify` Python CLI) — answers questions about relationships, bridges, and cross-file connections via `graphify query` / `graphify path` / `graphify explain`. Three brains: `brain/forge-dev/graphify-out/graph.json` (Brain 1), `brain/cycles/graphify-out/graph.json` (Brain 2), `<project-repo>/brain/graphify-out/graph.json` (Brain 3).
 2. **Narrative wiki** (theme pages + category indexes) — answers questions about *content*. Keyword + frontmatter scan.
 
 The graph fills the gap forge has been carrying manually via `related_themes` frontmatter (low-rigour, error-prone). When a question is structural in nature ("which theme bridges X and Y?", "what are the neighbours of theme Z?", "what's two hops from this antipattern?"), the graph answers it directly. When the question is content-bearing ("how does forge handle stacked PRs?"), the keyword scan over themes is still the load-bearing path; the graph contributes by surfacing additional structurally-related themes the scan would miss.

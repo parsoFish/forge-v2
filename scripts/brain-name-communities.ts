@@ -1,7 +1,7 @@
 /**
  * brain-name-communities — Stage 11 of brain-refinement-2026-05-23.
  *
- * Reads brain/graphify-out/graph.json + .graphify_labels.json, picks the
+ * Reads brain/forge-dev/graphify-out/graph.json + .graphify_labels.json, picks the
  * top-N most representative nodes per community, asks Claude (Haiku, via
  * the Claude Agent SDK — OAuth auth on the operator's Max plan, no API
  * key required) to propose a 2-4 word semantic name for each, then writes
@@ -24,8 +24,8 @@ import { join } from 'node:path';
 import { query } from '@anthropic-ai/claude-agent-sdk';
 
 const FORGE = '/home/parso/forge';
-const GRAPH_PATH = join(FORGE, 'brain/graphify-out/graph.json');
-const LABELS_PATH = join(FORGE, 'brain/graphify-out/.graphify_labels.json');
+const GRAPH_PATH = join(FORGE, 'brain/forge-dev/graphify-out/graph.json');
+const LABELS_PATH = join(FORGE, 'brain/forge-dev/graphify-out/.graphify_labels.json');
 const BATCH_SIZE = 20;
 const NODES_PER_COMMUNITY = 8;
 

@@ -117,10 +117,7 @@ Three knowledge graphs after the Tier 4 brain restructure (2026-05-26):
 - **Brain 2 (cycles):** `brain/cycles/graphify-out/` — cycle-derived themes + raw archives (518 nodes).
 - **Brain 3 (per-project):** `projects/<name>/brain/graphify-out/` — whole-project knowledge (source code + brain themes). trafficGame: 2,578 nodes; terraform: 6,015 nodes; claude-harness: 553 nodes.
 
-Legacy `brain/graphify-out/` (and the `./graphify-out` symlink) remain as the monolith reference
-(5,248 nodes) until the three-brain workflow is fully established. The wrapper script
-`bash scripts/brain-graphify-all.sh` rebuilds Brain 1 + 2; use `--all` to also rebuild all managed
-project brains.
+The wrapper script `bash scripts/brain-graphify-all.sh` rebuilds Brain 1 + 2; use `--all` to also rebuild all managed project brains.
 
 **Build commands** (all three brains):
 ```bash
@@ -152,11 +149,7 @@ markdown themes alone is enough for most lookups. Reach for a graph when grep is
 want a cross-cluster relationship — see
 [`skills/brain-graph/SKILL.md`](./skills/brain-graph/SKILL.md) for the query / path / explain commands.
 
-After modifying code, run `cd /home/parso/forge && graphify update .`
-to keep the legacy graph current (AST-only, no API cost; the installed
-post-commit hook does this in the background — manual invocation only
-needed if you skip the hook). Run `bash scripts/brain-graphify-all.sh`
-to rebuild the two new targeted graphs.
+The post-commit hook calls `bash scripts/brain-graphify-all.sh` automatically. Manual invocation is only needed if you skip the hook.
 
 ## forge-ui DOM-as-metrics convention
 

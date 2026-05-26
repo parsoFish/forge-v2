@@ -25,16 +25,53 @@ brain-spanning-everything layout.
 
 | # | Brain | Contents | Audience | When read |
 |---|---|---|---|---|
-| 1 | **forge-dev brain** | Graphify graph of forge project code, prompts, skills, ADRs, planning docs | Developers (human + Claude Code) editing forge itself | Forge-internal development sessions |
-| 2 | **cycle-knowledge brain** | Cycle archives, antipatterns surfaced through prior cycles, reflections, cross-cycle patterns, forge-level operational notes | Planning + reflection phases (architect, PM, reflector) inside cycles | Inside a forge cycle |
-| 3 | **project-specific brain** (one per project) | Project goals, project structure, project-specific patterns + antipatterns, project profile | Planning phases when working **on that project** | Inside a forge cycle whose initiative targets that project |
+| 1 | **forge-dev brain** | Graphify graph of forge project code, prompts, skills, ADRs about forge architecture, planning docs, phase closure log | Developers (human + Claude Code) editing forge itself | Forge-internal development sessions |
+| 2 | **cycle-knowledge brain** | Cycle archives, antipatterns surfaced through prior cycles, reflections, cross-cycle patterns, cycle-related operational notes, **per-cycle architectural / design decisions** | Planning + reflection phases (architect, PM, reflector) inside cycles | Inside a forge cycle |
+| 3 | **project-specific brain** (one per project, **lives inside the project's own repo**) | Project goals, project structure, project source code, project-specific patterns + antipatterns, project profile | All phases when working **on that project** | Inside a forge cycle whose initiative targets that project |
 
 Usage matrix:
 
-- **Inside a forge cycle**: planners (architect, PM, reflector) query Brain 2 + Brain 3 of the cycle's project. Dev-loop + reviewer do not query the brain (per [ADR 010](../../decisions/010-brain-first.md)).
+- **Inside a forge cycle**: planners (architect, PM, reflector) query
+  Brain 2 + Brain 3 of the cycle's project. **Dev-loop + reviewer
+  may query Brain 3** (the cycle's project brain). Per operator
+  2026-05-26: now that Brain 3 is scope-clean (project-only, no
+  forge-themes pollution), the historic ADR-010 risk of "agent
+  reading the brain and going off-spec from the WI" goes away — the
+  project brain is a legitimate supplemental source for dev-loop
+  agents (e.g. project testing conventions, file-layout norms) that
+  the WI may not have captured exhaustively. The WI is still the
+  single source of *intent*; Brain 3 is supplemental *context*.
+  **Dev-loop + reviewer never query Brain 1 or Brain 2** — forge-
+  internal knowledge and cross-cycle interpretation are not their
+  concern.
 - **During forge development**: Brain 1 + Brain 2.
 - **Brain 1 is never read during a cycle** — it's a forge-engineer tool.
 - **Brain 3 is never read during forge development** — that's a project-specific dev concern, not a forge concern.
+
+### Structural consequence: Brain 3 lives **in the project's repo**
+
+> Operator note 2026-05-26: "I almost thought we could instead of
+> keeping this as a forge artifact it could instead be built within
+> the actual scope of the project."
+
+Brain 3 is per-project and travels with the project. The previous
+home `brain/projects/<name>/` (inside the forge repo, gitignored
+under `projects/*` per current `.gitignore`) moves to
+**`projects/<name>/brain/`** — i.e. into the project's own repo. This
+means:
+
+- When the project is cloned standalone (e.g. `parsoFish/claude-harness`),
+  the project brain comes with it.
+- The reflector writes project-specific themes into the project's own
+  repo, so post-merge those themes are committed into the project.
+- The forge repo's `brain/` directory loses the `projects/`
+  subdirectory entirely. Forge tracks Brain 1 + Brain 2 only.
+- For closed-source projects (e.g. `trafficGame`), the brain stays
+  inside the closed repo — no leak.
+- The cycle's worktree IS the project repo at the cycle's tip, so
+  cycle-time brain-queries can read `<worktree>/brain/` directly.
+  Reflector writes go to the same path; the cycle's normal commit +
+  merge carries them through to project main.
 
 ## Current state assessment
 
@@ -69,34 +106,49 @@ The issues:
 
 ## Target state
 
+**Inside the forge repo** (`/home/parso/forge/`):
+
 ```
 brain/
 ├── INDEX.md                       — top-level navigator (regenerable)
 ├── LINT.md                        — lint policy (cross-brain)
-├── log.md                         — phase closure log (Brain 1 content)
 ├── forge-dev/                     — BRAIN 1
 │   ├── graphify-out/              — graph scoped to forge code + prompts + docs
-│   ├── decisions/                 — ADR links + ADR-shaped notes about forge architecture
+│   ├── log.md                     — phase closure log (was brain/log.md)
+│   ├── decisions.md               — index of forge-architecture ADRs (was brain/forge/decisions.md)
+│   ├── reference.md               — external resources (was brain/forge/reference.md)
 │   ├── as-built/                  — architecture snapshots
 │   └── notes/                     — forge-internal engineering notes
-├── cycles/                        — BRAIN 2
-│   ├── _raw/                      — raw cycle archives (was brain/_raw/cycles)
-│   ├── themes/                    — forge-level patterns + antipatterns surfaced by cycles (was brain/forge/themes/, but trimmed to cycle-derived content)
-│   ├── antipatterns.md            — index over themes/ (was brain/forge/antipatterns.md)
-│   ├── patterns.md                — same, pattern index
-│   ├── operations.md              — operator workflows (was brain/forge/operations.md)
-│   └── graphify-out/              — graph scoped to themes + raw cycle archives (lightweight)
-└── projects/<name>/               — BRAIN 3 (one per project)
-    ├── profile.md                 — unchanged
-    ├── themes/                    — unchanged (project-specific themes only)
-    └── graphify-out/              — graph scoped to project's own themes + raw cycle slices for that project
+└── cycles/                        — BRAIN 2
+    ├── _raw/                      — raw cycle archives (was brain/_raw/cycles/)
+    ├── themes/                    — cycle-derived patterns + antipatterns (was brain/forge/themes/, trimmed)
+    ├── antipatterns.md            — index over themes/ (was brain/forge/antipatterns.md)
+    ├── patterns.md                — same, pattern index
+    ├── operations.md              — operator workflows (was brain/forge/operations.md)
+    ├── decisions.md               — per-cycle architectural / design decisions log (NEW; per Q3)
+    └── graphify-out/              — graph scoped to cycles/ content only
+```
+
+**Inside each managed project's repo** (BRAIN 3, one per project — lives in the project, not in forge):
+
+```
+<project-repo>/
+└── brain/
+    ├── profile.md                 — project profile (was brain/projects/<name>/profile.md)
+    ├── themes/                    — project-specific themes (was brain/projects/<name>/themes/)
+    └── graphify-out/              — graph scoped to the project's own brain/ + the project's source tree
 ```
 
 Notes on the layout:
 
-- `brain/forge/{patterns,antipatterns,operations,decisions,reference}.md` index files: the cycle-derived ones (patterns, antipatterns, operations) move to `brain/cycles/`. `decisions.md` + `reference.md` are forge-engineering aids → move to `brain/forge-dev/`.
+- `brain/forge/{patterns,antipatterns,operations,decisions,reference}.md` index files split per operator Q3:
+  - **Cycle-derived** (patterns, antipatterns, operations) → `brain/cycles/`
+  - **Forge-engineering aids** (decisions about forge architecture, reference links) → `brain/forge-dev/`
+  - Plus a new `brain/cycles/decisions.md` for per-cycle architectural / design decisions surfaced during cycle work.
 - Each brain gets its own `graphify-out/` so the structural graph is scope-clean. Three smaller graphs replace one giant one. Each one is also cheaper to rebuild incrementally.
-- `brain/_archive/` (old retired themes) stays at the top level for now; treat as historical reference shared across all three brains.
+- `brain/_archive/` is **deleted** (operator Q2).
+- `brain/log.md` moves into `brain/forge-dev/` (operator Q1).
+- `brain/projects/` is **removed from the forge repo entirely** — each project now owns its own `brain/` (operator Q4). For each managed project this means an outbound migration: copy `brain/projects/<name>/` to `<project-repo>/brain/`, then commit + push in the project repo before deleting from forge.
 
 ## Brain-query SKILL update
 
@@ -106,17 +158,27 @@ Notes on the layout:
 brain-query --scope=cycles    "<question>"
 brain-query --scope=project --project=trafficGame "<question>"
 brain-query --scope=forge-dev "<question>"
+brain-query --scope=all       "<question>"
 ```
 
 Convenient aliases the agent uses inside a cycle:
 
-- Planner skills (architect/PM/reflector) default to `scope=cycles,project=<cycle.project>` — a UNION of Brain 2 + the cycle's Brain 3.
+- Planner skills (architect/PM) default to `scope=cycles,project=<cycle.project>` — a UNION of Brain 2 + the cycle's Brain 3.
+- **Reflector** defaults to `scope=all` (Brain 1 + Brain 2 + the cycle's Brain 3). Operator Q6: the reflector is an operator-coupled session, so loose access across all three is fine — it's the agent that's writing back to whichever brain anyway.
+- **Dev-loop + reviewer** default to `scope=project,project=<cycle.project>` — Brain 3 of the cycle's project ONLY. Operator note 2026-05-26: this is an amendment to the ADR-010 "dev-loop doesn't read brain" rule. Now that Brain 3 is scope-clean (project-only, no forge-themes pollution), the original rationale ("don't risk an agent reading a forge-level theme and going off-spec from the WI") goes away. The WI is still the single source of *intent*; Brain 3 is supplemental *context* (project conventions, file layout, testing norms).
 - A forge-dev session (no active cycle) defaults to `scope=forge-dev,cycles` — Brain 1 + Brain 2.
 
-When no scope is given and no cycle context is available, default to **all three** and warn (so accidental no-scope queries don't silently miss). The brain-query result should include a `scope` field in its output so the agent can see what was actually searched.
+When no scope is given AND no cycle context is available, default to **all three** and emit a single-line warning (operator Q5: start permissive — the operator's expectation is that even with all-three selected, the tighter per-brain scopes still produce better results because of the scope-clean separation). The brain-query result should include a `scope` field in its output so the agent can see what was actually searched.
 
 `brain-graph` SKILL (`skills/brain-graph/SKILL.md`) similarly takes the
 scope and consults the right `graphify-out/` directory.
+
+**ADR amendment required:** ADR 010 (brain-first) currently says
+"dev-loop and reviewer do NOT read the brain". Amend to reflect the
+new "may read Brain 3 only" rule. The skill files in `skills/developer-ralph/`
+and `skills/developer-unifier/` (and the dev-invocation prompt
+language at `orchestrator/dev-invocation.ts`) currently say the
+dev-loop doesn't query the brain — update consistently.
 
 ## Content audit (carries the prior Tier 4 stub)
 
@@ -132,11 +194,11 @@ Carry **don't churn cycle archives** rule from the prior stub: `brain/cycles/_ra
 
 Each step lands in its own commit so the operator can stop after any step.
 
-### Step 0 — Snapshot + decide retention
+### Step 0 — Snapshot + clean retired material
 
 - `git tag brain-pre-restructure` on the current commit (a recoverable anchor).
-- Walk `brain/_archive/` to confirm what's there; either keep or merge into the new structure.
-- Decide whether to start fresh on a graphify graph or carry forward (probably fresh — graphify is cheap to rebuild and the scope changes are large).
+- **Delete `brain/_archive/`** (operator Q2). Archived themes are not load-bearing; the git tag preserves them if anyone needs them later.
+- Decide whether to start fresh on a graphify graph or carry forward — recommend **start fresh** (graphify is cheap to rebuild and the scope changes are large enough that the old graph would be more noise than signal).
 
 ### Step 1 — Brain-query scope plumbing (no content moves yet)
 
@@ -149,37 +211,49 @@ Each step lands in its own commit so the operator can stop after any step.
 
 Move files according to the target layout above. Use `git mv` so history is preserved. Don't change content; this is purely structural.
 
+**Inside the forge repo:**
+
 - `brain/_raw/cycles/` → `brain/cycles/_raw/`
 - `brain/forge/themes/` → `brain/cycles/themes/`
 - `brain/forge/{patterns,antipatterns,operations}.md` → `brain/cycles/`
 - `brain/forge/{decisions,reference}.md` → `brain/forge-dev/`
-- `brain/projects/` stays in place
-- Create empty `brain/forge-dev/{decisions,as-built,notes}/` skeleton
-- `brain/graphify-out/` will be replaced by three per-brain dirs in Step 3 — leave the old one in place for fallback in this step, but stop trusting it.
+- `brain/log.md` → `brain/forge-dev/log.md`
+- Create empty `brain/forge-dev/{as-built,notes}/` skeleton
+- Create empty `brain/cycles/decisions.md` (new — for per-cycle architectural decisions per operator Q3)
+- `brain/projects/` is **deleted from forge in this step** (after the next bullet moves its content)
+- `brain/graphify-out/` will be replaced by per-brain dirs in Step 3 — leave the old one in place for fallback in this step, but stop trusting it.
+
+**Outbound migration to each project repo** (operator Q4: Brain 3 lives inside the project, not forge):
+
+For each managed project at `projects/<name>/`:
+
+1. Confirm the project is a git repo (`cd projects/<name> && git status`).
+2. `mkdir <project-repo>/brain && cp -r ../../brain/projects/<name>/* <project-repo>/brain/` (initial copy — content unchanged).
+3. In the project repo: `git add brain/ && git commit -m "feat(brain): import project brain from forge (Tier 4 restructure)"` (plus the project's own conventions if different).
+4. If the project has a remote (e.g. claude-harness → parsoFish/claude-harness), `git push`. Closed projects: just commit locally.
+5. Back in forge: `git rm -r brain/projects/<name>/`.
+
+Repeat for every managed project. Once done, `brain/projects/` doesn't exist in forge.
 
 ### Step 3 — Per-brain graphify rebuilds
 
 Run `safishamsi/graphify` against each brain's content separately:
 
-- `brain/forge-dev/graphify-out/` — indexes `orchestrator/`, `cli/`, `skills/`, `loops/`, `docs/`, `ARCHITECTURE.md`, `PRINCIPLES.md`, `brain/forge-dev/`. **Excludes** `brain/cycles/` + `brain/projects/`.
-- `brain/cycles/graphify-out/` — indexes `brain/cycles/`. **Excludes** code + projects.
-- `brain/projects/<name>/graphify-out/` — one per project, indexes `brain/projects/<name>/`.
+- **`brain/forge-dev/graphify-out/`** — indexes `orchestrator/`, `cli/`, `skills/`, `loops/`, `docs/`, `ARCHITECTURE.md`, `PRINCIPLES.md`, `brain/forge-dev/`. **Excludes** `brain/cycles/` + everything under `projects/`.
+- **`brain/cycles/graphify-out/`** — indexes `brain/cycles/`. **Excludes** code + projects.
+- **`<project-repo>/brain/graphify-out/`** — one per project, indexes the project's `brain/` **AND the project's source tree** (operator Q4: "project source code should be included in project level brains"). The post-commit hook running INSIDE the project repo refreshes this graph. Forge doesn't own it — the project does.
 
-The current post-commit hook that runs `graphify update .` needs updating to refresh ALL three. Either:
+The forge-side post-commit hook (currently runs `graphify update .` on `brain/graphify-out/`) needs updating to refresh ALL forge-side brains (Brain 1 + Brain 2). Recommended: wrapper script `scripts/brain-graphify-all.sh` invoked by one hook. Project-side graphify hooks are set up per-project (a one-time install when each project gets its brain in Step 2).
 
-a) Three hook invocations (simpler but slower commits)
-b) A wrapper script `scripts/brain-graphify-all.sh` invoked by one hook
-c) Defer graphify to a periodic cron (graphs are useful but not load-bearing for cycles per the brain-query SKILL's "graph fills the gap forge has been carrying manually via related_themes" line)
-
-Recommend (b).
-
-Delete the old `brain/graphify-out/` once the three replacements are healthy.
+Delete the old `brain/graphify-out/` once the per-brain replacements are healthy.
 
 ### Step 4 — Update CLAUDE.md + ADRs
 
-- CLAUDE.md "## graphify" section: update path from `brain/graphify-out/` to the three new locations; explain the three-brain model.
-- ADR 010 (brain-first) may need a small amendment noting the three-brain scope-routing.
-- Possibly a new ADR for the three-brain model — borderline. The operator can decide; **default: no new ADR**, just amend 010.
+- CLAUDE.md "## graphify" section: update path from `brain/graphify-out/` to the three new locations (`brain/forge-dev/graphify-out/`, `brain/cycles/graphify-out/`, `<project-repo>/brain/graphify-out/`); explain the three-brain model.
+- CLAUDE.md "## The brain is the first source of knowledge" section: amend to reflect the new "planners read Brain 2 + 3; dev-loop + reviewer read Brain 3 only" rule.
+- **ADR 010 (brain-first) needs a real amendment** — the old "dev-loop and reviewer deliberately do NOT read the brain" rule is changed by Q-new (2026-05-26): they may now read Brain 3 of the cycle's project, because scope-cleanness removes the original pollution-risk rationale. Write the amendment as a date-stamped block in the ADR (don't rewrite history).
+- A **new ADR for the three-brain model** is recommended — the structural shape (where each brain lives, who reads what, why Brain 3 lives in the project repo) is load-bearing enough that future agents need a single authoritative reference. Number it the next available ADR slot.
+- The skill files in `skills/developer-ralph/` and `skills/developer-unifier/` (and the dev-invocation prompt language at `orchestrator/dev-invocation.ts`) currently say the dev-loop doesn't query the brain — update consistently with the new Brain-3-only rule.
 
 ### Step 5 — Content audit (the original Tier 4 stub)
 
@@ -202,63 +276,108 @@ After Step 5:
 
 Reflector currently writes themes to `brain/forge/themes/` AND `brain/projects/<name>/themes/`. Update the reflector invocation (`orchestrator/reflector-invocation.ts`) + the reflector SKILL so it writes:
 
-- Cycle-level patterns → `brain/cycles/themes/`
-- Project-specific patterns → `brain/projects/<name>/themes/`
+- Cycle-level patterns → `brain/cycles/themes/` (inside forge repo)
+- Project-specific patterns → `<projectRepoPath>/brain/themes/` (inside the **project repo**, via the worktree, so they're carried by the cycle's normal merge into project main)
 
-The split is the reflector's call — same as today, just with the new paths.
+Per operator Q6, the reflector has **loose read access to all three brains** (it's an operator-coupled session). The write split above is the reflector's call — same agent-discretion as today, just with the new paths. The reflector queries Brain 1 + 2 + 3 when reasoning about what happened in the cycle, but writes are confined to the cycle (Brain 2) and project (Brain 3) brains.
+
+Critical: reflector writes to the project's brain need to happen BEFORE the cycle's auto-commit + push step, so the theme files land in the same commit as the rest of the cycle's work. If reflector writes happen AFTER, they'd need a second commit + push.
 
 ## Validation procedure
 
-The operator wants concrete proof that the brain restructure improves something measurable, not just feels tidier. Two-track validation:
+The operator wants concrete proof that the brain restructure improves
+something measurable, not just feels tidier. **Track B (brain-query
+precision/recall mini-bench)** is the primary signal per operator Q7
+— it's auditable side-by-side (before / after numbers per question)
+and isolates the brain-query change from the multi-factor noise of a
+real cycle. Track A becomes the regression check that confirms the
+restructure doesn't *break* anything. Track C is a quick smoke.
 
-### Track A — Re-run the verification initiative
+### Track B — Brain-query precision/recall mini-bench  (PRIMARY)
 
-Re-run `INIT-2026-05-26-claude-trail-verify-cascade-v3` (or a v4 sibling with the same shape) AFTER the restructure lands. Compare against the [v3 baseline](../../verifications/2026-05-26-cascade-cycle-v3/):
+The operator's preferred validation per Q7. Designed as a side-by-
+side comparison that produces concrete numbers + answers the operator
+can audit row by row.
 
-| Metric | V3 baseline | V4 target | Why this measures brain quality |
+**Setup:**
+
+- Pick **10 questions** the planner would realistically ask. Mix of
+  scopes:
+  - **forge-dev** questions: "Where is the iter-0 must-fail check implemented?", "What are the four composed gates the unifier must pass?", "Which ADR governs the brain-first rule?"
+  - **cycle-knowledge** questions: "What antipatterns do we know about PM hidden coupling?", "What's the difference between the wedged check and gate-too-loose?" (note: wedged is gone post-Tier-2; the question becomes a stale-theme detector), "What did we learn about per-WI status colours?"
+  - **project-specific** (claude-harness): "What patterns has the unifier-wedge surfaced on claude-harness?", "What's the recommended quality_gate_cmd shape for claude-trail?"
+  - **cross-scope** questions: "What does the brain say about decomposing a feature into multiple WIs?" (PM-side; could hit cycle + project)
+
+- For each question, human-curate the set of "themes that should
+  match" — call this the **expected set**. This is the labour-
+  intensive part; budget ~15-30 min curating the 10 questions.
+
+- Save the question set + expected matches to
+  `docs/verifications/<date>-brain-bench/questions.json`.
+
+**Run procedure:**
+
+1. **Baseline** (before restructure): check out `brain-pre-restructure`
+   tag, run `brain-query` on each question (no scope flag; old behaviour
+   scanned everything). Record returned themes + answer text per
+   question into `baseline.json`.
+2. **Post-restructure** (after Step 6): on `main`, run `brain-query
+   --scope=<correct-scope>` for each question. Record returned themes
+   + answer text per question into `post.json`.
+3. **Negative control**: also run `brain-query --scope=<wrong-scope>`
+   for a representative subset (3-4 questions). The wrong-scope
+   results should be visibly worse — e.g. asking a forge-dev question
+   with `--scope=cycles` should return mostly irrelevant cycle themes.
+
+**Scoring:**
+
+For each question:
+
+- **Precision**: |returned ∩ expected| / |returned|. Higher = less noise.
+- **Recall**: |returned ∩ expected| / |expected|. Higher = nothing missed.
+- **Answer quality**: 1-5 operator rating of the returned answer text (subjective; the operator audits 10 ratings + leaves a note).
+
+**Pass criteria:**
+
+- Median precision **rises** vs baseline (less noise).
+- Median recall **stays ≥** baseline (no relevant themes lost).
+- Negative-control queries are visibly worse (proves scope is actually filtering).
+- Operator's subjective rating averages ≥ baseline.
+
+If recall drops below baseline → scope routing is too tight; relax it (the planner's default of `scope=cycles,project` should usually include forge-dev too on cross-scope questions, or the all-three permissive default kicks in).
+
+**Deliverable:**
+
+`docs/verifications/<date>-brain-bench/` contains:
+- `questions.json` — the 10 curated questions + expected matches
+- `baseline.json` — pre-restructure results
+- `post.json` — post-restructure results
+- `negative-control.json` — wrong-scope subset
+- `summary.md` — per-question table + medians + the operator's notes
+
+### Track A — Regression check via re-run
+
+Re-run `INIT-2026-05-26-claude-trail-verify-cascade-v3` (or a v4
+sibling with the same shape) AFTER the restructure lands. This is a
+**regression guard**, not the primary signal — Track B is the
+primary signal per operator Q7. Compare against the [v3 baseline](../../verifications/2026-05-26-cascade-cycle-v3/):
+
+| Metric | V3 baseline | V4 expectation | Why |
 |---|---|---|---|
-| PM phase duration (cycle.start → pm.end) | ~4 min | ↓ or = | Faster brain-query (smaller scoped graph + themes) = faster planning |
-| PM brain-query count | 5 | ≤ 5 | Targeted queries hit the right themes; fewer fall-through queries needed |
-| PM brain-query cost | $0.05 | ↓ or = | Less context to scan per query |
-| Cycle outcome | 6 WIs, 5 pass, WI-5 fails on iteration-budget | merge OR clean fail; reflection runs | Restructure must not break cycle correctness |
-| Reflector theme placement | mixed forge/projects | clean cycles/ vs projects/ split | Step 7 working |
-| Forge-dev brain noise check | unclear | a brain-query for forge code returns no cycle themes; a brain-query for cycle antipatterns returns no code symbols | Direct test of scope isolation |
+| Cycle outcome | merge + reflection | merge + reflection | Restructure must not break cycle correctness |
+| Reflector theme placement | mixed forge/projects | clean `cycles/` (forge) vs `<project>/brain/themes/` (project repo) split | Step 7 working |
+| PM brain-query count + cost | 5 queries / $0.05 | should not increase | Restructure should reduce noise, not add cost |
 
-If the v4 cycle merges AND PM phase is no slower AND scope isolation holds, the restructure is a win.
-
-If v4 takes longer OR cycle outcome regresses, dig in to the diff — likely the scope-routing missed a needed theme.
-
-### Track B — Brain-query precision/recall mini-bench
-
-If Track A is hard to attribute (cycle behaviour is multi-factor),
-fall back to a controlled bench. The next agent designs this if
-needed — outline:
-
-- Pick **10 questions** the planner would realistically ask, each
-  paired with the human-curated set of "themes that should match".
-  Examples:
-  - "What antipatterns do we know about PM hidden coupling?"
-  - "What does the brain say about per-WI sizing?"
-  - "What's the unifier's composed gate composed of?"
-  - "What patterns has trafficGame surfaced about overlay rendering?"
-- For each question, run `brain-query --scope=<right-scope>` and
-  `brain-query --scope=<wrong-scope>` (negative control).
-- Score precision (returned themes / curated relevant) + recall
-  (curated relevant / all relevant in brain).
-- Compare against the same questions on the **old** brain
-  layout (use the `brain-pre-restructure` git tag for the baseline).
-
-Aim: precision should rise (less noise from cross-scope themes);
-recall should be ≥ baseline (no relevant themes lost). If recall
-drops, the scope routing is too tight — relax it.
+If v4 merges + theme placement is clean + cost doesn't regress, restructure is safe to keep. If anything regresses, the diff between v3 and v4 traces the cause.
 
 ### Track C — Forge-dev session smoke test
 
 A quick informal check that the forge-dev brain is useful on its own
-turf: ask the brain (via brain-query in `scope=forge-dev`) a question
+turf: ask the brain (via `brain-query --scope=forge-dev`) a question
 about forge code — e.g. "where is the iter-0 must-fail check
 implemented?" — and confirm the result is the code file, not a cycle
-theme. This is the strongest signal that the scope split is working.
+theme. This is the strongest qualitative signal that the scope split
+is working as intended.
 
 ## Anti-goals (carry from prior plan)
 
@@ -284,15 +403,34 @@ theme. This is the strongest signal that the scope split is working.
 | Content audit deletes themes that turn out to be load-bearing | Medium | Land trims in small batches (≤10 themes per commit) so git revert is cheap |
 | `brain-pre-restructure` git tag forgotten | Low | Step 0 makes this explicit before any moves |
 
-## Open questions for the next agent
+## Resolved questions (2026-05-26 operator hand-off)
 
-1. **Where does `brain/log.md` belong?** It's the phase closure log — historical forge dev artifact. Probably `brain/forge-dev/log.md`. Confirm with operator if uncertain.
-2. **`brain/_archive/`** — keep at top level, move into a brain, or delete? Walk its contents first.
-3. **`brain/forge/{decisions,reference}.md` content** — confirm these are forge-engineering aids (Brain 1) and not cycle-pattern docs. If the latter, move to `brain/cycles/`.
-4. **Graphify scope for projects** — should each project's `graphify-out/` index include the project's source code (under `projects/<name>/`) too, or only `brain/projects/<name>/`? Operator's "project structure resource" comment suggests including some code structure. Worth a one-line confirmation.
-5. **brain-query default scope when invoked outside a cycle context** — strict (require explicit scope) or permissive (default to all-three + warn)? Start permissive.
-6. **The reflector's "cycle-level vs project-specific" split policy** — formalize as a rule the reflector follows, OR keep agent-discretion with a brain-query at the time of writing? Probably the latter (less rigid).
-7. **Validation Track A vs Track B selection** — Track A first (cheap to run). Fall back to Track B if Track A signals are too noisy to attribute to the restructure.
+The original open questions are answered + inlined into the plan above. For audit:
+
+1. **`brain/log.md` location** → `brain/forge-dev/log.md` (Q1 answer).
+2. **`brain/_archive/`** → **delete** (Q2 answer; git tag preserves history if needed).
+3. **`brain/forge/{decisions,reference}.md`** → split per scope (Q3 answer): forge architecture decisions / external references → `brain/forge-dev/`; per-cycle architectural decisions get a new `brain/cycles/decisions.md`.
+4. **Project source code in project-level brains** → yes (Q4 answer). Stronger: project brains move OUT of forge and INTO the project's own repo at `<project-repo>/brain/`. Forge's `brain/projects/` is deleted entirely.
+5. **brain-query default scope** → permissive (Q5 answer); default to all three + warn. The operator's expectation is that better-scoped queries will still win on average due to the per-brain noise reduction.
+6. **Reflector access** → loose across all three brains for reads (Q6 answer); writes split as before (cycle-level → `brain/cycles/themes/`, project-level → `<project-repo>/brain/themes/`).
+7. **Validation track selection** → **Track B (precision/recall mini-bench) is the primary signal** (Q7 answer); Track A becomes a regression check; Track C is a quick smoke.
+
+## Open questions still requiring operator input (none, but flag if discovered)
+
+The next agent should surface any new ambiguities before executing destructive steps (esp. Step 2's project-brain outbound migration, Step 7's reflector path changes). If a question arises mid-execution, stop + confirm rather than guess.
+
+## New rule introduced 2026-05-26 (worth surfacing for explicit sign-off)
+
+**Dev-loop + reviewer may now read Brain 3** (the cycle's project
+brain). This is an amendment to ADR 010 ("dev-loop and reviewer
+deliberately do NOT read the brain"). Operator rationale: now that
+Brain 3 is scope-clean (project-only, no forge themes), the original
+ADR-010 risk of agent-going-off-spec-from-WI goes away. The WI
+remains the single source of *intent*; Brain 3 is supplemental
+*context*. Write this as a date-stamped amendment block in ADR 010 +
+update the dev-loop / unifier SKILL files + `dev-invocation.ts`
+prompt language. Land this amendment as its own commit so the
+operator can review it standalone.
 
 ## Out of scope
 

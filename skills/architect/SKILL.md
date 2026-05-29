@@ -17,6 +17,35 @@ commit <session-id>` ingests the operator's annotations + verdict and either
 writes the manifests (`approve`), re-runs with feedback (`revise`), or archives
 the session (`reject`).
 
+## Surfaces — interactive (terminal) vs in-UI runner (ADR 020)
+
+This skill has two hosts that share this same content:
+
+- **Interactive (terminal):** the operator runs you in their own Claude session;
+  you drive the interview with **`AskUserQuestion`** as described in the Process
+  section below.
+- **In-UI runner (ADR 020, the primary surface):** a server-side,
+  file-checkpointed runner (`orchestrator/architect-runner.ts`) hosts you one
+  bounded turn at a time, driven by the forge UI. **You do NOT call
+  `AskUserQuestion`.** Instead the interview is **file-based handoff** (the same
+  shape the reflector uses):
+  - When the runner asks you for the *interview step*, return structured JSON
+    `{ done, questions? }` — `questions` is an `AskUserQuestion`-shaped array
+    (`question`, `header` ≤12 chars, 2-4 `options` each with `label` +
+    `description`). The runner writes it to `questions.json`; the UI renders the
+    form; the operator's answers come back in `answers.json`, which you read as
+    the interview so far on the next turn. Set `done: true` once you have enough
+    to draft without unresolved scope / success-signal / constraint ambiguity.
+  - When the runner asks you for the *draft step*, return the initiatives as
+    structured JSON; the runner builds the manifests, runs the council, and
+    writes PLAN.md / PLAN.html. On **approve**, the operator's resolved design
+    decisions are fed back into one more draft turn before the manifests are
+    promoted to `_queue/pending/`.
+
+  The runner never auto-starts and never auto-approves — every turn is triggered
+  by an explicit operator action in the UI (idea / answer / verdict), preserving
+  the "impossible to silently auto-satisfy" property of the human moment.
+
 ## Required first action
 
 Invoke `brain-query` with:

@@ -43,9 +43,8 @@ import { assertEnv } from './config.ts';
 import { writeCycleReport } from './cycle-report.ts';
 import { resolveInitiativeId } from './initiative-id.ts';
 import {
-  dispatchArchitectCommit,
-  ArchitectCommitError,
-} from './architect-commit.ts';
+  runArchitectTurn,
+} from './architect-runner.ts';
 import {
   daemonPaths,
   daemonState,
@@ -165,12 +164,10 @@ Usage:
   forge report <cycle-id> [--regenerate]  Print (or regenerate) the human-facing cycle report
   forge demo <project> <baseRef> <changedRef> [--initiative <id-or-handle>] [--out <dir>] [--build] [--brief <file>]
                                           Generate a self-contained before/after comparison demo (HTML)
-  forge architect commit <session-id> [--project <name>] [--via-pr]
-                                          Ingest the operator's PLAN.md annotations + verdict for an architect session
-                                          - approve  → writes manifests to _queue/pending/, emits architect.plan-approved
-                                          - revise   → writes session-dir/feedback.md, emits architect.plan-revised
-                                          - reject   → archives session dir, emits architect.plan-rejected
-                                          --via-pr opens a draft PR on the project repo; falls back to local-edit if no origin
+  forge architect run <session-id> [--project <name>]
+                                          ADR 020: the architect runs in the forge UI. Advances ONE turn of the
+                                          file-checkpointed runner (interview → draft → finalize). Spawned by the
+                                          UI bridge on each operator action; not normally invoked by hand.
   forge brain index [--scope <project>]   Emit the brain navigation indexes as a single blob (cache-friendly prefix for prompts)
   forge brain index --write               Regenerate brain/INDEX.md from filesystem (counts + sub-wiki listing)
   forge brain lint [--scope <s>] [--fix]  Structural integrity checks on brain/ (8 checks, scopes: full|forge-only|project-only|single-file|cycle-touched-themes|cleanup-dry-run)
@@ -1211,9 +1208,10 @@ function cmdBrainLint(rest: string[]): void {
 
 async function cmdArchitect(rest: string[]): Promise<void> {
   const sub = rest[0];
-  if (sub === 'commit') return await cmdArchitectCommit(rest.slice(1));
-  console.error('forge architect: subcommands: commit <session-id>');
-  console.error('  forge architect commit <session-id> [--project <name>] [--via-pr]');
+  if (sub === 'run') return await cmdArchitectRun(rest.slice(1));
+  console.error('forge architect: subcommands: run <session-id>');
+  console.error('  forge architect run <session-id> [--project <name>]');
+  console.error('  (the architect now runs in the forge UI — see ADR 020; the bridge spawns this per turn)');
   process.exit(2);
 }
 
@@ -1318,20 +1316,20 @@ function cmdSendBack(rest: string[]): void {
   });
 }
 
-async function cmdArchitectCommit(rest: string[]): Promise<void> {
+// ADR 020: the architect runs in the forge UI as an operator-driven,
+// file-checkpointed runner. `forge architect run <sid>` advances ONE turn — it's
+// what the UI bridge spawns on each operator action (start / answer / verdict).
+// Not normally invoked by hand.
+async function cmdArchitectRun(rest: string[]): Promise<void> {
   const sessionId = rest[0];
   if (!sessionId) {
-    console.error('forge architect commit: missing <session-id>');
-    console.error('Usage: forge architect commit <session-id> [--project <name>] [--via-pr]');
+    console.error('forge architect run: missing <session-id>');
+    console.error('Usage: forge architect run <session-id> [--project <name>]');
     process.exit(2);
   }
   const projectIdx = rest.indexOf('--project');
   const projectArg = projectIdx >= 0 ? rest[projectIdx + 1] : undefined;
-  const viaPr = rest.includes('--via-pr');
 
-  // Resolve the project root. Two surfaces:
-  //  - explicit `--project <name>` → `projects/<name>/`
-  //  - default: scan `projects/*/_architect/<session-id>/` for the dir
   let projectRoot: string;
   if (projectArg) {
     projectRoot = resolve('projects', projectArg);
@@ -1339,7 +1337,7 @@ async function cmdArchitectCommit(rest: string[]): Promise<void> {
     const found = findSessionProject(sessionId);
     if (!found) {
       console.error(
-        `forge architect commit: no project found containing _architect/${sessionId}/. ` +
+        `forge architect run: no project found containing _architect/${sessionId}/. ` +
           `Pass --project <name> to disambiguate.`,
       );
       process.exit(2);
@@ -1348,31 +1346,19 @@ async function cmdArchitectCommit(rest: string[]): Promise<void> {
   }
 
   if (!existsSync(projectRoot)) {
-    console.error(`forge architect commit: project root not found: ${projectRoot}`);
+    console.error(`forge architect run: project root not found: ${projectRoot}`);
     process.exit(2);
   }
 
-  try {
-    const result = await dispatchArchitectCommit({
-      sessionId,
-      projectRoot,
-      viaPr,
-    });
-    if (result.verdict === 'approve') {
-      console.log(`approved. wrote ${result.writtenManifestPaths.length} manifest(s):`);
-      for (const p of result.writtenManifestPaths) console.log(`  ${p}`);
-    } else if (result.verdict === 'revise') {
-      console.log(`revise. feedback bundled at ${result.feedbackPath}`);
-      console.log(`Re-run /forge-architect ${result.verdict === 'revise' ? '<project>' : ''} to regenerate PLAN.md with feedback.`);
-    } else {
-      console.log(`rejected. archived to ${result.archivedPath}`);
-    }
-  } catch (err) {
-    if (err instanceof ArchitectCommitError) {
-      console.error(`forge architect commit: ${err.message}`);
-      process.exit(2);
-    }
-    throw err;
+  const result = await runArchitectTurn({ sessionId, projectRoot });
+  console.log(`architect turn complete — phase=${result.phase}`);
+  if (result.questions?.length) {
+    console.log(`  ${result.questions.length} question(s) awaiting the operator`);
+  }
+  if (result.planPath) console.log(`  PLAN: ${result.planPath}`);
+  if (result.promotedManifestPaths?.length) {
+    console.log(`  promoted ${result.promotedManifestPaths.length} manifest(s) to _queue/pending/:`);
+    for (const p of result.promotedManifestPaths) console.log(`    ${p}`);
   }
 }
 
@@ -1397,8 +1383,12 @@ function findSessionProject(sessionId: string): string | null {
     } catch {
       continue;
     }
-    const planPath = join(candidate, '_architect', sessionId, 'PLAN.md');
-    if (existsSync(planPath)) return candidate;
+    // Match on the session dir (status.json appears from the first turn;
+    // PLAN.md only appears once drafting completes).
+    const sessionDir = join(candidate, '_architect', sessionId);
+    if (existsSync(join(sessionDir, 'status.json')) || existsSync(join(sessionDir, 'PLAN.md'))) {
+      return candidate;
+    }
   }
   return null;
 }

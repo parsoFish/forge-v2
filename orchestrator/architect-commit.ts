@@ -27,11 +27,10 @@ import {
   existsSync,
   mkdirSync,
   readFileSync,
-  readdirSync,
   writeFileSync,
 } from 'node:fs';
 import { execFileSync } from 'node:child_process';
-import { join, resolve } from 'node:path';
+import { resolve } from 'node:path';
 
 import {
   parseFeedbackComments,
@@ -41,12 +40,7 @@ import {
   type Verdict,
   type Annotation,
 } from '../cli/architect-plan.ts';
-import {
-  parseManifest,
-  validateManifest,
-  writeManifest,
-  type InitiativeManifest,
-} from './manifest.ts';
+import { promoteManifests, PromoteManifestsError } from './promote-manifests.ts';
 import { createLogger, type EventLogger } from './logging.ts';
 
 export type ArchitectCommitInput = {
@@ -78,7 +72,6 @@ export type ArchitectCommitResult = {
 
 const PLAN_NOT_FOUND = 'PLAN_NOT_FOUND';
 const VERDICT_NOT_SET = 'VERDICT_NOT_SET';
-const NO_MANIFESTS = 'NO_MANIFESTS';
 
 export class ArchitectCommitError extends Error {
   code: string;
@@ -148,36 +141,19 @@ async function doApprove(args: {
   logger: EventLogger;
 }): Promise<ArchitectCommitResult> {
   const { input, paths, annotations, logger } = args;
-  if (!existsSync(paths.manifestsDir)) {
-    throw new ArchitectCommitError(
-      NO_MANIFESTS,
-      `architect commit --approve: no manifests/ dir at ${paths.manifestsDir}. The architect should have written drafts there.`,
-    );
-  }
-  const manifestFiles = readdirSync(paths.manifestsDir).filter((f) => f.endsWith('.md'));
-  if (manifestFiles.length === 0) {
-    throw new ArchitectCommitError(
-      NO_MANIFESTS,
-      `architect commit --approve: ${paths.manifestsDir} is empty.`,
-    );
-  }
-
   const queueRoot = input.queueRoot ?? resolve('_queue');
-  const writtenManifestPaths: string[] = [];
-  const writtenInitiativeIds: string[] = [];
-  for (const file of manifestFiles) {
-    const src = join(paths.manifestsDir, file);
-    const manifest: InitiativeManifest = parseManifest(readFileSync(src, 'utf8'));
-    const errors = validateManifest(manifest);
-    if (errors.length > 0) {
-      throw new ArchitectCommitError(
-        'INVALID_MANIFEST',
-        `architect commit --approve: manifest ${src} invalid:\n  - ${errors.join('\n  - ')}`,
-      );
+  let writtenManifestPaths: string[];
+  let writtenInitiativeIds: string[];
+  try {
+    ({ writtenManifestPaths, writtenInitiativeIds } = promoteManifests(paths.manifestsDir, {
+      queueRoot,
+    }));
+  } catch (err) {
+    if (err instanceof PromoteManifestsError) {
+      // Preserve the legacy operator-facing prefix + error codes.
+      throw new ArchitectCommitError(err.code, `architect commit --approve: ${err.message}`);
     }
-    const out = writeManifest(manifest, { queueRoot });
-    writtenManifestPaths.push(out);
-    writtenInitiativeIds.push(manifest.initiative_id);
+    throw err;
   }
 
   logger.emit({

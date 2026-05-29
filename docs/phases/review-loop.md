@@ -60,16 +60,18 @@ Two stages, unified as one **review-Ralph** loop (Phase-6 redesign):
 
 ## Benchmark suite
 
-The per-phase `benchmarks/review-loop/` was archived 2026-05-23 (S4) when the reviewer collapsed into the developer-loop unifier. Review behaviour is now regressed via:
+> Note (2026-05-25): the `benchmarks/` harnesses were removed; this section is historical. Phase quality is now judged on real merged cycles.
 
-- [`benchmarks/e2e/`](../../benchmarks/e2e/) — full cycle (PM → dev-loop → unifier → merge) with a human-simulator providing verdicts.
-- [`benchmarks/developer-loop/`](../../benchmarks/developer-loop/) — extended with unifier criteria (`artifact`/`harness` fixtures).
-- [`benchmarks/review-router/`](../../benchmarks/review-router/) — 6 deterministic mock-`gh` fixtures for the PR-comment poller.
+The per-phase `benchmarks/review-loop/` was archived 2026-05-23 (S4) when the reviewer collapsed into the developer-loop unifier. Review behaviour was then regressed (until the 2026-05-25 benchmark removal) via:
+
+- `benchmarks/e2e/` — full cycle (PM → dev-loop → unifier → merge) with a human-simulator providing verdicts.
+- `benchmarks/developer-loop/` — extended with unifier criteria (`artifact`/`harness` fixtures).
+- `benchmarks/review-router/` — 6 deterministic mock-`gh` fixtures for the PR-comment poller.
 
 ## Known failure modes (to defend against)
 
 - **Demo doesn't actually work** — pre-review checklist must include running the demo script in the worktree.
-- **PR description is what-not-why** — explicit prompt rule + benchmark check.
+- **PR description is what-not-why** — explicit prompt rule (formerly also a benchmark check; benchmarks removed 2026-05-25).
 - **Squash-merge stacked PRs** — explicitly forbidden (v1 lesson, in the brain). Use layered merge order.
 - **Stale demo capture** — the demo must capture *this* branch's build, never a stray/ambient dev server (`reuseExistingServer: true` latching the wrong app silently). The reviewer mandates an isolated strict-port server / built `preview`; pattern of record: [`brain/forge/themes/pr-as-sole-review-window.md`](../../brain/forge/themes/pr-as-sole-review-window.md).
 - **Reviewer never reaches the verdict gate** — historically a too-tight per-iteration $/turn budget cut every iteration before a verdict (0 verdicts, mislabelled send-back-cap). Those guards were removed; the loop is bounded only by the iteration cap.
@@ -79,8 +81,10 @@ The per-phase `benchmarks/review-loop/` was archived 2026-05-23 (S4) when the re
 Closed end-to-end. The send-back loop, demo-embedded self-contained PR,
 visibility-aware demo commit, and closure-as-single-mover are all
 implemented (Phase-6 redesign + the 2026-05-18 operator-review
-reliability pass + the 2026-05-23 S4 unifier collapse). Bench: the e2e
-+ developer-loop benches (see *Benchmark suite* above) exercise the loop.
+reliability pass + the 2026-05-23 S4 unifier collapse). The loop was
+formerly exercised by the e2e + developer-loop benches (removed
+2026-05-25; see *Benchmark suite* above); it is now exercised by real
+merged cycles.
 
 **2026-05-18 P2/P3 (unit-tested; not yet exercised against a live cycle):**
 - **PR at end of review iteration 1, not on approve.** The gate ensures

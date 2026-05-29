@@ -66,8 +66,10 @@ Tested in [`orchestrator/cycle-pm-hallucination.test.ts`](../../orchestrator/cyc
 
 ## Benchmark suite
 
-[`benchmarks/project-manager/`](../../benchmarks/project-manager/)
-- `initiatives.json` — five fixtures, one per managed project, calibrated against project-specific brain themes. See the [bench README](../../benchmarks/project-manager/README.md). Per [CONTRACTS.md C11](../planning/2026-05-20-refinement/CONTRACTS.md), `score.ts` parses both the old `expected.{min,max}_work_items` shape and the new manifest-topology-derived shape for one release.
+> Note (2026-05-25): the `benchmarks/` harnesses were removed; this section is historical. Phase quality is now judged on real merged cycles. (WI-shape validation lives on in `orchestrator/work-item.ts`.)
+
+`benchmarks/project-manager/` (removed)
+- `initiatives.json` — five fixtures, one per managed project, calibrated against project-specific brain themes. (See the former `benchmarks/project-manager/README.md`, removed 2026-05-25.) Per [CONTRACTS.md C11](../planning/2026-05-20-refinement/CONTRACTS.md), `score.ts` parses both the old `expected.{min,max}_work_items` shape and the new manifest-topology-derived shape for one release.
 - `score.ts` — invokes the PM skill against fixtures and scores the 9-criteria rubric + 1 gate; pass threshold 0.7. The gate (`feature_id_in_manifest`) trips → 0 score.
 - `scoring.ts` / `sdk.ts` / unit tests — pure scoring functions and the SDK invocation shim, both unit-tested. Three new deterministic criteria: `one_creator_per_file`, `quality_gate_cmd_present`, `files_real_or_explicitly_new` (each consumes a structured field — no NLP).
 
@@ -79,6 +81,8 @@ The bench's invocation contract lives in [`orchestrator/pm-invocation.ts`](../..
 - Validation: [`orchestrator/work-item.ts`](../../orchestrator/work-item.ts) — `parseWorkItem` / `validateWorkItem` / `validateWorkItemSet` / `detectHiddenCoupling`.
 
 ## Known failure modes (to defend against)
+
+> Note (2026-05-25): the `benchmarks/` harnesses were removed; the "bench's `<criterion>`" scoring references below are historical. The prompt guidance and validator-layer guards (`detectHiddenCoupling`, `knownFeatureIds`) remain live; phase quality is now judged on real merged cycles.
 
 - **Over-decomposition** — 50 work items for a 3-day feature. Capped via the bench's `work_item_count_in_range` criterion + sizing-band prompt guidance.
 - **Under-decomposition** — one giant work item. Same.

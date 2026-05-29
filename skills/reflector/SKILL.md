@@ -22,7 +22,8 @@ This section is authoritative for the operator side of stage 2/3; the
 `/forge-reflect <id>` slash command is a thin invoker of it.
 
 > Human moment — run in YOUR OWN Claude session. Forge never simulates
-> this feedback in production (the bench simulator is bench-only).
+> this feedback — it is always supplied by a human in production. (A bench
+> simulator pre-populated it historically; benchmarks were removed 2026-05-25.)
 
 **Reads:** `_logs/<id>/user-questions.md` (the reflector's stage-2
 questions — ≤4 numbered; may be absent if none were non-brain-resolvable);
@@ -41,8 +42,9 @@ this cycle. Do not run a cycle from this moment.
 
 ## Required first action
 
-Invoke `brain-query` BEFORE writing anything. The bench gates on this
-signal (`brain_consulted`). Useful queries:
+Invoke `brain-query` BEFORE writing anything. Production gates on this
+signal (`brain_consulted`) — the reflection fails if the brain is not
+consulted before writes. Useful queries:
 
 - "What does the brain know about prior retros for similar initiatives?"
 - "What antipatterns are currently surfaced and might be reinforced or
@@ -100,7 +102,9 @@ already did that on merge. The reflector is post-merge log-and-continue.
 
 ## Benchmark suite
 
-[`benchmarks/reflection/`](../../benchmarks/reflection/) — 5 fixtures
+> Note (2026-05-25): the `benchmarks/` harnesses were removed; this section is historical. Phase quality is now judged on real merged cycles.
+
+Was `benchmarks/reflection/` — 5 fixtures
 covering: real merged cycle with one send-back, multi-send-back bash CLI,
 dev-loop wedge + recovery, brain-gap-heavy cycle, minimal clean cycle.
 Rubric: 5 gates (`manifest_provided`, `log_parseable`, `retro_emitted`,
@@ -159,9 +163,9 @@ summing to 1.0 with pass threshold 0.7.
 
 ### Stage 3 — Pure user feedback (file-based handoff)
 
-8. Read `_logs/<cycle-id>/user-feedback.md`. In bench mode this file is
-   pre-populated by the simulator; in production a human writes it before
-   the next cycle.
+8. Read `_logs/<cycle-id>/user-feedback.md`. In production a human writes
+   it before the next cycle. (A bench simulator pre-populated it
+   historically; benchmarks were removed 2026-05-25.)
 9. If the file exists, distil the answers into Section 2 (alongside stage
    2 questions) and the free-form text into Section 3
    (`## User feedback`). If missing, write
@@ -188,7 +192,7 @@ summing to 1.0 with pass threshold 0.7.
 
 ## Constraints
 
-- **Brain query first.** No brain reads before writes = bench fails.
+- **Brain query first.** No brain reads before writes = the reflection fails (production gates on the `brain_consulted` signal).
 - **Concrete actions, not vague intentions.** "We could improve X"
   rejected. "X happened N times; new theme page Y added; antipattern Z
   indexed" required.

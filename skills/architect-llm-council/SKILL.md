@@ -38,10 +38,6 @@ Invoke `brain-query` with:
 - `council.escalate` — one event per taste decision surfaced to the user.
 - `council.end` — chain complete.
 
-## Benchmark suite
-
-[`benchmarks/architect/`](../../benchmarks/architect/) — shared with the architect skill.
-
 ## The critics
 
 Each critic is invoked as a sub-agent via the Claude Agent SDK. Order matters:

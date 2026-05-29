@@ -70,7 +70,9 @@ The graph fills the gap forge has been carrying manually via `related_themes` fr
 
 ## Benchmark suite
 
-Primary owner of [`benchmarks/brain/`](../../benchmarks/brain/) — `questions.json` + `score.ts`. Accuracy + latency + source-correctness are the scored metrics. The 18 narrative questions exercise keyword scan; the 3 structural questions (`Q19-Q21`) exercise the graph-first path. The combined bench is the proof that adding the graph does not regress narrative answers while adding a new class of answer.
+> Note (2026-05-25): the `benchmarks/` harnesses were removed; this section is historical. Phase quality is now judged on real merged cycles.
+
+Was the primary owner of `benchmarks/brain/` — `questions.json` + `score.ts`. Accuracy + latency + source-correctness were the scored metrics. The 18 narrative questions exercised keyword scan; the 3 structural questions (`Q19-Q21`) exercised the graph-first path. The combined bench was the proof that adding the graph did not regress narrative answers while adding a new class of answer.
 
 ## Process
 
@@ -148,7 +150,7 @@ If you don't know the exact slug, use the navigation indexes (`forge brain index
 
 - **Cite, don't paraphrase deeply.** The caller can read the linked file. Synthesis is a one-paragraph answer + source list, not a full essay.
 - **Cite theme pages and project profiles only.** Valid `sources` entries are `brain/cycles/themes/<slug>.md`, `brain/forge-dev/{log.md,decisions.md,reference.md}`, and `<project-repo>/brain/{profile.md,themes/<slug>.md}`. Never cite `brain/cycles/_raw/*` (those are inputs to synthesis, not citations) or category indexes (`brain/cycles/{patterns,antipatterns,decisions,operations}.md`, `brain/INDEX.md`) — they're navigation, not knowledge.
-- **Be exhaustive on theme coverage.** If a question spans multiple themes (e.g. a pattern + its antipattern + the operation that prevents it), cite all of them. The benchmark scores recall (did you find every expected theme), so under-citing is the failure mode to avoid. Citing 1–2 extras is acceptable; missing the corrective antipattern is not. **The graph is your insurance against this failure mode** — running `neighbours` on a top keyword hit will surface the corrective antipattern via the `related_themes` edge.
+- **Be exhaustive on theme coverage.** If a question spans multiple themes (e.g. a pattern + its antipattern + the operation that prevents it), cite all of them. Recall is what matters to the caller (did you surface every relevant theme), so under-citing is the failure mode to avoid. Citing 1–2 extras is acceptable; missing the corrective antipattern is not. **The graph is your insurance against this failure mode** — running `neighbours` on a top keyword hit will surface the corrective antipattern via the `related_themes` edge.
 - **Graph-first is a routing decision, not a budget.** Do not skip the keyword scan when the graph returned a thin result; combine both. Skipping costs recall and is the more damaging failure mode than over-citing.
 - **Fast model by default.** Haiku is the default; per-skill override via the calling skill's frontmatter if a question genuinely needs more.
 - **Gaps are logged, not silently failed.** If the brain doesn't know, the brain learns by the next ingest pass.

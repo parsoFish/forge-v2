@@ -90,13 +90,9 @@ emitted by the `forge architect commit` CLI, not by this skill.)
 
 ## Benchmark suite
 
-[`benchmarks/architect/`](../../benchmarks/architect/) — `prompts.json` fixtures + `score.ts`.
+> Note (2026-05-25): the `benchmarks/` harnesses were removed; this section is historical. Phase quality is now judged on real merged cycles.
 
-> _S2B note:_ the bench's `sdk.ts` currently expects the architect to write
-> a manifest directly to `_queue/pending/`. The bench surface is intentionally
-> distinct from the live `/forge-architect` flow — live runs go through
-> PLAN.md → `forge architect commit`. S2B will migrate the bench to consume
-> PLAN.md directly.
+Was `benchmarks/architect/` — `prompts.json` fixtures + `score.ts`. (The since-moot S2B note about migrating the bench surface to consume PLAN.md directly is dropped — live runs go through PLAN.md → `forge architect commit`.)
 
 ## Process
 

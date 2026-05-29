@@ -29,6 +29,8 @@ Implementation:
 - [`loops/ralph/AGENT.md.tmpl`](../../loops/ralph/AGENT.md.tmpl) — institutional memory template (what the agent has tried, what worked, what didn't).
 - [`loops/ralph/stop-conditions.ts`](../../loops/ralph/stop-conditions.ts) — pluggable stop checks (quality gates pass, iteration budget exceeded, wedged-detector).
 
+> Note (2026-05-25): wedged-detection was removed in Tier 2. The iteration budget is now the only no-progress backstop; the `wedged-detector` stop check is no longer live.
+
 The pattern is **agent-swappable**: `loops/_adapters/` will hold future hermes/aider/openhands adapters that implement the same loop shape with different underlying agents, so they can be A/B'd.
 
 ## Consequences

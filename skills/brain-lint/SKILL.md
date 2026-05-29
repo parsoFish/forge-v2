@@ -50,9 +50,9 @@ single-file | cycle-touched-themes | cleanup-dry-run`. Default is `full`.
 - `brain-lint.error` — one event per rule violation that can't be auto-fixed.
 - `brain-lint.end` — summary counts + exit code.
 
-## Benchmark suite
+## Test coverage
 
-Shared with `brain-ingest` and `brain-query` under [`benchmarks/brain/`](../../benchmarks/brain/).
+> Note (2026-05-25): the `benchmarks/` harnesses (formerly shared with `brain-ingest` and `brain-query` under `benchmarks/brain/`) were removed. The lint checks are now covered by unit tests; phase quality is judged on real merged cycles.
 
 The 7 checks implemented in `orchestrator/brain-lint.ts` each have unit
 tests in `orchestrator/brain-lint.test.ts` (23 tests on the seven
@@ -76,7 +76,7 @@ checks + the contradictions stretch-goal + scope filtering).
 1. **Invoke the CLI** with the appropriate `--scope`.
 2. **Capture stdout** + exit code.
 3. **Write the cycle-scoped report** at `_logs/<cycle-id>/brain-lint.md` mirroring the stdout sections.
-4. **Append one line** to `brain/forge-dev/log.md` per the cleanup playbook: `## [<date>] lint pass — N error, M flag, K auto-fix; bench: X/N → Y/N (if a bench was run)`.
+4. **Append one line** to `brain/forge-dev/log.md` per the cleanup playbook: `## [<date>] lint pass — N error, M flag, K auto-fix`.
 5. **Emit the event-log entries** above so the operator can grep cycle logs.
 
 ## Constraints

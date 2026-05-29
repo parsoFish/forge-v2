@@ -55,9 +55,6 @@ Invoke `brain-query` with: ...
 ## Event-log entries to emit
 - ...
 
-## Benchmark suite
-`benchmarks/<phase>/`
-
 ## Process
 <Step-by-step. Brief.>
 ```
@@ -67,4 +64,4 @@ Invoke `brain-query` with: ...
 1. Create `skills/<name>/SKILL.md` following the shape above.
 2. Add a row to the inventory table here.
 3. If it's used by the orchestrator, register it in `orchestrator/cycle.ts`.
-4. Add cases to the relevant phase's benchmark suite if behaviour changes.
+4. Validate behaviour against real merged cycles (the `benchmarks/` harnesses were removed 2026-05-25).

@@ -28,11 +28,13 @@ Hold the durable, queryable knowledge that lets every other phase make better de
 
 ## Success signals
 
+> Note (2026-05-25): the `benchmarks/` harnesses were removed; the deterministic-metric / LLM-judge thresholds below are historical. Phase quality is now judged on real merged cycles. (`brain-lint` integrity checks remain live.)
+
 The brain phase is judged on **two axes** — a cheap deterministic metric (per-cycle) plus a periodic LLM-judge validation (every N cycles).
 
 **Deterministic metric** (cheap, run every cycle):
 
-- **Recall:** `benchmarks/brain/questions.json` accuracy ≥80% under the recall-weighted rubric (`0.4 × source_recall + 0.6 × keyword_match`, threshold 0.65, hallucinated paths force 0). See [`benchmarks/brain/README.md`](../../benchmarks/brain/README.md).
+- **Recall:** `benchmarks/brain/questions.json` accuracy ≥80% under the recall-weighted rubric (`0.4 × source_recall + 0.6 × keyword_match`, threshold 0.65, hallucinated paths force 0). (See the former `benchmarks/brain/README.md`, removed 2026-05-25.)
 - **Hallucination rate:** ≤ 5% of cases cite a path that doesn't exist on disk.
 - **Gap detection:** `benchmarks/brain/negatives.json` pass rate ≥ 80% — out-of-scope and forge-adjacent-bait questions correctly flagged with `gap: true` and bounded citations.
 - **Integrity:** `brain-lint` reports zero structural issues (orphans, malformed frontmatter, duplicate themes).
@@ -49,7 +51,9 @@ The brain phase is judged on **two axes** — a cheap deterministic metric (per-
 
 ## Benchmark suite
 
-[`benchmarks/brain/`](../../benchmarks/brain/)
+> Note (2026-05-25): the `benchmarks/` harnesses were removed; this section is historical. Phase quality is now judged on real merged cycles.
+
+`benchmarks/brain/` (removed)
 - `questions.json` — Q→expected-source-pages (primary recall suite, 18 cases)
 - `negatives.json` — gap-detection suite (out-of-scope / forge-adjacent-bait / partial-match, 10 cases)
 - `score.ts` — primary runner (recall + keyword + hallucination check)

@@ -2,6 +2,7 @@
 
 **Status:** Accepted (scaffold)
 **Date:** 2026-04-24
+**Amended 2026-05-25** — the benchmark harnesses under `benchmarks/` were removed; phase quality is now judged on real merged cycles (see CLAUDE.md). The phase-isolation decision itself stands; only the benchmark realization was retired.
 
 ## Context
 

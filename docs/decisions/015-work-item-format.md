@@ -3,6 +3,8 @@
 **Status:** Accepted
 **Date:** 2026-05-08
 
+> Note (2026-05-25): the `benchmarks/` harnesses were removed; the "PM bench"/"bench scores" references below are historical. The WI schema itself stands — it is now validated by `orchestrator/work-item.ts` and judged on real merged cycles rather than a synthetic bench.
+
 ## Context
 
 The project-manager phase decomposes architect-emitted initiatives into atomic work items the developer loop consumes ([`docs/phases/project-manager.md`](../phases/project-manager.md), [`skills/project-manager/SKILL.md`](../../skills/project-manager/SKILL.md)). The phase doc left three load-bearing decisions open:
@@ -152,6 +154,6 @@ creates: [tests/x.test.ts]                                   # files this WI cre
 **Cross-references.**
 - [CONTRACTS.md](../planning/2026-05-20-refinement/CONTRACTS.md) C5 (the locked contract), C5a (the `knownFeatureIds` load-bearing wiring), C5b (the hallucinated-FEAT recovery flow), C11 (`initiatives.json` migration).
 - [Plan 03](../planning/2026-05-20-refinement/03-project-manager.md) §"Required WI fields", §"Bench redesign".
-- Reference implementation: `orchestrator/work-item.ts` (parser, validator, omit-on-undefined serialiser); `orchestrator/work-item.test.ts` (round-trip test); `benchmarks/project-manager/scoring.ts` (the deterministic `files_real_or_explicitly_new` and `one_creator_per_file` criteria that consume `creates`).
+- Reference implementation: `orchestrator/work-item.ts` (parser, validator, omit-on-undefined serialiser); `orchestrator/work-item.test.ts` (round-trip test). (The former `benchmarks/project-manager/scoring.ts` deterministic `files_real_or_explicitly_new` / `one_creator_per_file` criteria were removed with the benchmarks 2026-05-25.)
 
 The schema fields locked in §1-3 (`work_item_id`, `feature_id`, `initiative_id`, `status`, `depends_on`, `acceptance_criteria`, `files_in_scope`, `estimated_iterations`) remain required. The four new fields in §3a remain optional indefinitely — they tighten signal without breaking any WI that doesn't need them.

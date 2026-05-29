@@ -8,7 +8,7 @@ After an initiative is merged, run a four-stage retrospective:
 
 1. **Agentic self-reflection (unattended)** — the agent reviews its own performance from the JSONL event log.
 2. **Agent-prompted user questions (file-based handoff)** — the agent writes structured questions into `_logs/<cycle-id>/user-questions.md`.
-3. **Pure user feedback (file-based handoff)** — the agent reads `_logs/<cycle-id>/user-feedback.md` (pre-populated by the bench simulator or by a human in production).
+3. **Pure user feedback (file-based handoff)** — the agent reads `_logs/<cycle-id>/user-feedback.md` (populated by a human in production; was formerly pre-populated by the bench simulator, removed 2026-05-25).
 4. **Brain writes (unattended)** — direct file writes of theme markdown + cycle archive.
 
 All four feed the brain by direct file writes, which is what makes forge improve cycle-over-cycle. The `brain-ingest` sub-skill is not invoked in this closure pass; a future closure may switch to it.
@@ -47,7 +47,9 @@ The reflector does NOT move the manifest to `_queue/done/`. The reviewer already
 
 ## Benchmark suite
 
-[`benchmarks/reflection/`](../../benchmarks/reflection/)
+> Note (2026-05-25): the `benchmarks/` harnesses were removed; this section is historical. Phase quality is now judged on real merged cycles. (Reflection's `no_brain_corruption` lint subset survives as `forge brain lint`.)
+
+`benchmarks/reflection/` (removed)
 - `cases.json` — 5 fixture catalogue.
 - `fixtures/<id>/` — each fixture supplies manifest, events.jsonl, brain-gaps.jsonl, merged-tree/, user-feedback.md, expected.json.
 - `scoring.ts` — pure rubric: 5 gates (`manifest_provided`, `log_parseable`, `retro_emitted`, `brain_consulted`, `no_brain_corruption`) + 6 weighted criteria (themes_emitted 0.25, themes_evidence_grounded 0.25, theme_categories_balanced 0.10, cycle_archived 0.15, retro_three_sections 0.15, brain_gaps_addressed 0.10) summing to 1.0; pass threshold 0.7.
@@ -56,6 +58,8 @@ The reflector does NOT move the manifest to `_queue/done/`. The reviewer already
 - `score.ts` — fixture loop + aggregator + results writer.
 
 ## Known failure modes (to defend against)
+
+> Note (2026-05-25): the `benchmarks/` harnesses were removed; the "bench's `<criterion>`" references below are historical. The orchestrator-side verification (evidence-path `existsSync`, the `no_brain_corruption` lint subset) remains live; phase quality is now judged on real merged cycles.
 
 - **Vague retros** — "we could do better at X." The bench's `themes_evidence_grounded` criterion is orchestrator-verified (`existsSync` against the listed `## Sources` paths), so unsourced themes fail.
 - **Reflection bypass** — cycle marked done without retro. Detected via `reflection_status` in `CycleResult` telemetry; not gated (log-and-continue).

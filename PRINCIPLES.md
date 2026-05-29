@@ -34,9 +34,9 @@ The non-goals section of [`docs/decisions/`](./docs/decisions/) is also load-bea
 > Isolation of forge phases to enable focused work on any individual phase. Each phase should have clear success signals that allow agents to work on a phase and prove their changes are making a meaningful impact. The brain for example should be able to be asked questions before and after updates and noticeable increase in quality, accuracy, or speed of response are observed. The architect similarly should be able to be given sample ideas that will result in a roadmap that can be judged on core metrics for improvement after changes. The feedback loop for agents must be present throughout each component of forge and must enable the fastest feedback possible to allow rapid iteration with benchmarked results to allow an agent to know if its making meaningful and productive change.
 
 **Codified by:**
-- [ADR 005 — Phase isolation with per-phase benchmarks](./docs/decisions/005-phase-isolation-with-benchmarks.md)
-- [`benchmarks/`](./benchmarks/) — one suite per phase, with a documented input format and scoring metric
-- Each phase's [`docs/phases/<phase>.md`](./docs/phases/) names the benchmark suite that gates "did this phase get better?"
+- [ADR 005 — Phase isolation with per-phase benchmarks](./docs/decisions/005-phase-isolation-with-benchmarks.md) (amended 2026-05-25 — the `benchmarks/` realization was retired; the phase-isolation decision stands)
+- The phase-isolation decision stands; the synthetic per-phase benchmark suites were removed 2026-05-25. Phase quality is now judged on real merged cycles (brain themes accumulate the evidence).
+- Each phase's [`docs/phases/<phase>.md`](./docs/phases/) records its success signals.
 
 ---
 

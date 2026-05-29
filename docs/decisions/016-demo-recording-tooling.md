@@ -3,6 +3,8 @@
 **Status:** Accepted
 **Date:** 2026-05-09
 
+> Note (2026-05-25): the `benchmarks/` harnesses were removed; the "bench scores"/"bench reads" references below are historical. The demo-recording decision itself stands; demo quality is now judged on real merged cycles + the human-review stage rather than a synthetic bench.
+
 ## Context
 
 The review-loop phase ([`docs/phases/review-loop.md`](../phases/review-loop.md), [`skills/reviewer/SKILL.md`](../../skills/reviewer/SKILL.md)) closes initiatives back to `main` with a working demo. The phase doc left the demo format as a TODO — "markdown checklist vs executable shell vs both." The user has now decided demos must be **video recordings**: Playwright trace/video for browser/canvas projects; an equivalent for terminal/CLI/library projects.
@@ -39,7 +41,7 @@ The `README.md` carries the human-facing context (one paragraph): what the demo 
 
 ### 3. Greppable acceptance-criteria evidence
 
-The reviewer's prompt instructs the agent to write the demo source so each work-item acceptance criterion's `then`-clause keywords appear in `source.<tape|spec.ts>` (as commands, expected output, assertion text). The bench scores this via [`benchmarks/review-loop/scoring.ts:demoExercisesAcceptanceCriteria`](../../benchmarks/review-loop/scoring.ts) — keyword presence, same shape as PM's `no_hidden_coupling` check. This prevents the "5-second black-canvas video" failure mode that a file-exists check would miss.
+The reviewer's prompt instructs the agent to write the demo source so each work-item acceptance criterion's `then`-clause keywords appear in `source.<tape|spec.ts>` (as commands, expected output, assertion text). The former bench scored this via `benchmarks/review-loop/scoring.ts:demoExercisesAcceptanceCriteria` (removed with the benchmarks 2026-05-25) — keyword presence, same shape as PM's `no_hidden_coupling` check. This prevents the "5-second black-canvas video" failure mode that a file-exists check would miss.
 
 ### 4. Bench-vs-live PR creation split
 

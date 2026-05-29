@@ -60,7 +60,9 @@ Collaborate with the user during ideation sessions to update the project's roadm
 
 ## Benchmark suite
 
-[`benchmarks/architect/`](../../benchmarks/architect/)
+> Note (2026-05-25): the `benchmarks/` harnesses were removed; this section is historical. Phase quality is now judged on real merged cycles.
+
+`benchmarks/architect/` (removed)
 - `prompts.json` — sample idea → expected initiative shape (feature count, dependency depth, acceptance-criteria presence).
 - `score.ts` — invokes the architect skill against fixtures and scores output structure.
 

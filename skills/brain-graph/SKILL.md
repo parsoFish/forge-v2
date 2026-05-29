@@ -54,9 +54,11 @@ questions, keyed by the `scope` parameter.
 
 ## Benchmark suite
 
-Shared with `brain-query` under [`benchmarks/brain/`](../../benchmarks/brain/).
-The three structural questions (Q19–Q21 in `questions.json`) exercise
-this skill's contribution — they're answerable from the graph but not
+> Note (2026-05-25): the `benchmarks/` harnesses were removed; this section is historical. Phase quality is now judged on real merged cycles.
+
+Formerly shared with `brain-query` under `benchmarks/brain/`.
+The three structural questions (Q19–Q21 in `questions.json`) exercised
+this skill's contribution — they were answerable from the graph but not
 from keyword scan alone.
 
 ## Installation prerequisite (one-time, per machine)

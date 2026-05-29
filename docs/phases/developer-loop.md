@@ -27,7 +27,7 @@ Take a work item and drive it to "complete" (quality gates pass + acceptance cri
 ## Loop runtime
 
 - [`loops/ralph/runner.ts`](../../loops/ralph/runner.ts) — driver.
-- [`loops/ralph/stop-conditions.ts`](../../loops/ralph/stop-conditions.ts) — quality-gates-pass | iteration-budget | wedged-detector.
+- [`loops/ralph/stop-conditions.ts`](../../loops/ralph/stop-conditions.ts) — quality-gates-pass | iteration-budget. (Wedged-detection was removed in Tier 2, 2026-05-25; the iteration budget is now the only no-progress backstop.)
 - [`loops/_adapters/`](../../loops/_adapters/) — placeholders for hermes/aider/openhands as alternative loop runtimes.
 
 ## Success signals
@@ -40,7 +40,9 @@ Take a work item and drive it to "complete" (quality gates pass + acceptance cri
 
 ## Benchmark suite
 
-[`benchmarks/developer-loop/`](../../benchmarks/developer-loop/) — five fixtures, one per managed project.
+> Note (2026-05-25): the `benchmarks/` harnesses were removed; this section is historical. Phase quality is now judged on real merged cycles.
+
+`benchmarks/developer-loop/` (removed) — five fixtures, one per managed project.
 - `fixtures/<id>/` — seed worktree (source files + tests) plus `.forge/work-items/WI-1.md` (the WI spec) plus a failing acceptance test.
 - `cases.json` — catalogue with per-fixture `quality_gate_cmd` + `pre_existing_tests_cmd` + budgets.
 - `scoring.ts` — pure rubric (gate `terminated_cleanly`; weighted criteria for `loop_completed`, `iteration_budget_respected`, `files_in_scope_respected`, `no_regression`; pass threshold 0.7). `cost_budget_respected` was dropped per [CONTRACTS.md C19](../planning/2026-05-20-refinement/CONTRACTS.md) (all $-budgets removed).
@@ -49,7 +51,7 @@ Take a work item and drive it to "complete" (quality gates pass + acceptance cri
 
 ## Known failure modes (to defend against)
 
-- **Wedged loops** — Ralph never converges. `stop-conditions.ts` includes a wedged-detector (no progress for N iterations → abort).
+- **Wedged loops** — Ralph never converges. The iteration budget is the backstop (loop aborts when iterations are exhausted). A dedicated wedged-detector existed historically but was removed in Tier 2 (2026-05-25); the iteration budget is now the only no-progress backstop.
 - **Token burn on no-op iterations** — iteration budget caps this; cost budget per initiative caps it harder.
 - **Hallucinated test passes** — quality gate verification runs in the orchestrator, not the agent (carried-over v1 lesson).
 - **Merge conflicts across parallel loops** — handled by per-work-item branches off the initiative branch + orchestrator-level rebase before declaring a feature complete.
@@ -57,10 +59,10 @@ Take a work item and drive it to "complete" (quality gates pass + acceptance cri
 ## TODO (post-scaffold)
 
 - [x] Wire the Claude Agent SDK in `runner.ts` past skeleton — done via [`loops/ralph/claude-agent.ts`](../../loops/ralph/claude-agent.ts) (`createClaudeAgent` factory). The runner's `AgentInvocation` parameter accepts either the stub (default, for tests) or the SDK-backed agent.
-- [x] Implement wedged-detector (no-progress heuristic) — done in [`loops/ralph/stop-conditions.ts`](../../loops/ralph/stop-conditions.ts) (default 3 iterations no-progress).
-- [x] Implement quality-gates-pass stop condition with per-fixture commands — done. `LoopInput.qualityGate` is now injectable; the bench harness wires per-fixture commands (pytest / bats / node:test / grep). Live cycle still defaults to `npm test --silent` until per-project quality-gate config lands.
+- [ ] ~~Implement wedged-detector (no-progress heuristic).~~ Removed in Tier 2 (2026-05-25) — the iteration budget is the only no-progress backstop; no dedicated wedged-detector exists.
+- [x] Implement quality-gates-pass stop condition with per-fixture commands — done. `LoopInput.qualityGate` is now injectable; the (since-removed) bench harness wired per-fixture commands (pytest / bats / node:test / grep). Live cycle still defaults to `npm test --silent` until per-project quality-gate config lands.
 - [x] Per-iteration commit discipline + JSONL event emission — done. `orchestrator/cycle.ts:runDeveloperLoop` walks WIs in topological order, emits `ralph.start` / `ralph.end` per WI plus a phase-level summary.
-- [x] Populate `benchmarks/developer-loop/fixtures/` with reference fixtures — five fixtures landed, one per managed project (env-optimiser, trafficGame, simplarr, GitWeave, healarr). Catalogue in [`benchmarks/developer-loop/cases.json`](../../benchmarks/developer-loop/cases.json).
+- [x] Populate `benchmarks/developer-loop/fixtures/` with reference fixtures — five fixtures landed, one per managed project (env-optimiser, trafficGame, simplarr, GitWeave, healarr); catalogue was in `benchmarks/developer-loop/cases.json`. (Benchmarks removed 2026-05-25.)
 
 ## Onboarding a project
 

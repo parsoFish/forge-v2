@@ -129,8 +129,10 @@ loop:
   read PROMPT.md, AGENT.md (institutional memory), specs/, fix_plan.md
   call query() against the worktree
   commit changes
-  check stop conditions (quality gates pass | iteration budget | wedged)
+  check stop conditions (quality gates pass | iteration budget)
 ```
+
+> Note (2026-05-25): the `wedged` stop condition (wedged-detection) was removed in Tier 2. The iteration budget is now the only no-progress backstop.
 
 Key properties:
 - **Loop runtime is swappable** — `loops/_adapters/` is the placeholder for future hermes/aider/openhands adapters that can be A/B'd against Ralph.
@@ -203,9 +205,9 @@ Every skill invocation emits a structured event to `_logs/<cycle-id>/events.json
 - **Visualisation** (`forge status`, `monitor/tmux.sh`, live phase view).
 - **Metrics** (cost, iterations, duration per phase / skill / initiative).
 
-### Phase isolation & benchmarks
+### Phase isolation & quality
 
-Each phase has a sample-input → measurable-output benchmark suite under `benchmarks/<phase>/`. A session can prove "the architect got better" without running a full cycle. This is what makes the system tractable to improve incrementally.
+> Note (2026-05-25): the synthetic per-phase benchmark suites under `benchmarks/` were removed. They had begun teaching the phases toward the bench shape rather than measuring real outcomes. Phase quality is now judged on real merged cycles — brain themes accumulate the evidence. The phase-isolation decision itself (ADR 005) stands; only the benchmark realization was retired.
 
 ## What forge is *not*
 

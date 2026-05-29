@@ -47,10 +47,6 @@ This avoids creating duplicate themes or re-ingesting overlapping raw.
 - `brain-ingest.index-updated` — which category index.
 - `brain-ingest.end`.
 
-## Benchmark suite
-
-Shared with `brain-lint` and `brain-query` under [`benchmarks/brain/`](../../benchmarks/brain/).
-
 ## Process
 
 1. **Brain query first** to check for overlap.

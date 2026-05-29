@@ -403,7 +403,9 @@ const COMMON_EVENT_TYPES: readonly string[] = [
   'log',
   'error',
   'tool_use',
+  'file_change',
   'iteration',
+  'agent_heartbeat',
 ];
 
 function toggleInSet<T>(prev: ReadonlySet<T>, value: T): ReadonlySet<T> {

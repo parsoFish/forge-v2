@@ -14,19 +14,20 @@ import {
   type ConnectionState,
   type InitiativeFeature,
 } from '@/lib/bridge-client';
-import { derivePhaseStates, type PhaseState } from '@/lib/phases';
 import { CycleToasts } from '@/components/Toasts';
-import { AgentHexCanvas, type CanvasWorkItem } from '@/components/AgentHexCanvas';
-import { ActivityPanel } from '@/components/ActivityPanel';
+import { AgentGraphCanvas } from '@/components/AgentGraphCanvas';
 import { VerdictForm } from '@/components/VerdictForm';
 import { SchedulerBanner } from '@/components/SchedulerBanner';
 import { fetchWiGraph, type WiGraph } from '@/lib/wi-graph';
-import { derivePerWiStatus, rollupStatus, type WiStatus } from '@/lib/wi-status';
+import { useGraphModel } from '@/lib/use-graph-model';
+import { useBatchedEvents } from '@/lib/use-batched-events';
 
 export default function Page() {
   const [snapshot, setSnapshot] = useState<CycleListSnapshot>({ live: [], recent: [] });
   const [activeCycleId, setActiveCycleId] = useState<string | null>(null);
-  const [events, setEvents] = useState<EventLogEntry[]>([]);
+  // Phase B: batched event buffer — coalesces high-frequency per-tool events
+  // into ≤4 state flushes/sec so the graph re-derives at a bounded cadence.
+  const { events, append: appendEvent, reset: resetEvents } = useBatchedEvents();
   const [connState, setConnState] = useState<ConnectionState>('connecting');
 
   // The WS handler captures activeCycleId via a ref so we don't churn the
@@ -50,7 +51,7 @@ export default function Page() {
         } else if (msg.type === 'cycle-list-changed') {
           fetchCycles().then(setSnapshot).catch(() => { /* ignore */ });
         } else if (msg.type === 'event' && msg.cycleId === activeCycleIdRef.current) {
-          setEvents((prev) => [...prev, msg.event]);
+          appendEvent(msg.event);
         }
       },
     });
@@ -59,11 +60,11 @@ export default function Page() {
 
   // When the operator selects a different cycle, snapshot its full event log.
   useEffect(() => {
-    if (!activeCycleId) { setEvents([]); return; }
+    if (!activeCycleId) { resetEvents([]); return; }
     let cancelled = false;
-    fetchEvents(activeCycleId).then((rows) => { if (!cancelled) setEvents(rows); });
+    fetchEvents(activeCycleId).then((rows) => { if (!cancelled) resetEvents(rows); });
     return () => { cancelled = true; };
-  }, [activeCycleId]);
+  }, [activeCycleId, resetEvents]);
 
   // Operator-selected WI (set by clicking a WI node in WiGraphCanvas).
   // Flows into the ActivityPanel as the default work-item filter.
@@ -94,17 +95,15 @@ export default function Page() {
     if (!activeCycleId && defaultActive) setActiveCycleId(defaultActive.cycleId);
   }, [activeCycleId, defaultActive]);
 
-  const phaseStates = useMemo(() => derivePhaseStates(events), [events]);
   const activeCycle = useMemo(
     () => allCycles.find((c) => c.cycleId === activeCycleId) ?? null,
     [allCycles, activeCycleId],
   );
 
-  // Manifest features for the active cycle. Hoisted to page-level (was
-  // in the now-removed InitiativeInfo panel) so AgentHexCanvas can render
-  // the feature tier below the dev-loop hex. Polls every 5s while
-  // missing — the manifest is filed at scheduler-claim time so it's
-  // usually present immediately, but new cycles can race the fetch.
+  // Manifest features for the active cycle. Fed into the graph model so
+  // AgentGraphCanvas can render the feature tier branching off dev-loop.
+  // Polls every 5s while missing — the manifest is filed at scheduler-claim
+  // time so it's usually present immediately, but new cycles can race the fetch.
   const [features, setFeatures] = useState<InitiativeFeature[]>([]);
   useEffect(() => {
     setFeatures([]);
@@ -145,76 +144,14 @@ export default function Page() {
     return () => { cancelled = true; clearInterval(id); };
   }, [activeCycleId]);
 
-  // Event-driven materialisation per operator note 2026-05-25:
-  //   - Features show only when their `pm.feature-decomposed` event has
-  //     fired (PM is what actually decomposes them).
-  //   - WIs show only when their `pm.work-item-emitted` event has fired
-  //     (each event creates one WI hex; titles + dep edges come from
-  //     the wi-graph once that lands at pm.end).
-  // Pre-PM, both lists are empty. Per-feature / per-WI hexes can fill
-  // in incrementally as the events arrive.
-  const materialisedFeatures = useMemo(() => {
-    if (features.length === 0) return [];
-    const ack = new Set<string>();
-    for (const e of events) {
-      if (e.message !== 'pm.feature-decomposed') continue;
-      const fid = (e.metadata as { feature_id?: string } | undefined)?.feature_id;
-      if (fid) ack.add(fid);
-    }
-    if (ack.size === 0) return [];
-    return features.filter((f) => ack.has(f.featureId));
-  }, [features, events]);
-
-  const workItems = useMemo<CanvasWorkItem[]>(() => {
-    const wiFeature = new Map<string, string | undefined>();
-    for (const e of events) {
-      if (e.message !== 'pm.work-item-emitted') continue;
-      const wid = (e.metadata as { work_item_id?: string } | undefined)?.work_item_id;
-      const fid = (e.metadata as { feature_id?: string } | undefined)?.feature_id;
-      if (wid) wiFeature.set(wid, fid);
-    }
-    if (wiFeature.size === 0) return [];
-    const titleByWi = new Map<string, string>();
-    const depsByWi = new Map<string, string[]>();
-    if (wiGraph) {
-      for (const n of wiGraph.nodes) titleByWi.set(n.id, n.label);
-      for (const edge of wiGraph.edges) {
-        const arr = depsByWi.get(edge.to) ?? [];
-        arr.push(edge.from);
-        depsByWi.set(edge.to, arr);
-      }
-    }
-    // Per-WI status derived from the event stream. Each WI carries its
-    // own colour in the canvas (operator note 2026-05-25: independent
-    // siblings; yellow during retries; red only after cycle-end failure).
-    const wiIds = Array.from(wiFeature.keys());
-    const statusById = derivePerWiStatus(events, wiIds);
-    return Array.from(wiFeature.entries()).map(([id, featureId]) => ({
-      id,
-      title: titleByWi.get(id) ?? id,
-      featureId,
-      dependsOn: depsByWi.get(id) ?? [],
-      status: statusById[id],
-    }));
-  }, [wiGraph, events]);
-
-  // Per-feature rolled-up status — worst-case of that feature's WIs.
-  // Independent from sibling features so a yellow FEAT-2 doesn't tint
-  // a green FEAT-1.
-  const featureStatuses = useMemo<Record<string, WiStatus>>(() => {
-    const wisByFeature = new Map<string, WiStatus[]>();
-    for (const w of workItems) {
-      if (!w.featureId) continue;
-      const arr = wisByFeature.get(w.featureId) ?? [];
-      if (w.status) arr.push(w.status);
-      wisByFeature.set(w.featureId, arr);
-    }
-    const out: Record<string, WiStatus> = {};
-    for (const [fid, statuses] of wisByFeature.entries()) {
-      out[fid] = rollupStatus(statuses);
-    }
-    return out;
-  }, [workItems]);
+  // Phase B: all pipeline-graph derivation (phase states, materialised
+  // features, work items + per-WI status, feature rollups) lives in one
+  // shared hook so the graph + heatmap consume a single source.
+  const { phaseStates, materialisedFeatures, workItems, featureStatuses } = useGraphModel({
+    events,
+    features,
+    wiGraph,
+  });
 
   // Surface the resolved bridge URL in the DOM so the operator can
   // diagnose connectivity from view-source / dev-tools without needing
@@ -280,23 +217,22 @@ export default function Page() {
         </section>
       )}
 
-      {/* Single cascading hex tree per 2026-05-25 operator note: phase
-          row at top, feature row branching off dev-loop (post-PM), WI
-          row below features (post-PM). Replaces the old StateMachine +
-          Sidebar + standalone WI graph + InitiativeInfo sections. */}
+      {/* Phase B: agent-flow-style live React Flow pipeline graph. Phase
+          spine on top, features branching off dev-loop, WIs below, and
+          ephemeral tool nodes pulsing off the active WI as per-tool
+          events arrive. Replaces the hand-rolled hex <canvas>. */}
       <section style={{ marginTop: 24 }} data-section="pipeline-tree">
-        <AgentHexCanvas
+        <AgentGraphCanvas
           phaseStates={phaseStates}
           cost={cost}
           features={materialisedFeatures}
           workItems={workItems}
           featureStatuses={featureStatuses}
+          events={events}
           cycleId={activeCycleId}
+          selectedWiId={selectedWiId}
+          onSelectWi={setSelectedWiId}
         />
-      </section>
-
-      <section style={{ marginTop: 24 }}>
-        <ActivityPanel events={events} selectedWiId={selectedWiId} />
       </section>
 
       <CycleToasts snapshot={snapshot} />

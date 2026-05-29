@@ -662,6 +662,13 @@ async function S4(ui, page) {
     await narrate('Three new UI components prove themselves: hex canvas with 6 phase hexes, WI dep-graph below it with WI-1 → WI-2 + WI-3, and the activity panel with chip filters. Try clicking WI-2 in the graph — the activity panel should auto-filter to that work item.');
     writeManifest('in-flight', cycle.initiativeId);
     appendEvent(cycle, 'architect', 'end', 'architect end', { cost_usd: 0.1 });
+    // PM materialisation events: the agent-graph renders feature + WI tiers
+    // from pm.feature-decomposed / pm.work-item-emitted (operator note
+    // 2026-05-25), so seed them like the real PM does.
+    appendEvent(cycle, 'project-manager', 'log', 'pm.feature-decomposed', { metadata: { feature_id: 'FEAT-1' } });
+    for (const wid of ['WI-1', 'WI-2', 'WI-3']) {
+      appendEvent(cycle, 'project-manager', 'log', 'pm.work-item-emitted', { metadata: { work_item_id: wid, feature_id: 'FEAT-1' } });
+    }
     appendEvent(cycle, 'project-manager', 'end', 'pm end', { cost_usd: 0.2 });
     appendEvent(cycle, 'developer-loop', 'start', 'dev start');
     appendEvent(cycle, 'developer-loop', 'iteration', 'WI-1 iter 1', { metadata: { work_item_id: 'WI-1' } });
@@ -698,18 +705,20 @@ async function S4(ui, page) {
     log('S4', 'AgentHexCanvas ✓');
     await pauseAndCapture(page, 'S4-hex-canvas');
 
-    // WiGraphCanvas: data-state should reach "ready".
+    // AgentGraphCanvas WI tier: data-state should reach "ready" with the
+    // WI nodes materialised (Phase B merged the standalone wi-graph into the
+    // single agent-graph node graph).
     await expect(
       'S4',
       page,
       () => {
-        const el = document.querySelector('[data-section="wi-graph"]');
+        const el = document.querySelector('[data-section="agent-graph"]');
         return el?.getAttribute('data-state') === 'ready';
       },
-      'expected [data-section="wi-graph"][data-state="ready"]',
+      'expected [data-section="agent-graph"][data-state="ready"]',
     );
     const wiCount = page
-      ? await page.evaluate(() => document.querySelector('[data-section="wi-graph"]')?.getAttribute('data-wi-count'))
+      ? await page.evaluate(() => document.querySelector('[data-section="agent-graph"]')?.getAttribute('data-wi-count'))
       : '(showcase — verify visually)';
     if (page && parseInt(wiCount ?? '0', 10) < 3) {
       fail('S4', `expected data-wi-count >= 3, got "${wiCount}"`);
@@ -1137,7 +1146,7 @@ async function JOURNEY(ui, page) {
     if (page) {
       const expectedWi = journey.workItems.length;
       await page.waitForFunction(
-        (n) => document.querySelectorAll('[data-component="agent-hex-canvas"] [data-wi-hex]').length >= n,
+        (n) => document.querySelectorAll('[data-component="agent-graph"] [data-wi-hex]').length >= n,
         expectedWi,
         { timeout: 8000 },
       ).catch(() => { /* */ });
@@ -1162,7 +1171,15 @@ async function JOURNEY(ui, page) {
     });
     for (const w of journey.workItems) {
       appendEvent(cycle, 'developer-loop', 'iteration', `${w.wi_id} iter 1`, { metadata: { work_item_id: w.wi_id } });
-      appendEvent(cycle, 'developer-loop', 'tool_use', `Write ${w.title}`, { metadata: { work_item_id: w.wi_id } });
+      // Phase A/B: per-tool live telemetry. tool_use events (with
+      // metadata.tool + input_summary) drive the graph's ephemeral tool
+      // nodes pulsing off the active WI; file_change events feed the
+      // file-attention heatmap. Mirrors orchestrator/tool-event-emit.ts.
+      const file = `src/${w.wi_id.toLowerCase()}.ts`;
+      appendEvent(cycle, 'developer-loop', 'tool_use', 'tool.Read', { metadata: { work_item_id: w.wi_id, tool: 'Read', input_summary: file } });
+      appendEvent(cycle, 'developer-loop', 'tool_use', 'tool.Edit', { metadata: { work_item_id: w.wi_id, tool: 'Edit', input_summary: file } });
+      appendEvent(cycle, 'developer-loop', 'file_change', 'file.modify', { metadata: { work_item_id: w.wi_id, path: file, op: 'modify' } });
+      appendEvent(cycle, 'developer-loop', 'tool_use', 'tool.Bash', { metadata: { work_item_id: w.wi_id, tool: 'Bash', input_summary: `npm test ${w.wi_id}` } });
     }
     appendEvent(cycle, 'developer-loop', 'end', 'dev-loop end', { cost_usd: 1.42, duration_ms: 187000 });
     await pauseAndCaptureJourney(page, 'J07-dev-complete');

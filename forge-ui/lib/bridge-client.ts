@@ -33,6 +33,11 @@ export type EventLogEntry = {
   event_type: string;
   message?: string;
   metadata?: Record<string, unknown>;
+  // Present on SDK-backed events (iteration / end). Declared optional so the
+  // UI can surface per-agent cost + token totals from the event stream.
+  cost_usd?: number;
+  tokens_in?: number;
+  tokens_out?: number;
 };
 
 export type BridgeMessage =

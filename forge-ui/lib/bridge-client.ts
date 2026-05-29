@@ -211,6 +211,54 @@ export async function submitVerdict(input: VerdictSubmission): Promise<{ ok: boo
   }
 }
 
+// ---- Structured demo (ADR 021) ------------------------------------------
+
+export type DemoHarnessMetricRow = {
+  label: string;
+  unit?: string;
+  before: string | null;
+  after: string | null;
+  deltaPct: number | null;
+  parity: 'match' | 'within' | 'diverged' | 'incomplete';
+};
+
+export type DemoModelCheckpoint = {
+  label: string;
+  kind?: 'screenshot' | 'video' | 'harness';
+  caption: string;
+  beforeNote?: string;
+  afterNote?: string;
+  metrics?: DemoHarnessMetricRow[];
+  beforeImage?: string | null;
+  afterImage?: string | null;
+};
+
+export type DemoModel = {
+  title: string;
+  essence: string;
+  project: string;
+  initiativeId?: string;
+  baseRef?: string;
+  changedRef?: string;
+  checkpoints: DemoModelCheckpoint[];
+  diffStat: string;
+  acceptanceCriteria?: string[];
+};
+
+/** Fetch the cycle's structured demo (mirrored into _logs/<cycle>/artifacts/
+ *  by snapshotCycleArtefacts). Returns null when absent or unparseable. */
+export async function fetchDemoModel(cycleId: string): Promise<DemoModel | null> {
+  const base = await resolveBridgeUrl();
+  if (!base) return null;
+  try {
+    const res = await fetch(`${base}/api/artifact/${encodeURIComponent(cycleId)}/demo.json`);
+    if (!res.ok) return null;
+    return (await res.json()) as DemoModel;
+  } catch {
+    return null;
+  }
+}
+
 // ---- Architect (ADR 020) -------------------------------------------------
 
 export type ArchitectPhase =

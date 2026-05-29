@@ -168,18 +168,45 @@ async function main() {
     await shot(page, 'plan-screen-interview-answered');
 
     // 4) Standalone review screen — if any real cycle is ready-for-review.
+    //    Seed a synthetic demo.json into the cycle's artifacts so the
+    //    DemoComparison renders (cleaned up after).
+    let seededDemo = null;
     try {
       const cycles = await (await fetch(`${watch.bridgeUrl}/api/cycles`)).json();
       const rfr = [...(cycles.live ?? []), ...(cycles.recent ?? [])].find((c) => c.status === 'ready-for-review');
       if (rfr) {
+        const artDir = join(FORGE_ROOT, '_logs', rfr.cycleId, 'artifacts');
+        mkdirSync(artDir, { recursive: true });
+        seededDemo = join(artDir, 'demo.json');
+        writeFileSync(seededDemo, JSON.stringify({
+          title: 'Dark-mode toggle that follows the OS',
+          essence: 'Adds a settings toggle; the theme now persists and defaults to the OS preference.',
+          project: rfr.project ?? 'demo',
+          baseRef: 'main',
+          changedRef: 'forge/' + rfr.initiativeId,
+          diffStat: ' src/theme.ts        | 38 ++++++++\n src/SettingsRow.tsx | 21 +++++\n 2 files changed',
+          acceptanceCriteria: ['GIVEN settings WHEN the toggle is flipped THEN the theme persists across reloads'],
+          checkpoints: [
+            { label: 'sync', kind: 'harness', caption: 'Theme resolves from the OS preference on first load',
+              metrics: [
+                { label: 'first-paint theme matches OS', before: 'no', after: 'yes', deltaPct: null, parity: 'diverged' },
+                { label: 'persisted across reload', before: 'no', after: 'yes', deltaPct: null, parity: 'diverged' },
+              ] },
+            { label: 'toggle', kind: 'screenshot', caption: 'The settings row gains a dark-mode toggle',
+              beforeNote: 'No theme control existed in settings.', afterNote: 'A labelled toggle persists the choice.' },
+          ],
+        }, null, 2));
         await page.goto(`${watch.uiUrl}/review/${encodeURIComponent(rfr.cycleId)}`, { waitUntil: 'domcontentloaded' });
         await page.waitForSelector('main[data-page="review-cycle"][data-page-ready="true"]', { timeout: 30000 });
+        await page.waitForSelector('[data-section="demo-comparison"]', { timeout: 10000 });
         await shot(page, 'review-screen');
       } else {
         console.log('[gallery] no ready-for-review cycle — skipping review-screen shot');
       }
     } catch (err) {
       console.log(`[gallery] review-screen shot skipped: ${err.message}`);
+    } finally {
+      if (seededDemo) { try { rmSync(seededDemo, { force: true }); } catch { /* */ } }
     }
 
     console.log('\n[gallery] OK — screenshots in forge-ui/.demo-shots/journey/architect/');

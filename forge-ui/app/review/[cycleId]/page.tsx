@@ -3,20 +3,32 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 
-import { fetchCycles, subscribe, type Cycle } from '@/lib/bridge-client';
+import {
+  fetchCycles,
+  fetchEvents,
+  fetchDemoModel,
+  subscribe,
+  type Cycle,
+  type EventLogEntry,
+  type DemoModel,
+} from '@/lib/bridge-client';
+import { ReviewStageHex } from '@/components/ReviewStageHex';
+import { DemoComparison } from '@/components/DemoComparison';
 import { ReviewVerdictForm } from '@/components/ReviewVerdictForm';
-import { ArtifactBadge } from '@/components/CycleArtifacts';
 
 /**
- * ADR 020 — the standalone review screen. The inline dashboard verdict box was
- * retired; the review human moment (approve / send-back a built PR) now runs on
- * its own page, mirroring the architect plan screen. Surfaces the PLAN + DEMO
- * artifacts for context and the verdict form.
+ * ADR 021 — the standalone review screen. Aligned with the architect plan
+ * screen: a focused review hex (left) + the rich artifact and controls (right).
+ * The structured demo renders large on its own page (the review equivalent of
+ * the PLAN gate), with the verdict form below.
  */
 export default function ReviewCyclePage({ params }: { params: { cycleId: string } }): JSX.Element {
   const cycleId = decodeURIComponent(params.cycleId);
   const [cycle, setCycle] = useState<Cycle | null>(null);
   const [loaded, setLoaded] = useState(false);
+  const [demo, setDemo] = useState<DemoModel | null>(null);
+  const [events, setEvents] = useState<EventLogEntry[]>([]);
+  const [nowMs, setNowMs] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -31,13 +43,23 @@ export default function ReviewCyclePage({ params }: { params: { cycleId: string 
         .catch(() => { if (!cancelled) setLoaded(true); });
     };
     refresh();
+    fetchDemoModel(cycleId).then((d) => { if (!cancelled) setDemo(d); }).catch(() => {});
+    fetchEvents(cycleId).then((rows) => { if (!cancelled) setEvents(rows); }).catch(() => {});
     const sub = subscribe({
       onMessage: (msg) => {
         if (msg.type === 'cycle-list-changed' || msg.type === 'snapshot') refresh();
+        else if (msg.type === 'event' && msg.cycleId === cycleId) {
+          setEvents((prev) => (prev.some((e) => e.event_id === msg.event.event_id) ? prev : [...prev, msg.event]));
+        }
       },
     });
     return () => { cancelled = true; sub.close(); };
   }, [cycleId]);
+
+  useEffect(() => {
+    const id = setInterval(() => setNowMs(Date.now()), 250);
+    return () => clearInterval(id);
+  }, []);
 
   const ready = cycle?.status === 'ready-for-review';
 
@@ -47,7 +69,7 @@ export default function ReviewCyclePage({ params }: { params: { cycleId: string 
       data-cycle-id={cycleId}
       data-cycle-status={cycle?.status ?? ''}
       data-page-ready={loaded ? 'true' : 'false'}
-      style={{ padding: '16px 24px', minHeight: '100vh', maxWidth: 900, margin: '0 auto' }}
+      style={{ padding: '16px 24px', minHeight: '100vh', maxWidth: 1100, margin: '0 auto' }}
     >
       <header style={{ display: 'flex', alignItems: 'baseline', gap: 16, marginBottom: 18 }}>
         <Link href="/" data-action="back-to-dashboard" style={{ color: '#58a6ff', fontSize: 13, textDecoration: 'none' }}>
@@ -66,24 +88,29 @@ export default function ReviewCyclePage({ params }: { params: { cycleId: string 
           Cycle not found. <Link href="/" style={{ color: '#58a6ff' }}>Back to dashboard</Link>.
         </div>
       ) : (
-        <>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16, fontSize: 13, color: '#8b949e' }}>
-            <span>{cycle.project ?? '(no project)'}</span>
-            <span>· status: <span style={{ color: ready ? '#d29922' : '#e6edf3' }}>{cycle.status}</span></span>
-            <span style={{ display: 'inline-flex', gap: 8 }}>
-              <ArtifactBadge cycleId={cycleId} filename="PLAN.md" href={`/plan/${encodeURIComponent(cycleId)}`} label="view plan" title="The architect's PLAN for this cycle" />
-              <ArtifactBadge cycleId={cycleId} filename="DEMO.md" href={`/demo/${encodeURIComponent(cycleId)}`} label="view demo" title="The before/after demo for this cycle" />
-            </span>
-          </div>
+        <div style={{ display: 'grid', gridTemplateColumns: '260px 1fr', gap: 24, alignItems: 'start' }}>
+          <ReviewStageHex status={cycle.status} events={events} nowMs={nowMs} />
 
-          {ready ? (
-            <ReviewVerdictForm initiativeId={cycle.initiativeId} />
-          ) : (
-            <div style={{ border: '1px solid #30363d', borderRadius: 10, padding: '14px 18px', background: '#0d1117', fontSize: 13, color: '#8b949e' }}>
-              This cycle is <strong style={{ color: '#e6edf3' }}>{cycle.status}</strong> — a verdict is only needed once it reaches <code>ready-for-review</code>.
-            </div>
-          )}
-        </>
+          <div style={{ minWidth: 0, display: 'flex', flexDirection: 'column', gap: 16 }}>
+            <div style={{ fontSize: 12, color: '#8b949e' }}>{cycle.project ?? '(no project)'}</div>
+
+            {demo ? (
+              <DemoComparison model={demo} />
+            ) : (
+              <div style={{ border: '1px solid #21262d', borderRadius: 8, padding: '14px 18px', background: '#0b0f14', fontSize: 13, color: '#8b949e' }}>
+                No structured demo (<code>demo.json</code>) filed for this cycle yet.
+              </div>
+            )}
+
+            {ready ? (
+              <ReviewVerdictForm initiativeId={cycle.initiativeId} />
+            ) : (
+              <div style={{ border: '1px solid #30363d', borderRadius: 10, padding: '14px 18px', background: '#0d1117', fontSize: 13, color: '#8b949e' }}>
+                This cycle is <strong style={{ color: '#e6edf3' }}>{cycle.status}</strong> — a verdict is only needed once it reaches <code>ready-for-review</code>.
+              </div>
+            )}
+          </div>
+        </div>
       )}
     </main>
   );

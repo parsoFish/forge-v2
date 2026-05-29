@@ -12,11 +12,21 @@ export const PHASE_ORDER = [
   'project-manager',
   'developer-loop',
   'review-loop',
-  'closure',
   'reflection',
 ] as const;
 
 export type Phase = (typeof PHASE_ORDER)[number];
+
+/**
+ * Map a raw event phase to the spine phase it renders under. Operator
+ * 2026-05-30: review + closure are one moment now — the operator engages the
+ * review page and approving merges — so `closure` events fold into the single
+ * `review-loop` hex (labeled "review"). Keeps the backend's separate
+ * review-loop/closure events while presenting one phase.
+ */
+export function canonicalPhase(raw: string): string {
+  return raw === 'closure' ? 'review-loop' : raw;
+}
 
 /**
  * 'retrying' was added 2026-05-25 per operator note: phases that have
@@ -32,15 +42,21 @@ export function derivePhaseStates(events: readonly EventLogEntry[]): PhaseState[
   const cycleFailed = cycleHasFailed(events);
   const seen = new Map<Phase, { firstAt: string; lastAt: string; ended: boolean; errored: boolean }>();
   for (const e of events) {
-    if (!isPhase(e.phase)) continue;
-    const entry = seen.get(e.phase) ?? { firstAt: e.started_at, lastAt: e.started_at, ended: false, errored: false };
+    const phase = canonicalPhase(e.phase);
+    if (!isPhase(phase)) continue;
+    const entry = seen.get(phase) ?? { firstAt: e.started_at, lastAt: e.started_at, ended: false, errored: false };
     entry.lastAt = e.started_at;
-    if (e.event_type === 'end') entry.ended = true;
+    // A per-work-item `end` (carries work_item_id) completes that WI but does
+    // NOT end the dev-loop PHASE — the phase stays active through the
+    // remaining WIs and the unifier, ending only on the phase-level end
+    // (ralph.end, no work_item_id). Operator 2026-05-30.
+    const isPerWiEnd = e.event_type === 'end' && typeof e.metadata?.work_item_id === 'string';
+    if (e.event_type === 'end' && !isPerWiEnd) entry.ended = true;
     // Expected failures (iter-0 sharp-gate must-fail) emit as 'log' per
     // Bug 3 fix, but be defensive: also ignore any 'error' tagged with
     // metadata.expected_fail so they never tint the phase.
     if (e.event_type === 'error' && e.metadata?.expected_fail !== true) entry.errored = true;
-    seen.set(e.phase, entry);
+    seen.set(phase as Phase, entry);
   }
   // Active = the latest phase that has events but hasn't ended yet.
   let activeIdx = -1;

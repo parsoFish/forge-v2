@@ -698,9 +698,9 @@ async function S4(ui, page) {
       page,
       () => {
         const hexes = document.querySelectorAll('[data-phase-hex]');
-        return hexes.length >= 6;
+        return hexes.length >= 5;
       },
-      'expected >=6 [data-phase-hex] mirror divs from AgentHexCanvas',
+      'expected >=5 [data-phase-hex] mirror divs from AgentHexCanvas',
     );
     log('S4', 'AgentHexCanvas ✓');
     await pauseAndCapture(page, 'S4-hex-canvas');

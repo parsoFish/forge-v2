@@ -365,35 +365,58 @@ function CyclesTab({
               {list.map((c) => {
                 const active = c.cycleId === activeId;
                 const meta = CYCLE_STATUS_META[c.status];
+                const reviewable = c.status === 'ready-for-review';
                 return (
-                  <button
-                    key={c.cycleId}
-                    data-cycle-id={c.cycleId}
-                    data-cycle-initiative-id={c.initiativeId}
-                    data-cycle-status={c.status}
-                    data-cycle-project={c.project ?? ''}
-                    data-cycle-active={active ? 'true' : 'false'}
-                    onClick={() => onSelect(c.cycleId)}
-                    title={c.initiativeId}
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: 8,
-                      padding: '6px 12px 6px 10px',
-                      fontSize: 12,
-                      borderLeft: `3px solid ${meta.color}`,
-                      border: '1px solid ' + (active ? '#58a6ff' : '#30363d'),
-                      borderLeftWidth: 3,
-                      borderLeftColor: meta.color,
-                      background: active ? '#0d1f3a' : '#161b22',
-                      color: '#e6edf3',
-                      borderRadius: 6,
-                      cursor: 'pointer',
-                    }}
-                  >
-                    <span style={{ fontFamily: 'ui-monospace, Menlo, monospace' }}>{initiativeSlug(c.initiativeId)}</span>
-                    <span style={{ fontSize: 10, color: meta.color, textTransform: 'uppercase', letterSpacing: 0.5 }}>{meta.label}</span>
-                  </button>
+                  <span key={c.cycleId} style={{ display: 'inline-flex', alignItems: 'stretch' }}>
+                    <button
+                      data-cycle-id={c.cycleId}
+                      data-cycle-initiative-id={c.initiativeId}
+                      data-cycle-status={c.status}
+                      data-cycle-project={c.project ?? ''}
+                      data-cycle-active={active ? 'true' : 'false'}
+                      onClick={() => onSelect(c.cycleId)}
+                      title={c.initiativeId}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 8,
+                        padding: '6px 12px 6px 10px',
+                        fontSize: 12,
+                        border: '1px solid ' + (active ? '#58a6ff' : '#30363d'),
+                        borderLeftWidth: 3,
+                        borderLeftColor: meta.color,
+                        background: active ? '#0d1f3a' : '#161b22',
+                        color: '#e6edf3',
+                        borderRadius: reviewable ? '6px 0 0 6px' : 6,
+                        cursor: 'pointer',
+                      }}
+                    >
+                      <span style={{ fontFamily: 'ui-monospace, Menlo, monospace' }}>{initiativeSlug(c.initiativeId)}</span>
+                      <span style={{ fontSize: 10, color: meta.color, textTransform: 'uppercase', letterSpacing: 0.5 }}>{meta.label}</span>
+                    </button>
+                    {reviewable && (
+                      <a
+                        href={`/review/${encodeURIComponent(c.cycleId)}`}
+                        data-action="open-review"
+                        title="Review this PR"
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          padding: '0 10px',
+                          fontSize: 11,
+                          fontWeight: 600,
+                          color: '#fff',
+                          background: '#9e6a03',
+                          border: '1px solid #30363d',
+                          borderLeft: 'none',
+                          borderRadius: '0 6px 6px 0',
+                          textDecoration: 'none',
+                        }}
+                      >
+                        Review →
+                      </a>
+                    )}
+                  </span>
                 );
               })}
             </div>

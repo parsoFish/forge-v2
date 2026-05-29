@@ -167,6 +167,21 @@ async function main() {
     await page.waitForSelector('[data-section="architect-interview"][data-questions-answered="true"]', { timeout: 5000 });
     await shot(page, 'plan-screen-interview-answered');
 
+    // 4) Standalone review screen — if any real cycle is ready-for-review.
+    try {
+      const cycles = await (await fetch(`${watch.bridgeUrl}/api/cycles`)).json();
+      const rfr = [...(cycles.live ?? []), ...(cycles.recent ?? [])].find((c) => c.status === 'ready-for-review');
+      if (rfr) {
+        await page.goto(`${watch.uiUrl}/review/${encodeURIComponent(rfr.cycleId)}`, { waitUntil: 'domcontentloaded' });
+        await page.waitForSelector('main[data-page="review-cycle"][data-page-ready="true"]', { timeout: 30000 });
+        await shot(page, 'review-screen');
+      } else {
+        console.log('[gallery] no ready-for-review cycle — skipping review-screen shot');
+      }
+    } catch (err) {
+      console.log(`[gallery] review-screen shot skipped: ${err.message}`);
+    }
+
     console.log('\n[gallery] OK — screenshots in forge-ui/.demo-shots/journey/architect/');
   } finally {
     await browser.close();

@@ -20,7 +20,7 @@ keywords:
   - three-moments
   - file-handoff
 created_at: 2026-05-16T00:00:00.000Z
-updated_at: 2026-05-16T00:00:00.000Z
+updated_at: 2026-05-29T00:00:00.000Z
 related_themes:
   - review-phase-target-design
   - forge-current-architecture-as-built
@@ -30,15 +30,28 @@ related_themes:
 
 # Human interaction points run in the operator's own session
 
+> **Amended 2026-05-29 ([ADR 020](../../../docs/decisions/020-architect-in-ui.md)).**
+> The **architect** moment moved *into the forge UI* as an operator-driven,
+> file-checkpointed runner (idea → interview → council → comparative PLAN →
+> approve, all in-app). The load-bearing property below — **explicit,
+> operator-initiated, impossible to silently auto-satisfy** — is preserved, not
+> the literal "operator's own CLI session": forge never auto-starts the
+> architect (only an operator "New idea" action does; it stays out of the
+> scheduler / `runCycle`), and there is no auto-approve (the operator must
+> resolve every escalation on the PLAN gate before any manifest is queued). The
+> interview uses the same **file-based handoff** the reflector uses
+> (`questions.json` ↔ `answers.json`). Review + reflection remain own-session
+> slash commands as below.
+
 Forge has exactly **three deliberate human interaction moments**. The
 operator's direction: each is performed in the operator's **own Claude
 session** (CLI or VSCode extension) — not a forge-spawned sub-agent and
 not a bench simulator standing in for production. The cleanest
 implementation is a **slash command** per moment.
 
-| Moment | Slash command | Reads | Writes / effect |
+| Moment | Surface | Reads | Writes / effect |
 |---|---|---|---|
-| Roadmap / architect | `/forge-architect` | brain, `projects/<name>/roadmap.md`, prior initiatives | `_queue/pending/INIT-*.md` + roadmap rows |
+| Roadmap / architect | **in-UI architect** ([ADR 020](../../../docs/decisions/020-architect-in-ui.md); was `/forge-architect`) | brain, `projects/<name>/roadmap.md`, prior initiatives, `_architect/<sid>/answers.json` | `_queue/pending/INIT-*.md` + roadmap rows (only on explicit operator approve) |
 | Review feedback & merge | `/forge-review <id>` | the project-repo PR + initiative branch | PR feedback for the review agent to process, OR the operator merges the PR in GitHub (which closes review) |
 | Reflection feedback | `/forge-reflect <id>` | `_logs/<id>/user-questions.md` | `_logs/<id>/user-feedback.md` |
 

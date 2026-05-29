@@ -14,12 +14,19 @@ Drive a single work item to completion via the Ralph loop pattern ([ADR 002](../
 
 ## Required first action
 
-Read the work-item spec. **The dev-loop does NOT query the brain** (see
-[ADR 010](../../docs/decisions/010-brain-first.md) — brain-read policy).
-The planner already consulted the brain and encoded every relevant
-pattern/antipattern/convention into this WI's spec + acceptance
-criteria. The work item is the **single source of intent**; a brain
-read here is wasted cost and a source-of-truth split.
+Read the work-item spec. **The dev-loop does NOT query the forge brain**
+(Brains 1+2; see [ADR 010](../../docs/decisions/010-brain-first.md) —
+brain-read policy). The planner already consulted the brain and encoded
+every relevant pattern/antipattern/convention into this WI's spec +
+acceptance criteria. The work item is the **single source of intent**; a
+forge-brain read here is wasted cost and a source-of-truth split.
+
+It **may** consult the cycle's project brain (Brain 3 — the project's own
+`brain/profile.md` + `brain/themes/`, available in the worktree) for
+supplemental project context when the WI is thin on a project convention
+(file layout, testing norms). This is advisory, not mandatory — the WI
+remains the single source of *intent*; Brain 3 is supplemental *context*
+([ADR 010 amendment 2026-05-26](../../docs/decisions/010-brain-first.md)).
 
 ## Inputs
 

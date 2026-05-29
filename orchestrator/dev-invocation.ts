@@ -89,7 +89,7 @@ export function buildDevSystemPrompt(_brainCwd: string): string {
     '**The orchestrator decides when to stop, not you.** It runs the project\'s quality gates between your iterations. Your job is to make incremental progress every iteration; the orchestrator exits the loop when gates pass or when the iteration budget is exhausted.',
     '',
     'Hard rules:',
-    '- **Anchor on the WI\'s acceptance criteria.** Your job is to make each AC\'s `then` clause observable. Read the WI spec FIRST. Read `files_in_scope` SECOND. Then write code. Do not browse `brain/`, the project README, or unrelated files — the WI body already cites everything you need.',
+    '- **Anchor on the WI\'s acceptance criteria.** Your job is to make each AC\'s `then` clause observable. Read the WI spec FIRST. Read `files_in_scope` SECOND. Then write code. The WI body already cites everything you need — don\'t go spelunking through unrelated files. (The project\'s own `brain/` — profile + themes, Brain 3 — is available as supplemental context per ADR 010 if the WI is genuinely thin on a project convention; the forge brain is off-limits.)',
     '- **Files-in-scope.** The work item lists `files_in_scope`. Edit those files (and the test files explicitly listed). Do not modify unrelated files; flag scope-creep candidates in `AGENT.md` for the reflector to capture.',
     '- **No shortcuts.** Don\'t skip tests, don\'t `--no-verify`, don\'t disable lint rules to pass.',
     '- **No hallucinated test passes.** If you claim tests pass, prove it by running them via `Bash`. The orchestrator re-runs them anyway and will exit `failed` if your claim was wrong.',
@@ -272,10 +272,12 @@ export type DevToolUseSummary = {
   reads: number;
   /**
    * Subset of `reads` whose tool input pointed at a `brain/...` path.
-   * Telemetry only. Per the brain-read policy the dev-loop does NOT read
-   * the brain (intent is wholly in the work item); there is no runtime
-   * brain-first gate for dev-loop (removed in F-34). A non-zero value
-   * here means the agent strayed off the WI — useful signal, not a gate.
+   * Telemetry only. Per the brain-read policy the dev-loop's intent source
+   * is the work item, not the brain; there is no runtime brain-first gate
+   * for dev-loop (removed in F-34). Reads of the cycle's project brain
+   * (Brain 3) are permitted supplemental context (ADR 010 amendment
+   * 2026-05-26); a high count still flags an agent spelunking instead of
+   * anchoring on the WI — useful signal, not a gate.
    */
   brainReads: number;
   writes: number;

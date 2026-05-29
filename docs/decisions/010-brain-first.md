@@ -27,11 +27,16 @@ the trafficGame arc proved that net-negative for execution phases
   initiative is sliced. Runtime-enforced for PM (throws on 0 brain
   reads).
 - **Reflector: reads (and writes) the brain** by definition.
-- **Dev-loop and reviewer: MUST NOT read the brain.** The planner
-  already encoded every relevant pattern/antipattern/convention into
-  the work items; the WI (dev-loop) and the manifest+WI set (reviewer)
-  are the **single source of intent**. A second brain pass is wasted
-  cost and a source-of-truth split. No runtime brain gate for these.
+- **Dev-loop and reviewer: MUST NOT read the forge brain (Brains 1+2).**
+  The planner already encoded every relevant pattern/antipattern/convention
+  into the work items; the WI (dev-loop) and the manifest+WI set (reviewer)
+  are the **single source of intent**. A forge-brain pass is wasted cost and
+  a source-of-truth split. No runtime brain gate for these.
+  *(Amended 2026-05-26 — ADR 018: they MAY read Brain 3, the cycle's
+  project brain at `projects/<name>/brain/`, for supplemental project
+  context — file layout, testing norms — now that it is scope-clean
+  project-only. Advisory, not mandatory; the WI remains the single source
+  of* intent*, Brain 3 is supplemental* context*.)*
 - Permitted brain reads go through the navigation metadata
   (`INDEX.md`, category indexes, `profile.md`) — never full-tree scans.
 

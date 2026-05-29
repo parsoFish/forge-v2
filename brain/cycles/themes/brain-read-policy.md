@@ -5,9 +5,10 @@ title: >-
 description: >-
   Operator-confirmed. The architect/PM MUST read the brain (antipatterns +
   historical work-sizing inform initiative slicing). The dev-loop and reviewer
-  MUST NOT — intent is wholly captured in the work items the planner authored.
-  Every brain read must use the INDEX/category-index/profile metadata, not
-  expensive full scans.
+  MUST NOT read the forge brain — intent is wholly captured in the work items
+  the planner authored — but MAY read the project's Brain 3 for supplemental
+  context (ADR 018 amendment). Every brain read must use the
+  INDEX/category-index/profile metadata, not expensive full scans.
 category: decision
 keywords:
   - brain-read
@@ -21,7 +22,7 @@ keywords:
   - F-41
   - single-source-of-intent
 created_at: 2026-05-16T00:00:00.000Z
-updated_at: 2026-05-16T00:00:00.000Z
+updated_at: 2026-05-26T00:00:00.000Z
 related_themes:
   - brain-first-research
   - reactive-constraint-stripback-arc
@@ -42,20 +43,30 @@ realistically-sized work items). Planning is exactly the phase where
 brain knowledge changes the output. The **reflector** reads (and
 writes) by definition.
 
-**Who does not.** The **dev-loop must not** read the brain — the intent,
-constraints and acceptance criteria are *wholly captured in the work
-item* the planner authored; a second brain pass is cost paid twice and a
-source-of-truth split. The **reviewer must not** read the brain for the
-same reason: the initiative's intent is wholly captured in the
-manifest + the work-item set the planner produced; the reviewer judges
-the branch against *that*, not against the brain. This is why the
-runtime brain-first gate is enforced only for PM (throw) and reflector
-(log-and-continue) and was deliberately removed from dev-loop/reviewer.
+**Who does not.** The **dev-loop must not** read the *forge* brain
+(Brains 1+2) — the intent, constraints and acceptance criteria are
+*wholly captured in the work item* the planner authored; a second
+forge-brain pass is cost paid twice and a source-of-truth split. The
+**reviewer must not** read the forge brain for the same reason: the
+initiative's intent is wholly captured in the manifest + the work-item
+set the planner produced; the reviewer judges the branch against *that*,
+not against the brain. This is why the runtime brain-first gate is
+enforced only for PM (throw) and reflector (log-and-continue) and was
+deliberately removed from dev-loop/reviewer.
+
+**Amendment 2026-05-26 (ADR 018 three-brain model).** The dev-loop and
+reviewer **may** read **Brain 3** — the cycle's project brain at
+`projects/<name>/brain/` (present in the worktree). Now that Brain 3 is
+scope-clean (project-only, no forge-theme pollution), the original
+"don't risk an executor reading a forge theme and going off-spec"
+rationale no longer applies. Brain 3 is *supplemental context* (project
+file layout, testing norms); the WI/manifest remains the single source
+of *intent*. Advisory, not mandatory — no runtime gate added.
 
 **How reads are bounded (guardrail).** Every permitted brain read must
 go through the built navigation metadata first — `INDEX.md`, the
-category indexes (`forge/{patterns,antipatterns,...}.md`), and
-`projects/<name>/profile.md` — and only then drill into a specific theme
+category indexes (`cycles/{patterns,antipatterns,...}.md`), and
+`projects/<name>/brain/profile.md` — and only then drill into a specific theme
 and its raw source. Full-tree scans / grep-the-world are the expensive
 antipattern the index layer exists to prevent. Open implementation
 gap: `brain-index.ts` is module-cached, so a long `forge serve` process

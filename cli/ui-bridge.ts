@@ -44,6 +44,13 @@ import { parseManifest } from '../orchestrator/manifest.ts';
 import { fileVerdictPaths } from '../orchestrator/file-verdict.ts';
 import { daemonState } from '../orchestrator/daemon.ts';
 import type { EventLogEntry } from '../orchestrator/logging.ts';
+import {
+  listArchitectSessions,
+  readStatus,
+  writeStatus,
+  type ArchitectStatus,
+  type ArchitectQuestion,
+} from '../orchestrator/architect-runner.ts';
 
 const TAIL_POLL_MS = 200;
 const RECENT_CYCLES_MAX = 20;
@@ -60,7 +67,10 @@ type Cycle = {
 type WsOutbound =
   | { type: 'snapshot'; cycles: { live: Cycle[]; recent: Cycle[] } }
   | { type: 'event'; cycleId: string; event: EventLogEntry }
-  | { type: 'cycle-list-changed' };
+  | { type: 'cycle-list-changed' }
+  // ADR 020 — an architect session changed (started, new questions, plan ready,
+  // committed). The UI re-fetches `/api/architect/sessions`.
+  | { type: 'architect-list-changed' };
 
 export type BridgeOptions = {
   forgeRoot: string;
@@ -83,10 +93,12 @@ export async function startBridge(opts: BridgeOptions): Promise<{ url: string; c
   // child of forgeRoot.
   const queuePaths = getPaths(resolve(forgeRoot, '_queue'));
   const logsRoot = resolve(forgeRoot, '_logs');
+  const projectsRoot = resolve(forgeRoot, 'projects');
 
   const clients = new Set<WebSocket>();
   const tails = new Map<string, TailState>();
   const queueWatchers: FSWatcher[] = [];
+  const architectWatchers: FSWatcher[] = [];
 
   const broadcast = (msg: WsOutbound): void => {
     const payload = JSON.stringify(msg);
@@ -223,12 +235,42 @@ export async function startBridge(opts: BridgeOptions): Promise<{ url: string; c
     }
   };
 
+  // ADR 020 — watch each project's `_architect/` dir (recursively where the
+  // platform supports it) so the runner's file-checkpoint writes (questions,
+  // PLAN, status) push a re-fetch signal to the UI. Mirrors `watchQueue`.
+  const watchArchitect = (): void => {
+    if (!existsSync(projectsRoot)) return;
+    let projects: string[];
+    try { projects = readdirSync(projectsRoot); } catch { return; }
+    for (const name of projects) {
+      const archDir = join(projectsRoot, name, '_architect');
+      if (!existsSync(archDir)) continue;
+      try {
+        const w = fsWatch(archDir, { persistent: false, recursive: true }, () => {
+          broadcast({ type: 'architect-list-changed' });
+        });
+        architectWatchers.push(w);
+      } catch {
+        // recursive watch unsupported — fall back to a non-recursive watch on
+        // the _architect dir (catches new sessions; the UI re-fetches anyway).
+        try {
+          const w = fsWatch(archDir, { persistent: false }, () => {
+            broadcast({ type: 'architect-list-changed' });
+          });
+          architectWatchers.push(w);
+        } catch { /* fs.watch unavailable */ }
+      }
+    }
+  };
+
   const http = createServer((req, res) => {
     void handleHttp(req, res, {
       scanCycles,
       logsRoot,
       forgeRoot,
       queueRoot: queuePaths.root,
+      projectsRoot,
+      broadcastArchitectChanged: () => broadcast({ type: 'architect-list-changed' }),
     });
   });
   const wss = new WebSocketServer({ server: http, path: '/ws' });
@@ -265,9 +307,11 @@ export async function startBridge(opts: BridgeOptions): Promise<{ url: string; c
   });
   startTailsForLive();
   watchQueue();
+  watchArchitect();
 
   const close = async (): Promise<void> => {
     for (const w of queueWatchers) { try { w.close(); } catch { /* ignore */ } }
+    for (const w of architectWatchers) { try { w.close(); } catch { /* ignore */ } }
     for (const t of tails.values()) { if (t.timer) clearInterval(t.timer); }
     tails.clear();
     for (const ws of clients) { try { ws.close(); } catch { /* ignore */ } }
@@ -288,7 +332,21 @@ type HttpContext = {
   logsRoot: string;
   forgeRoot: string;
   queueRoot: string;
+  /** ADR 020 — `<forgeRoot>/projects`, the root the architect routes walk. */
+  projectsRoot: string;
+  /** Broadcast an `architect-list-changed` WS message (fsWatch may miss
+   *  same-tick writes; the routes call this after they mutate session state). */
+  broadcastArchitectChanged: () => void;
 };
+
+/** Content-type by extension for served artifacts. `.html` → `text/html` so the
+ *  PLAN/DEMO pages render in the operator's browser (ADR 020 + Phase E); all
+ *  else stays `text/plain`. */
+function contentTypeFor(filename: string): string {
+  return filename.toLowerCase().endsWith('.html')
+    ? 'text/html; charset=utf-8'
+    : 'text/plain; charset=utf-8';
+}
 
 async function handleHttp(
   req: IncomingMessage,
@@ -440,7 +498,7 @@ async function handleHttp(
     try {
       const body = readFileSync(requested, 'utf8');
       res.writeHead(200, {
-        'content-type': 'text/plain; charset=utf-8',
+        'content-type': contentTypeFor(filename),
         'access-control-allow-origin': '*',
       });
       res.end(body);
@@ -449,6 +507,9 @@ async function handleHttp(
     }
     return;
   }
+
+  // ---- Architect (ADR 020) ----------------------------------------------
+  if (await handleArchitect(req, res, ctx, url, method)) return;
 
   // Scheduler lifecycle.
   if (method === 'GET' && url === '/api/scheduler/status') {
@@ -552,6 +613,235 @@ async function handleHttp(
 
   res.writeHead(404);
   res.end();
+}
+
+// ---- Architect routes (ADR 020) -------------------------------------------
+
+/** Spawn one architect-runner turn as a detached child (the scheduler-daemon
+ *  spawn pattern). Best-effort + fire-and-forget — the runner checkpoints to
+ *  the session dir and the fsWatch/`architect-list-changed` signal drives the
+ *  UI re-fetch. `FORGE_ARCHITECT_NO_SPAWN=1` disables the spawn for harness /
+ *  curl runs that pre-seed session state (mirrors `FORGE_BRIDGE_DEBUG`). */
+function spawnArchitectTurn(forgeRoot: string, project: string, sessionId: string): void {
+  if (process.env.FORGE_ARCHITECT_NO_SPAWN === '1') return;
+  try {
+    const proc = spawn(
+      process.execPath,
+      ['--experimental-strip-types', 'orchestrator/cli.ts', 'architect', 'run', sessionId, '--project', project],
+      { cwd: forgeRoot, detached: true, stdio: 'ignore' },
+    );
+    proc.unref();
+  } catch { /* best-effort */ }
+}
+
+function architectSessionDir(projectsRoot: string, project: string, sessionId: string): string {
+  return join(projectsRoot, project, '_architect', sessionId);
+}
+
+function readJsonFile<T>(path: string): T | null {
+  if (!existsSync(path)) return null;
+  try { return JSON.parse(readFileSync(path, 'utf8')) as T; } catch { return null; }
+}
+
+function newArchitectSessionId(): string {
+  // YYYY-MM-DDTHH-mm-ss (matches ArchitectSession.session_id elsewhere).
+  return new Date().toISOString().replace(/:/g, '-').replace(/\..+$/, '');
+}
+
+/** Returns true if the request was an architect route (and was handled). */
+async function handleArchitect(
+  req: IncomingMessage,
+  res: ServerResponse,
+  ctx: HttpContext,
+  url: string,
+  method: string,
+): Promise<boolean> {
+  // GET /api/architect/sessions — list every session with its current state.
+  if (method === 'GET' && url === '/api/architect/sessions') {
+    const statuses = listArchitectSessions(ctx.projectsRoot);
+    const sessions = statuses.map((s) => {
+      const dir = architectSessionDir(ctx.projectsRoot, s.project, s.session_id);
+      const questions =
+        s.phase === 'awaiting-answers'
+          ? readJsonFile<ArchitectQuestion[]>(join(dir, 'questions.json'))
+          : null;
+      const escalations =
+        s.phase === 'awaiting-verdict'
+          ? readJsonFile<unknown[]>(join(dir, 'escalations.json'))
+          : null;
+      const planUrl = existsSync(join(dir, 'PLAN.html'))
+        ? `/api/architect/file/${encodeURIComponent(s.project)}/${encodeURIComponent(s.session_id)}/PLAN.html`
+        : null;
+      return {
+        sessionId: s.session_id,
+        project: s.project,
+        projectRepoPath: s.project_repo_path,
+        phase: s.phase,
+        round: s.round,
+        idea: s.idea,
+        questions,
+        escalations,
+        planUrl,
+      };
+    });
+    sendJson(res, 200, { sessions });
+    return true;
+  }
+
+  // GET /api/architect/file/<project>/<sid>/<filename> — serve a session-dir
+  // file (PLAN.html etc.) with a path-escape guard + content-type sniff.
+  if (method === 'GET' && url.startsWith('/api/architect/file/')) {
+    const rest = url.slice('/api/architect/file/'.length).split('/').map(decodeURIComponent);
+    const [project, sessionId, ...fileParts] = rest;
+    const filename = fileParts.join('/');
+    if (!project || !sessionId || !filename) {
+      sendJson(res, 400, { error: 'expected /api/architect/file/<project>/<sid>/<filename>' });
+      return true;
+    }
+    const base = architectSessionDir(ctx.projectsRoot, project, sessionId) + sep;
+    const requested = join(architectSessionDir(ctx.projectsRoot, project, sessionId), filename);
+    if (!requested.startsWith(base)) {
+      sendJson(res, 400, { error: 'path escape rejected' });
+      return true;
+    }
+    if (!existsSync(requested)) {
+      sendJson(res, 404, { error: 'file not found', project, sessionId, filename });
+      return true;
+    }
+    try {
+      res.writeHead(200, {
+        'content-type': contentTypeFor(filename),
+        'access-control-allow-origin': '*',
+      });
+      res.end(readFileSync(requested, 'utf8'));
+    } catch (err) {
+      sendJson(res, 500, { error: String(err) });
+    }
+    return true;
+  }
+
+  // POST /api/architect/start {project, idea, projectRepoPath?} — create a new
+  // session and kick off the first interview turn.
+  if (method === 'POST' && url === '/api/architect/start') {
+    try {
+      const body = (await readJson(req)) as { project?: string; idea?: string; projectRepoPath?: string };
+      if (!body.project || !body.idea) {
+        sendJson(res, 400, { error: 'project and idea are required' });
+        return true;
+      }
+      const sessionId = newArchitectSessionId();
+      const dir = architectSessionDir(ctx.projectsRoot, body.project, sessionId);
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(join(dir, 'idea.md'), body.idea);
+      const status: ArchitectStatus = {
+        session_id: sessionId,
+        project: body.project,
+        project_repo_path: body.projectRepoPath ?? join(ctx.projectsRoot, body.project),
+        phase: 'interviewing',
+        round: 1,
+        idea: body.idea,
+        updated_at: new Date().toISOString(),
+      };
+      writeStatus(dir, status);
+      spawnArchitectTurn(ctx.forgeRoot, body.project, sessionId);
+      ctx.broadcastArchitectChanged();
+      sendJson(res, 200, { ok: true, sessionId });
+    } catch (err) {
+      sendJson(res, 500, { error: String(err) });
+    }
+    return true;
+  }
+
+  // POST /api/architect/answer {project, sessionId, answers} — append an
+  // interview round and re-spawn a turn.
+  if (method === 'POST' && url === '/api/architect/answer') {
+    try {
+      const body = (await readJson(req)) as {
+        project?: string;
+        sessionId?: string;
+        answers?: { question: string; answer: string }[];
+      };
+      if (!body.project || !body.sessionId || !Array.isArray(body.answers)) {
+        sendJson(res, 400, { error: 'project, sessionId, answers[] are required' });
+        return true;
+      }
+      const dir = architectSessionDir(ctx.projectsRoot, body.project, body.sessionId);
+      const status = readStatus(dir);
+      if (!status) {
+        sendJson(res, 404, { error: 'session not found', sessionId: body.sessionId });
+        return true;
+      }
+      const answersPath = join(dir, 'answers.json');
+      const prior = readJsonFile<{ round: number; answers: unknown[] }[]>(answersPath) ?? [];
+      const round = prior.length + 1;
+      writeFileSync(answersPath, JSON.stringify([...prior, { round, answers: body.answers }], null, 2));
+      writeStatus(dir, { ...status, phase: 'interviewing', round: round + 1 });
+      spawnArchitectTurn(ctx.forgeRoot, body.project, body.sessionId);
+      ctx.broadcastArchitectChanged();
+      sendJson(res, 200, { ok: true, round });
+    } catch (err) {
+      sendJson(res, 500, { error: String(err) });
+    }
+    return true;
+  }
+
+  // POST /api/plan-verdict {project, sessionId, kind, selections?, rationale?}
+  //   approve → write selections + resolved-decisions feedback, finalize turn
+  //   revise  → write feedback, re-open the interview
+  //   reject  → mark rejected
+  if (method === 'POST' && url === '/api/plan-verdict') {
+    try {
+      const body = (await readJson(req)) as {
+        project?: string;
+        sessionId?: string;
+        kind?: 'approve' | 'revise' | 'reject';
+        selections?: Record<string, string>;
+        rationale?: string;
+      };
+      if (!body.project || !body.sessionId || !body.kind) {
+        sendJson(res, 400, { error: 'project, sessionId, kind are required' });
+        return true;
+      }
+      if (!['approve', 'revise', 'reject'].includes(body.kind)) {
+        sendJson(res, 400, { error: `unknown kind: ${body.kind}` });
+        return true;
+      }
+      const dir = architectSessionDir(ctx.projectsRoot, body.project, body.sessionId);
+      const status = readStatus(dir);
+      if (!status) {
+        sendJson(res, 404, { error: 'session not found', sessionId: body.sessionId });
+        return true;
+      }
+
+      if (body.kind === 'approve') {
+        const selections = body.selections ?? {};
+        writeFileSync(join(dir, 'selections.json'), JSON.stringify(selections, null, 2));
+        const escalations = readJsonFile<Array<{ id: string; question: string }>>(join(dir, 'escalations.json')) ?? [];
+        const lines = ['## Resolved design decisions', ''];
+        for (const [id, label] of Object.entries(selections)) {
+          const esc = escalations.find((e) => e.id === id);
+          lines.push(`- ${esc ? esc.question : id}: **${label}**`);
+        }
+        if (body.rationale) { lines.push('', body.rationale); }
+        writeFileSync(join(dir, 'feedback.md'), lines.join('\n') + '\n');
+        writeStatus(dir, { ...status, phase: 'finalizing' });
+        spawnArchitectTurn(ctx.forgeRoot, body.project, body.sessionId);
+      } else if (body.kind === 'revise') {
+        writeFileSync(join(dir, 'feedback.md'), (body.rationale ?? '').trim() + '\n');
+        writeStatus(dir, { ...status, phase: 'interviewing', round: status.round + 1 });
+        spawnArchitectTurn(ctx.forgeRoot, body.project, body.sessionId);
+      } else {
+        writeStatus(dir, { ...status, phase: 'rejected' });
+      }
+      ctx.broadcastArchitectChanged();
+      sendJson(res, 200, { ok: true, kind: body.kind });
+    } catch (err) {
+      sendJson(res, 500, { error: String(err) });
+    }
+    return true;
+  }
+
+  return false;
 }
 
 function renderVerdictResponse(

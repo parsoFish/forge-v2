@@ -10,7 +10,7 @@
    - Required fields: `title`, `description`, `category`, `created_at`, `updated_at`.
    - `category` must be one of: `pattern`, `antipattern`, `decision`, `operation`, `reference`.
 2. **Indexed in exactly one category index.** Each category lives in its owning sub-wiki (three-brain model, ADR 018): `pattern`/`antipattern`/`operation` themes live in `cycles/` and index into `cycles/{patterns,antipatterns,operations}.md`; `decision`/`reference` themes live in `forge-dev/` and index into `forge-dev/{decisions,reference}.md`. A theme must appear once on its category index and not on any other.
-3. **Length ≤ 60 lines.** Soft cap; warn at 60, error at 100. Long pages should be split.
+3. **Body length ≤ 60 lines.** Soft cap; warn at 60, error at 100. Counts **body lines only** (post-frontmatter) — YAML frontmatter is structured metadata (description + keywords feed brain-query relevance) and doesn't count against the prose cap. Long pages should be split.
 4. **At least one source link.** A theme page that doesn't link to anything in `_raw/` is summarising rather than indexing — reject.
 5. **No source link broken.** Every link target must exist.
 6. **No orphan.** Every theme page must be reachable from `INDEX.md` via category indexes.

@@ -347,6 +347,22 @@ test('checkLengthSoftCap: > 100 lines errors; 61-99 lines warns', () => {
   }
 });
 
+test('checkLengthSoftCap: counts body lines, not frontmatter', () => {
+  // 90-line body warns (>60) but does NOT error, even though raw file length
+  // (body + the fixture's frontmatter) exceeds the 100 hard cap. Frontmatter
+  // is structured metadata and must not count against the prose cap.
+  const body95 = Array.from({ length: 95 }, (_, i) => `line ${i}`).join('\n');
+  const root = buildBrainFixture({
+    themes: [{ path: 'cycles/themes/bodycap.md', fm: { category: 'pattern' }, body: body95 }],
+  });
+  try {
+    const finding = checkLengthSoftCap(root).find((f) => f.file.endsWith('bodycap.md'));
+    assert.ok(finding && finding.category === 'flag', 'expected a soft-cap flag, not an error');
+  } finally {
+    cleanup(root);
+  }
+});
+
 // ---------- checkContamination ----------
 
 test('checkContamination: clean project tree produces no findings', () => {

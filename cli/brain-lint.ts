@@ -520,26 +520,24 @@ export function checkLengthSoftCap(forgeRoot: string): Finding[] {
   const findings: Finding[] = [];
   const brainRoot = join(forgeRoot, 'brain');
   for (const file of readThemeFiles(brainRoot)) {
-    let body: string;
-    try {
-      body = readFileSync(file, 'utf8');
-    } catch {
-      continue;
-    }
-    // Count newlines (raw, including frontmatter).
-    const lines = body.split('\n').length;
+    const parsed = parseTheme(file);
+    if (!parsed) continue;
+    // Count BODY lines only (post-frontmatter). The cap measures how long the
+    // page is to read; YAML frontmatter is structured metadata (description +
+    // keywords feed brain-query relevance) and shouldn't count against prose.
+    const lines = parsed.content.replace(/\n+$/, '').split('\n').length;
     if (lines > 100) {
       findings.push({
         category: 'error',
         file,
-        message: `theme too long: ${lines} lines (hard cap 100)`,
+        message: `theme too long: ${lines} body lines (hard cap 100)`,
         check: 'checkLengthSoftCap',
       });
     } else if (lines > 60) {
       findings.push({
         category: 'flag',
         file,
-        message: `theme over soft cap: ${lines} lines (> 60)`,
+        message: `theme over soft cap: ${lines} body lines (> 60)`,
         check: 'checkLengthSoftCap',
       });
     }

@@ -75,29 +75,18 @@ SSH `LocalForward`, etc.).
 
 ## Generalises beyond WSL
 
-The pattern is "give the browser the discriminator it needs, let it
-build the URL from its own origin". This works for:
-
-- **Reverse proxies**: the API tells the client `service: 'foo'`, the
-  client hits `/foo/api/whatever` on the same origin.
-- **Subdomain routing**: API returns `subdomain: 'foo'`, client builds
-  `https://foo.${window.location.host.split('.').slice(1).join('.')}`.
-- **Tunnels**: any time the operator might be accessing the dev server
-  through a tunnel with a different hostname than what the dev process
-  sees locally.
+The pattern is "give the browser the discriminator it needs, let it build the
+URL from its own origin." Same trick covers reverse proxies (return a service
+name, client hits `/foo/...` on the same origin), subdomain routing, and tunnels
+— any time the browser's hostname differs from what the dev process sees locally.
 
 ## Diagnostic surface
 
-When the bridge URL goes wrong, the operator now sees:
-
-- The connection-state badge in the page header turns red
-  (`● open` → `○ no-bridge` / `◌ reconnecting`)
-- A monospace footer next to the badge shows the resolved bridge URL
-  the browser is trying — they can copy/paste it into a new tab to
-  confirm whether the port itself is reachable.
-
-Also exposed via `data-bridge-url` on the root `<main>` (see
-[[dom-as-metrics-for-headless-driven-uis]]) for headless probes.
+When the bridge URL goes wrong the operator sees the connection-state badge
+turn red (`● open` → `○ no-bridge` / `◌ reconnecting`) and a monospace footer
+showing the resolved bridge URL the browser is trying — copy/paste-able into a
+new tab to confirm reachability. Also on `data-bridge-url` on the root `<main>`
+(see [[dom-as-metrics-for-headless-driven-uis]]) for headless probes.
 
 ## See also
 

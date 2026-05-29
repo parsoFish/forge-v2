@@ -179,6 +179,18 @@ sections were merged into a single hex pipeline):
   features) hosted by `[data-component="agent-hex-canvas"]`.
 - `[data-section="verdict-form"]` — appears when active cycle is
   `ready-for-review`.
+- `[data-section="architect"]` — the in-UI architect surface (ADR 020),
+  mounted above the cycles tab. Carries `data-architect-session-count` +
+  `data-pending-plan-count`. Children:
+  - `[data-section="new-idea"][data-new-idea-ready]` — idea entry box.
+  - Per session: `[data-architect-session-id][data-architect-phase][data-architect-project]`.
+  - `[data-section="architect-interview"][data-architect-round][data-questions-answered]`
+    with per-question `[data-question-index][data-question-resolved]` and
+    per-option `[data-option-label][data-option-selected]`.
+  - `[data-section="plan-gate"][data-session-id][data-plan-verdict-state][data-decisions-resolved]`
+    with `[data-plan-iframe]` (PLAN.html, `sandbox=""`) and
+    `[data-section="design-decisions"]` → per-decision
+    `[data-escalation-id][data-decision-resolved]`.
 - Cycle buttons: `[data-cycle-id][data-cycle-status][data-cycle-active]`.
 - Phase hex mirrors: `[data-phase-hex][data-phase][data-phase-status][data-phase-cost-usd][data-phase-index]`.
 - Feature hex mirrors: `[data-feature-hex][data-feature-id][data-feature-deps][data-feature-index]`.

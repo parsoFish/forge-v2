@@ -22,12 +22,15 @@ export function PlanGate({
   planUrl,
   escalations,
   idea,
+  fullPage = false,
 }: {
   project: string;
   sessionId: string;
   planUrl: string | null;
   escalations: ArchitectEscalation[];
   idea: string;
+  /** Dedicated plan screen — render the PLAN.html iframe tall (its own page). */
+  fullPage?: boolean;
 }) {
   const [iframeSrc, setIframeSrc] = useState('');
   const [selections, setSelections] = useState<Record<string, string>>({});
@@ -87,7 +90,7 @@ export function PlanGate({
           title="PLAN"
           style={{
             width: '100%',
-            height: 420,
+            height: fullPage ? '72vh' : 420,
             border: '1px solid #30363d',
             borderRadius: 8,
             background: '#fff',

@@ -132,34 +132,40 @@ async function main() {
   const browser = await chromium.launch();
   const page = await (await browser.newContext({ viewport: { width: 1280, height: 1600 } })).newPage();
   page.on('pageerror', (e) => console.error(`[pageerror] ${e.message}`));
+  const planSid = '2026-05-29T15-00-00';
+  const interviewSid = '2026-05-29T14-00-00';
   try {
+    // 1) Primary dashboard — compact launcher with a "Review plan →" row.
     await page.goto(watch.uiUrl, { waitUntil: 'domcontentloaded' });
     await page.waitForSelector('main[data-page-ready="true"]', { timeout: 30000 });
     await page.waitForSelector('[data-section="architect"]', { timeout: 10000 });
-    await page.waitForSelector('[data-section="architect-interview"]', { timeout: 10000 });
-    await shot(page, 'architect-panel-interview');
+    await page.waitForSelector(`[data-architect-session-id="${planSid}"][data-architect-phase="awaiting-verdict"]`, { timeout: 10000 });
+    await shot(page, 'primary-dashboard-launcher');
 
-    // Plan gate — unresolved (Approve disabled).
-    const gate = page.locator('[data-section="plan-gate"]');
-    await gate.scrollIntoViewIfNeeded();
-    await page.waitForSelector('[data-section="plan-gate"][data-decisions-resolved="false"]', { timeout: 5000 });
-    await shot(page, 'plan-gate-unresolved');
+    // 2) Dedicated plan screen — architect hex + rich PLAN.html, decisions unresolved.
+    await page.goto(`${watch.uiUrl}/architect/${planSid}`, { waitUntil: 'domcontentloaded' });
+    await page.waitForSelector('main[data-page="architect-session"][data-page-ready="true"]', { timeout: 30000 });
+    await page.waitForSelector('[data-component="architect-hex"]', { timeout: 10000 });
+    await page.waitForSelector('[data-section="plan-gate"][data-decisions-resolved="false"]', { timeout: 10000 });
+    await shot(page, 'plan-screen-unresolved');
 
     // Resolve every decision → Approve enabled.
     for (const id of ['esc-0', 'esc-1']) {
       await page.locator(`[data-escalation-id="${id}"] input[type="radio"]`).first().check();
     }
     await page.waitForSelector('[data-section="plan-gate"][data-decisions-resolved="true"]', { timeout: 5000 });
-    await shot(page, 'plan-gate-resolved');
+    await shot(page, 'plan-screen-resolved');
 
-    // Answer the interview questions to show the resolved state.
-    const interview = page.locator('[data-section="architect-interview"]');
-    await interview.scrollIntoViewIfNeeded();
+    // 3) Dedicated screen — interview round for the other session.
+    await page.goto(`${watch.uiUrl}/architect/${interviewSid}`, { waitUntil: 'domcontentloaded' });
+    await page.waitForSelector('main[data-page="architect-session"][data-page-ready="true"]', { timeout: 30000 });
+    await page.waitForSelector('[data-section="architect-interview"]', { timeout: 10000 });
+    await shot(page, 'plan-screen-interview');
     for (let i = 0; i < 2; i += 1) {
       await page.locator(`[data-question-index="${i}"] input[type="radio"]`).first().check();
     }
     await page.waitForSelector('[data-section="architect-interview"][data-questions-answered="true"]', { timeout: 5000 });
-    await shot(page, 'interview-answered');
+    await shot(page, 'plan-screen-interview-answered');
 
     console.log('\n[gallery] OK — screenshots in forge-ui/.demo-shots/journey/architect/');
   } finally {

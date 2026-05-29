@@ -19,7 +19,7 @@ import {
 import { CycleToasts } from '@/components/Toasts';
 import { AgentGraphCanvas } from '@/components/AgentGraphCanvas';
 import { VerdictForm } from '@/components/VerdictForm';
-import { ArchitectPanel } from '@/components/ArchitectPanel';
+import { ArchitectLauncher } from '@/components/ArchitectLauncher';
 import { SchedulerBanner } from '@/components/SchedulerBanner';
 import { fetchWiGraph, type WiGraph } from '@/lib/wi-graph';
 import { useGraphModel } from '@/lib/use-graph-model';
@@ -227,7 +227,7 @@ export default function Page() {
 
       <SchedulerBanner />
 
-      <ArchitectPanel sessions={architectSessions} knownProjects={knownProjects} />
+      <ArchitectLauncher sessions={architectSessions} knownProjects={knownProjects} />
 
       <CyclesTab cycles={allCycles} activeId={activeCycleId} onSelect={setActiveCycleId} />
 

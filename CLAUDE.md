@@ -116,8 +116,8 @@ Where to look for as-built detail:
 ## graphify
 
 Three knowledge graphs after the Tier 4 brain restructure (2026-05-26):
-- **Brain 1 (forge-dev):** `brain/forge-dev/graphify-out/` — forge TypeScript source + ADRs (3,566 nodes).
-- **Brain 2 (cycles):** `brain/cycles/graphify-out/` — cycle-derived themes + raw archives (518 nodes).
+- **Brain 1 (forge-dev):** `brain/forge-dev/graphify-out/` — forge TypeScript source + ADRs + decision/reference themes (~3,375 nodes).
+- **Brain 2 (cycles):** `brain/cycles/graphify-out/` — cycle-derived themes + raw archives (~519 nodes).
 - **Brain 3 (per-project):** `projects/<name>/brain/graphify-out/` — whole-project knowledge (source code + brain themes). trafficGame: 2,578 nodes; terraform-provider-betterado: 6,015 nodes; claude-harness: 553 nodes.
 
 The wrapper script `bash scripts/brain-graphify-all.sh` rebuilds Brain 1 + 2; use `--all` to also rebuild all managed project brains.

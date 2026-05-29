@@ -163,6 +163,23 @@ function writeDemoJson(revision) {
   }, null, 2));
 }
 
+/** Emulate the reflector's Stage-2 emit: the operator-facing questions it writes
+ *  to `_logs/<cycleId>/user-questions.json` for the reflect screen to render. */
+function writeReflectionQuestions() {
+  mkdirSync(CYCLE_LOG, { recursive: true });
+  writeFileSync(join(CYCLE_LOG, 'user-questions.json'), JSON.stringify([
+    {
+      question: 'Was the 2-feature / 2-WI decomposition the right size for this initiative?',
+      header: 'WI sizing',
+      options: [
+        { label: 'Right size', description: 'Two features mapped cleanly to the work.' },
+        { label: 'Too small', description: 'Could have been a single feature.' },
+        { label: 'Too large', description: 'Should have been split further.' },
+      ],
+    },
+  ], null, 2));
+}
+
 // ---- boot + frames --------------------------------------------------------
 
 async function startWatch() {
@@ -231,9 +248,15 @@ async function main() {
     await page.waitForSelector('main[data-page-ready="true"]', { timeout: 30000 });
     await page.waitForSelector('[data-section="new-idea"]', { timeout: 10000 });
     await page.locator('[data-section="new-idea"] [data-field="project"]').fill(PROJECT);
-    await page.locator('[data-section="new-idea"] [data-field="idea"]').fill(IDEA);
+    // Type the idea like a person would, not a paste, so the video shows it being written.
+    await page.locator('[data-section="new-idea"] [data-field="idea"]').click();
+    await page.locator('[data-section="new-idea"] [data-field="idea"]').pressSequentially(IDEA, { delay: 28 });
     await sleep(THINK);
-    await frame(page, 'step01-new-idea', 'Step 1 — the operator provides a new idea on the dashboard');
+    await frame(page, 'step01-new-idea', 'Step 1 — the operator types the idea on the dashboard');
+    // Show the deliberate button press that kicks off the architect.
+    await page.locator('[data-action="start-architect"]').hover();
+    await sleep(ACT);
+    await frame(page, 'step01b-start', 'Step 1 — the operator presses "Start architect"');
     await page.locator('[data-action="start-architect"]').click();
     await page.waitForURL(/\/architect\//, { timeout: 15000 });
     const sid = decodeURIComponent(page.url().split('/architect/')[1]);
@@ -310,6 +333,11 @@ async function main() {
     execSync(`cp ${join(archDir(sid), 'manifests', `${INIT}.md`)} ${join(QDIR('pending'), `${INIT}.md`)}`);
     writeStatus(sid, { phase: 'committed', round: 3, idea: IDEA });
     cycleEvent('orchestrator', 'start', 'cycle.start', { metadata: { origin: 'architect' } });
+    // Record the architect's work + cost in the cycle's lineage so its hex on
+    // the dashboard pipeline shows GREEN with a cost pill (the architect ran in
+    // the in-UI session before this cycle).
+    cycleEvent('architect', 'start', 'architect (in-UI session) — idea → plan');
+    cycleEvent('architect', 'end', 'architect.end', { cost_usd: 0.46, duration_ms: 95000 });
     moveManifest('pending', 'in-flight');
     // The screen flips to "Approved — Watch it build →" once finalize lands; take it.
     await page.waitForSelector('[data-action="watch-it-build"]', { timeout: 15000 });
@@ -332,19 +360,25 @@ async function main() {
     await sleep(WORK);
     await frame(page, 'step08-pm', 'Step 8 — the PM plans 2 features + work items (the pipeline advances live)');
 
-    // STEP 9 — developer loop progresses WIs, respecting dependencies (WI-2 depends on WI-1).
+    // STEP 9 — developer loop progresses WIs, respecting dependencies. WI-1
+    // runs and goes GREEN (per-WI `end`); only THEN does WI-2 (depends_on
+    // FEAT-1) start. The dev-loop PHASE hex stays blue throughout (per-WI ends
+    // are non-terminal for the phase).
     await paced([
       () => cycleEvent('developer-loop', 'start', 'dev-loop start'),
       () => cycleEvent('developer-loop', 'tool_use', 'tool.Edit', { metadata: { work_item_id: 'WI-1', tool: 'Edit' } }),
       () => cycleEvent('developer-loop', 'iteration', 'WI-1 iteration', { iteration: 1, metadata: { work_item_id: 'WI-1' } }),
-      () => cycleEvent('developer-loop', 'log', 'WI-1 complete; WI-2 unblocked (depends_on FEAT-1)', { metadata: { work_item_id: 'WI-1' } }),
+      () => cycleEvent('developer-loop', 'end', 'WI-1 complete', { metadata: { work_item_id: 'WI-1' } }), // → WI-1 green
     ]);
     await sleep(WORK);
-    await frame(page, 'step09-dev-loop', 'Step 9 — the dev-loop progresses work items, respecting dependencies (WI-2 waited on WI-1)');
+    await frame(page, 'step09-dev-loop', 'Step 9 — WI-1 done (green); WI-2 (depends on FEAT-1) only now starts');
     await paced([
       () => cycleEvent('developer-loop', 'tool_use', 'tool.Edit', { metadata: { work_item_id: 'WI-2', tool: 'Edit' } }),
       () => cycleEvent('developer-loop', 'iteration', 'WI-2 iteration', { iteration: 1, metadata: { work_item_id: 'WI-2' } }),
+      () => cycleEvent('developer-loop', 'end', 'WI-2 complete', { metadata: { work_item_id: 'WI-2' } }), // → WI-2 green
     ]);
+    await sleep(WORK);
+    await frame(page, 'step09b-wis-green', 'Step 9 — both work items green; the dev-loop hex stays blue (unifier next)');
 
     // STEP 10 — unifier reviews + loops to clean the output.
     await paced([
@@ -407,25 +441,47 @@ async function main() {
     await sleep(READ);
     await frame(page, 'step12d-re-review', 'Step 12 — the operator re-reviews the updated demo (now keyboard-accessible)');
 
-    // STEP 13 — on approval → reflect → done.
+    // STEP 13 — approve → merge → reflect (its own page) → done.
     await page.locator('[data-component="verdict-form"] textarea').fill('LGTM — follows the OS, persists, and is keyboard-accessible. All ACs met.');
     await sleep(ACT);
     await frame(page, 'step13-approve', 'Step 13 — the operator approves');
     await page.locator('[data-action="approve-and-merge"]').click();
     await page.waitForSelector('[data-component="verdict-form"][data-form-state="submitted"]', { timeout: 10000 }).catch(() => {});
+    // Closure merges; the reflector emits its Stage-2 questions (the human moment).
     cycleEvent('closure', 'log', 'closure.pr-merged');
     moveManifest('ready-for-review', 'done');
+    cycleEvent('reflection', 'start', 'reflection.start');
+    cycleEvent('reflection', 'tool_use', 'reflection.brain-query', { metadata: { tool: 'brain-query' } });
+    writeReflectionQuestions();
+    await page.waitForSelector('[data-action="open-reflect"]', { timeout: 15000 });
+    await sleep(ACT);
+    await frame(page, 'step13b-reflect-link', 'Step 13 — merged; "Reflect on this cycle →" surfaces the final human moment');
+
+    // The reflection screen — the third moment, in-UI.
+    await page.locator('[data-action="open-reflect"]').click();
+    await page.waitForSelector('main[data-page="reflect-cycle"][data-page-ready="true"]', { timeout: 30000 });
+    await page.waitForSelector('[data-section="reflect-questions"]', { timeout: 15000 });
+    await sleep(READ);
+    await frame(page, 'step13c-reflect-page', 'Step 13 — the reflection screen asks how the cycle went');
+    await page.locator('[data-question-index="0"] input[type="radio"]').first().check();
+    await page.locator('[data-field="freeform"]').fill('Dependency ordering held; the keyboard-access send-back was the right call.');
+    await sleep(ACT);
+    await page.locator('[data-action="submit-reflection"]').click();
+    await page.waitForSelector('[data-section="reflect-done"]', { timeout: 10000 }).catch(() => {});
     await paced([
-      () => cycleEvent('reflection', 'start', 'reflection.start'),
-      () => cycleEvent('reflection', 'tool_use', 'tool.Write', { metadata: { tool: 'Write brain theme' } }),
+      () => cycleEvent('reflection', 'tool_use', 'reflection.write', { metadata: { tool: 'Write brain theme' } }),
       () => cycleEvent('reflection', 'end', 'reflection.end', { cost_usd: 0.12 }),
     ]);
     await sleep(ACT);
-    await page.locator('[data-action="back-to-dashboard"]').click(); // natural transition → dashboard
+    await frame(page, 'step13d-reflected', 'Step 13 — feedback captured; the reflector folds it into the brain');
+
+    // The logical endpoint: the whole completed cycle with per-phase costs.
+    await page.locator('[data-action="back-to-dashboard"]').click();
     await page.waitForSelector('main[data-page-ready="true"]', { timeout: 15000 });
+    await page.locator(`[data-cycle-id="${CYCLE_ID}"]`).click().catch(() => {}); // select OUR completed cycle
     await page.waitForSelector(`[data-cycle-id="${CYCLE_ID}"][data-cycle-status="done"]`, { timeout: 15000 }).catch(() => {});
     await sleep(WORK);
-    await frame(page, 'step13b-reflect-done', 'Step 13 — approved → reflect runs → cycle done. Journey complete.');
+    await frame(page, 'step13e-cycle-complete', 'Done — the full cycle, every phase green with its cost, in the hex pane');
 
     console.log('\n[e2e] journey complete.');
   } finally {

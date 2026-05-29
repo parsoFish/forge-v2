@@ -271,6 +271,10 @@ export async function startBridge(opts: BridgeOptions): Promise<{ url: string; c
       queueRoot: queuePaths.root,
       projectsRoot,
       broadcastArchitectChanged: () => broadcast({ type: 'architect-list-changed' }),
+      // ADR 020 — live-tail an architect session's event log so its tool_use
+      // bursts stream to the dedicated screen's hex. The runner writes to
+      // `_logs/_architect-<sid>/events.jsonl`; ensureTailFor no-ops if absent.
+      ensureArchitectTail: (sessionId: string) => ensureTailFor(`_architect-${sessionId}`),
     });
   });
   const wss = new WebSocketServer({ server: http, path: '/ws' });
@@ -337,6 +341,9 @@ type HttpContext = {
   /** Broadcast an `architect-list-changed` WS message (fsWatch may miss
    *  same-tick writes; the routes call this after they mutate session state). */
   broadcastArchitectChanged: () => void;
+  /** Start (idempotently) live-tailing an architect session's event log so its
+   *  tool_use bursts stream to the dedicated screen. */
+  ensureArchitectTail: (sessionId: string) => void;
 };
 
 /** Content-type by extension for served artifacts. `.html` → `text/html` so the
@@ -659,6 +666,11 @@ async function handleArchitect(
   // GET /api/architect/sessions — list every session with its current state.
   if (method === 'GET' && url === '/api/architect/sessions') {
     const statuses = listArchitectSessions(ctx.projectsRoot);
+    // Live-tail each non-terminal session's log so the dedicated screen's hex
+    // streams tool bursts (idempotent; no-ops if the log doesn't exist yet).
+    for (const s of statuses) {
+      if (s.phase !== 'committed' && s.phase !== 'rejected') ctx.ensureArchitectTail(s.session_id);
+    }
     const sessions = statuses.map((s) => {
       const dir = architectSessionDir(ctx.projectsRoot, s.project, s.session_id);
       const questions =

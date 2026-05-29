@@ -69,6 +69,8 @@ import {
 } from './manifest.ts';
 import { promoteManifests } from './promote-manifests.ts';
 import { createLogger, type EventLogger } from './logging.ts';
+import { makeToolEventSink, extractLiveToolDetails } from './tool-event-emit.ts';
+import type { ToolUseLiveDetail } from '../loops/ralph/claude-agent.ts';
 
 // ---------------------------------------------------------------------------
 // Session-dir state contract
@@ -170,7 +172,7 @@ export async function runArchitectTurn(
   const councilQueryFn = input.councilQueryFn ?? queryFn;
   const maxRounds = input.maxInterviewRounds ?? DEFAULT_MAX_INTERVIEW_ROUNDS;
 
-  logger.emit({
+  const startEv = logger.emit({
     initiative_id: `architect-session-${input.sessionId}`,
     phase: 'architect',
     skill: 'architect-runner',
@@ -181,6 +183,19 @@ export async function runArchitectTurn(
     metadata: { session_id: input.sessionId, phase: status.phase, round: status.round },
   });
 
+  // Per-tool telemetry so the architect hex streams live bursts (ADR 020). The
+  // runner drives its own SDK stream (`runStructured`), so it feeds the sink
+  // the same way the PM does — `extractLiveToolDetails` → `sink.onToolUse`.
+  const sink = makeToolEventSink(logger, {
+    initiativeId: `architect-session-${input.sessionId}`,
+    parentEventId: startEv.event_id,
+    phase: 'architect',
+    skill: 'architect-runner',
+  });
+  const onToolUse = sink.onToolUse;
+
+  let result: RunArchitectTurnResult;
+
   // Interview phase — may flow straight through to drafting when ready.
   let phase = status.phase;
   if (phase === 'interviewing') {
@@ -190,6 +205,7 @@ export async function runArchitectTurn(
       interview,
       queryFn,
       skillPromptPath: input.skillPromptPath,
+      onToolUse,
     });
     if (!decision.done && status.round < maxRounds && decision.questions.length > 0) {
       const questionsPath = writeQuestions(paths.sessionDir, decision.questions);
@@ -204,7 +220,9 @@ export async function runArchitectTurn(
         message: `interview round ${status.round} — ${decision.questions.length} question(s) for the operator`,
         metadata: { session_id: input.sessionId, round: status.round },
       });
-      return { phase: 'awaiting-answers', wrote: [questionsPath], questions: decision.questions };
+      result = { phase: 'awaiting-answers', wrote: [questionsPath], questions: decision.questions };
+      sink.flushIteration(1);
+      return result;
     }
     // Ready to draft (operator answered enough, or the round cap forced it).
     phase = 'drafting';
@@ -212,7 +230,7 @@ export async function runArchitectTurn(
   }
 
   if (phase === 'drafting') {
-    const result = await runDraftStep({
+    result = await runDraftStep({
       input,
       paths,
       status,
@@ -220,17 +238,17 @@ export async function runArchitectTurn(
       councilQueryFn,
       logger,
       resolvedDecisions: null,
+      onToolUse,
     });
-    return result;
+  } else if (phase === 'finalizing') {
+    result = await runFinalizeStep({ input, paths, status, queryFn, councilQueryFn, logger, onToolUse });
+  } else {
+    // No actionable work in a waiting/terminal phase — return the phase unchanged.
+    result = { phase, wrote: [] };
   }
 
-  if (phase === 'finalizing') {
-    const result = await runFinalizeStep({ input, paths, status, queryFn, councilQueryFn, logger });
-    return result;
-  }
-
-  // No actionable work in a waiting/terminal phase — return the phase unchanged.
-  return { phase, wrote: [] };
+  sink.flushIteration(1);
+  return result;
 }
 
 // ---------------------------------------------------------------------------
@@ -271,8 +289,9 @@ async function runInterviewStep(args: {
   interview: InterviewRound[];
   queryFn: CouncilQueryFn;
   skillPromptPath?: string;
+  onToolUse?: (d: ToolUseLiveDetail) => void;
 }): Promise<InterviewDecision> {
-  const { status, interview, queryFn, skillPromptPath } = args;
+  const { status, interview, queryFn, skillPromptPath, onToolUse } = args;
   const skill = loadSkillPrompt(skillPromptPath);
   const priorQa = interview.length
     ? interview.map((r, i) => `${i + 1}. Q: ${r.question}\n   A: ${r.answer}`).join('\n')
@@ -303,6 +322,7 @@ async function runInterviewStep(args: {
     queryFn,
     prompt,
     schema: INTERVIEW_SCHEMA,
+    onToolUse,
   });
   const questions = Array.isArray(out?.questions) ? out!.questions! : [];
   return { done: out?.done === true, questions };
@@ -362,8 +382,9 @@ async function runDraftStep(args: {
   councilQueryFn: CouncilQueryFn;
   logger: EventLogger;
   resolvedDecisions: string | null;
+  onToolUse?: (d: ToolUseLiveDetail) => void;
 }): Promise<RunArchitectTurnResult> {
-  const { input, paths, status, queryFn, councilQueryFn, logger, resolvedDecisions } = args;
+  const { input, paths, status, queryFn, councilQueryFn, logger, resolvedDecisions, onToolUse } = args;
   const interview = readInterview(paths.sessionDir);
   const skill = loadSkillPrompt(input.skillPromptPath);
 
@@ -396,6 +417,7 @@ async function runDraftStep(args: {
     queryFn,
     prompt,
     schema: DRAFT_SCHEMA,
+    onToolUse,
   });
   const vision = (draft?.vision ?? status.idea).trim();
   const draftInitiatives = Array.isArray(draft?.initiatives) ? draft!.initiatives! : [];
@@ -492,6 +514,7 @@ async function runFinalizeStep(args: {
   queryFn: CouncilQueryFn;
   councilQueryFn: CouncilQueryFn;
   logger: EventLogger;
+  onToolUse?: (d: ToolUseLiveDetail) => void;
 }): Promise<RunArchitectTurnResult> {
   const { input, paths, status, logger } = args;
   const resolved = readResolvedDecisions(paths.sessionDir);
@@ -590,15 +613,20 @@ async function runStructured<T>(args: {
   queryFn: CouncilQueryFn;
   prompt: string;
   schema: unknown;
+  onToolUse?: (d: ToolUseLiveDetail) => void;
 }): Promise<T | null> {
   const options: Record<string, unknown> = {
+    // `plan` mode keeps the agent read-only (it consults the brain + project
+    // but never mutates the repo — the runner writes artifacts itself). The
+    // read toolset is what produces the tool_use stream the architect hex shows.
     permissionMode: 'plan',
-    allowedTools: [],
+    allowedTools: ['Read', 'Grep', 'Glob', 'Bash'],
     outputFormat: args.schema,
     maxTurns: 30,
   };
   let structured: T | null = null;
   let rawText = '';
+  let toolSeq = 0;
   for await (const msg of args.queryFn({ prompt: args.prompt, options })) {
     const m = msg as {
       type?: string;
@@ -606,6 +634,12 @@ async function runStructured<T>(args: {
       message?: { content?: Array<{ type?: string; text?: string }> };
     };
     if (m.type === 'assistant') {
+      // Stream tool_use blocks to the sink (drives the live architect hex).
+      if (args.onToolUse) {
+        const details = extractLiveToolDetails(m.message, toolSeq);
+        for (const d of details) args.onToolUse(d);
+        toolSeq += details.length;
+      }
       for (const block of m.message?.content ?? []) {
         if (block?.type === 'text' && typeof block.text === 'string') {
           rawText += (rawText ? '\n' : '') + block.text;

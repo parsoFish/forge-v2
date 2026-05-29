@@ -54,7 +54,11 @@ export default function ArchitectSessionPage({
         if (msg.type === 'architect-list-changed') {
           refresh.current();
         } else if (msg.type === 'event' && msg.cycleId === cycleId) {
-          setEvents((prev) => [...prev, msg.event]);
+          // The live tail replays from offset 0, so dedup against the events
+          // already painted by the initial fetchEvents.
+          setEvents((prev) =>
+            prev.some((e) => e.event_id === msg.event.event_id) ? prev : [...prev, msg.event],
+          );
         }
       },
     });

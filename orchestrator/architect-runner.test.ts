@@ -305,6 +305,62 @@ test('missing status.json throws a clear error', async () => {
 // Session discovery
 // ---------------------------------------------------------------------------
 
+test('runner streams tool_use events from the agent stream (drives the architect hex)', async () => {
+  const { projectRoot, logsRoot, queueRoot, sessionId, sessionDir } = setupSession();
+  writeFileSync(
+    join(sessionDir, 'answers.json'),
+    JSON.stringify([{ round: 1, answers: [{ question: 'Follow OS?', answer: 'Follow OS' }] }]),
+  );
+  // queryFn yields an assistant message carrying tool_use blocks, THEN a result.
+  const queryFn: CouncilQueryFn = ({ prompt }) => {
+    const structured = prompt.includes('the interview step')
+      ? { done: true }
+      : {
+          vision: 'v',
+          initiatives: [
+            {
+              slug: 'dark-mode',
+              title: 'Dark mode',
+              iteration_budget: 3,
+              cost_budget_usd: 5,
+              features: [{ title: 'toggle' }],
+              body: '## x\n\nGIVEN a WHEN b THEN c.',
+            },
+          ],
+        };
+    async function* gen(): AsyncGenerator<unknown> {
+      yield {
+        type: 'assistant',
+        message: {
+          content: [
+            { type: 'tool_use', name: 'Grep', input: { pattern: 'theme' } },
+            { type: 'tool_use', name: 'Read', input: { file_path: 'roadmap.md' } },
+          ],
+        },
+      };
+      yield { type: 'result', total_cost_usd: 0, structured_output: structured };
+    }
+    return gen();
+  };
+
+  await runArchitectTurn({
+    sessionId,
+    projectRoot,
+    logsRoot,
+    queueRoot,
+    queryFn,
+    councilQueryFn: makeCouncilFn({ flags: [], escalations: [] }),
+    logger: logger(logsRoot, sessionId),
+  });
+
+  const log = readFileSync(join(logsRoot, `_architect-${sessionId}`, 'events.jsonl'), 'utf8');
+  const events = log.trim().split('\n').map((l) => JSON.parse(l));
+  const toolUses = events.filter((e) => e.event_type === 'tool_use' && e.metadata?.tool);
+  assert.ok(toolUses.length >= 2, `expected tool_use events, got ${toolUses.length}`);
+  assert.ok(toolUses.every((e) => e.phase === 'architect'));
+  assert.ok(toolUses.some((e) => e.metadata.tool === 'Grep'));
+});
+
 test('listArchitectSessions discovers sessions across projects, skipping _archived', async () => {
   const { projectRoot, sessionId } = setupSession();
   const projectsRoot = join(projectRoot, '..'); // the `projects/` parent in the fixture

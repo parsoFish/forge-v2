@@ -12,6 +12,8 @@ import { mkdirSync, mkdtempSync, writeFileSync, readFileSync, existsSync, rmSync
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 
+import { WebSocket } from 'ws';
+
 import { startBridge } from './ui-bridge.ts';
 
 process.env.FORGE_ARCHITECT_NO_SPAWN = '1';
@@ -121,6 +123,48 @@ test('POST /api/architect/answer appends an interview round', async () => {
   const status = JSON.parse(readFileSync(join(dir2, 'status.json'), 'utf8'));
   assert.equal(status.phase, 'interviewing');
   assert.equal(status.round, 2);
+});
+
+test('GET /api/architect/sessions live-tails the session log → WS event stream (hex bursts)', async () => {
+  // Seed the runner's event log for the awaiting-verdict session.
+  const logDir = join(forgeRoot, '_logs', `_architect-${sid}`);
+  mkdirSync(logDir, { recursive: true });
+  writeFileSync(
+    join(logDir, 'events.jsonl'),
+    JSON.stringify({
+      event_id: 'EV_tool_1',
+      cycle_id: `_architect-${sid}`,
+      initiative_id: `architect-session-${sid}`,
+      phase: 'architect',
+      skill: 'architect-runner',
+      event_type: 'tool_use',
+      started_at: new Date().toISOString(),
+      input_refs: [],
+      output_refs: [],
+      message: 'tool.Grep',
+      metadata: { tool: 'Grep' },
+    }) + '\n',
+  );
+
+  const ws = new WebSocket(`${url.replace(/^http/, 'ws')}/ws`);
+  const got = new Promise<boolean>((resolve) => {
+    const timer = setTimeout(() => resolve(false), 4000);
+    ws.on('message', (data) => {
+      try {
+        const msg = JSON.parse(data.toString()) as { type?: string; cycleId?: string; event?: { event_type?: string } };
+        if (msg.type === 'event' && msg.cycleId === `_architect-${sid}` && msg.event?.event_type === 'tool_use') {
+          clearTimeout(timer);
+          resolve(true);
+        }
+      } catch { /* ignore */ }
+    });
+  });
+  await new Promise<void>((r) => ws.on('open', () => r()));
+  // GET sessions triggers ensureArchitectTail; the 200ms tail then replays the log.
+  await fetch(`${url}/api/architect/sessions`);
+  const received = await got;
+  ws.close();
+  assert.ok(received, 'expected a tool_use event over the WS for the architect session');
 });
 
 test('POST /api/architect/start creates a session dir + status', async () => {

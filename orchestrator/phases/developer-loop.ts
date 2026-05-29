@@ -453,6 +453,25 @@ export async function runDeveloperLoop(input: CycleInput, logger: EventLogger): 
   //   - dev-loop-unifier-gate-failed
   //   - dev-loop-unifier-demo-failed
   //   - dev-loop-unifier-branch-divergence
+  //
+  // ADR 019: on resume the per-WI loop (which normally publishes the branch
+  // incrementally via dev-loop.branch-pushed) was skipped, so origin/<branch>
+  // may not exist yet — the unifier's sync gate requires it. Publish the
+  // preserved branch now so the resumed unifier sees a synced remote.
+  if (resumeFromUnifier) {
+    const push = pushInitiativeBranch(input.worktreePath);
+    logger.emit({
+      initiative_id: input.initiativeId,
+      parent_event_id: start.event_id,
+      phase: 'developer-loop',
+      skill: 'developer-ralph',
+      event_type: push.pushed ? 'log' : 'error',
+      input_refs: [input.worktreePath],
+      output_refs: [],
+      message: push.pushed ? 'dev-loop.resume-branch-pushed' : 'dev-loop.resume-branch-push-failed',
+      metadata: push.pushed ? { branch: push.branch } : { reason: push.reason },
+    });
+  }
   await runUnifier(input, logger, start.event_id);
 
   // S1.3: at dev-loop close the local↔remote invariant MUST hold —

@@ -31,6 +31,7 @@ import {
   type WorkItem,
 } from '../work-item.ts';
 import { createClaudeAgent, type QueryFn } from '../../loops/ralph/claude-agent.ts';
+import { makeToolEventSink } from '../tool-event-emit.ts';
 import { run as runRalph, type LoopResult } from '../../loops/ralph/runner.ts';
 import { makeQualityGateFromCmd, type GateRunInfo } from '../../loops/ralph/stop-conditions.ts';
 import { assertLocalRemoteSynced, checkLocalRemoteSynced, pushInitiativeBranch } from '../pr.ts';
@@ -195,6 +196,18 @@ export async function runDeveloperLoop(input: CycleInput, logger: EventLogger): 
       })();
     };
 
+    // Phase A — per-tool live telemetry sink for this WI. Emits sampled
+    // `tool_use` / `file_change` / `agent_heartbeat` events mid-iteration so
+    // the operator UI pulses live; coalesced summary flushed per iteration.
+    const wiToolSink = makeToolEventSink(logger, {
+      initiativeId: input.initiativeId,
+      parentEventId: wiStart.event_id,
+      phase: 'developer-loop',
+      skill: 'developer-ralph',
+      workItemId: wi.work_item_id,
+      featureId: wi.feature_id,
+    });
+
     const agent = createClaudeAgent({
       model: DEV_MODEL,
       allowedTools: [...DEV_ALLOWED_TOOLS],
@@ -204,6 +217,8 @@ export async function runDeveloperLoop(input: CycleInput, logger: EventLogger): 
       maxTurnsPerIteration: DEV_LIVE_MAX_TURNS_PER_ITERATION,
       // Per CONTRACTS.md C19: no $ cap on the per-WI Ralph.
       queryFn: tallyingQueryFn,
+      onToolUse: wiToolSink.onToolUse,
+      onHeartbeat: wiToolSink.onHeartbeat,
     });
 
     let result: LoopResult | null = null;
@@ -260,6 +275,9 @@ export async function runDeveloperLoop(input: CycleInput, logger: EventLogger): 
           // post-mortems can see what the agent actually did per iteration
           // (which tools, which bash commands, last assistant text, tokens).
           onIteration: (iteration, info) => {
+            // Phase A — flush the per-tool sampler's coalesced remainder for
+            // this iteration before the iteration-summary event.
+            wiToolSink.flushIteration(iteration);
             logger.emit({
               initiative_id: input.initiativeId,
               parent_event_id: wiStart.event_id,
@@ -703,6 +721,14 @@ export async function runUnifier(
   const systemPrompt = buildUnifierSystemPrompt();
   const sdkQueryFn = sdkQuery as unknown as QueryFn;
 
+  // Phase A — per-tool live telemetry sink for the unifier (no work_item_id).
+  const unifierToolSink = makeToolEventSink(logger, {
+    initiativeId: input.initiativeId,
+    parentEventId: start.event_id,
+    phase: 'developer-loop',
+    skill: 'developer-unifier',
+  });
+
   const agent = createClaudeAgent({
     model: UNIFIER_MODEL,
     allowedTools: [...UNIFIER_ALLOWED_TOOLS],
@@ -712,6 +738,8 @@ export async function runUnifier(
     maxTurnsPerIteration: DEV_LIVE_MAX_TURNS_PER_ITERATION,
     // Per CONTRACTS.md C19: no $ cap on the unifier. Iteration cap is the only bound.
     queryFn: sdkQueryFn,
+    onToolUse: unifierToolSink.onToolUse,
+    onHeartbeat: unifierToolSink.onHeartbeat,
   });
 
   // Composed quality gate per plan 04: ALL of:
@@ -750,6 +778,8 @@ export async function runUnifier(
         // from the runner entirely; the unifier no longer needs the
         // Infinity override because the check is gone.
         onIteration: (iteration, info) => {
+          // Phase A — flush the per-tool sampler's coalesced remainder first.
+          unifierToolSink.flushIteration(iteration);
           logger.emit({
             initiative_id: input.initiativeId,
             parent_event_id: start.event_id,

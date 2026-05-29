@@ -12,7 +12,7 @@
  * Wired per ADR 001 (Claude Agent SDK) and ADR 002 (Ralph loop pattern).
  */
 
-import { readFileSync } from 'node:fs';
+import { readFileSync, existsSync } from 'node:fs';
 import { query as sdkQuery } from '@anthropic-ai/claude-agent-sdk';
 
 import type { AgentInvocation, ToolUseDetail } from './runner.ts';
@@ -72,6 +72,18 @@ export type ClaudeAgentOptions = {
    */
   onHeartbeat?: (info: HeartbeatInfo) => void;
   /**
+   * Phase A (UI live telemetry) — fired once per `tool_use` block observed in
+   * the SDK stream, BEFORE the tool result returns. Lets the orchestrator emit
+   * per-tool `tool_use` / `file_change` JSONL events (sampled) so the operator
+   * UI can pulse the active agent node live, instead of only at iteration end.
+   *
+   * `seq` is the 1-based per-iteration sequence (one `query()` call = one
+   * iteration), so a sampler keyed on `seq` resets naturally each iteration.
+   * Never lets a misbehaving sink kill the SDK call (wrapped in try/catch).
+   * If unset, no per-tool events fire — backward compatible.
+   */
+  onToolUse?: (detail: ToolUseLiveDetail) => void;
+  /**
    * S7 / C13 — heartbeat cadence in ms. Default 15_000 (15s). Read from
    * the project config's `logging.heartbeat_seconds` by callers; here we
    * accept the resolved value so this module stays config-agnostic.
@@ -110,11 +122,27 @@ export type HeartbeatInfo = {
   since_ms: number;
 };
 
+/**
+ * Phase A — payload of one live `onToolUse` callback. Carries enough to emit
+ * both a `tool_use` event (name + input summary) and, for file-modifying
+ * tools, a `file_change` event (path + op). `op` is best-effort: `add` vs
+ * `modify` is inferred from whether the path exists at observation time.
+ */
+export type ToolUseLiveDetail = {
+  name: string;
+  inputSummary: string;
+  /** Present only for file-modifying tools (Write/Edit/MultiEdit/NotebookEdit). */
+  filePath?: string;
+  op?: 'add' | 'modify' | 'delete';
+  /** 1-based per-iteration sequence (== tool_use count at time of call). */
+  seq: number;
+};
+
 const DEFAULT_HEARTBEAT_INTERVAL_MS = 15_000;
 const DEFAULT_HEARTBEAT_IDLE_TAIL_MS = 30_000;
 
 const DEFAULT_ALLOWED_TOOLS = ['Read', 'Write', 'Edit', 'MultiEdit', 'NotebookEdit', 'Bash', 'Grep', 'Glob'];
-const FILE_MODIFYING_TOOLS = new Set(['Write', 'Edit', 'MultiEdit', 'NotebookEdit']);
+export const FILE_MODIFYING_TOOLS = new Set(['Write', 'Edit', 'MultiEdit', 'NotebookEdit']);
 
 export function createClaudeAgent(opts: ClaudeAgentOptions = {}): AgentInvocation {
   const queryFn: QueryFn = opts.queryFn ?? (sdkQuery as unknown as QueryFn);
@@ -213,6 +241,23 @@ export function createClaudeAgent(opts: ClaudeAgentOptions = {}): AgentInvocatio
               const cmd = extractBashCommand(b.input);
               if (cmd) bashCommands.push(truncate(cmd, 200));
             }
+            // Phase A — live per-tool telemetry. Fire BEFORE the tool result so
+            // the UI can pulse the node mid-iteration. Best-effort; never throws
+            // into the SDK stream.
+            if (opts.onToolUse) {
+              const fc = fileChangeForTool(b.name, b.input);
+              try {
+                opts.onToolUse({
+                  name: b.name,
+                  inputSummary: summarizeToolInput(b.name, b.input),
+                  filePath: fc?.filePath,
+                  op: fc?.op,
+                  seq: toolUseCount,
+                });
+              } catch {
+                /* never let a misbehaving tool-use sink kill the SDK call */
+              }
+            }
           }
         }
       } else if (m.type === 'result') {
@@ -287,6 +332,27 @@ function extractPath(input: unknown): string | null {
   return typeof candidate === 'string' ? candidate : null;
 }
 
+/**
+ * Phase A — derive a `{ filePath, op }` file-change descriptor for a tool call,
+ * or `null` if the tool doesn't mutate a file. `op` is best-effort: Edit-family
+ * tools imply the file pre-exists (`modify`); a `Write` to a path that doesn't
+ * exist yet is an `add`, otherwise a `modify`. Shared by the live stream loop
+ * here and the PM's own stream loop via `tool-event-emit.ts`.
+ */
+export function fileChangeForTool(
+  name: string,
+  input: unknown,
+): { filePath: string; op: 'add' | 'modify' | 'delete' } | null {
+  if (!FILE_MODIFYING_TOOLS.has(name)) return null;
+  const filePath = extractPath(input);
+  if (!filePath) return null;
+  let op: 'add' | 'modify' | 'delete' = 'modify';
+  if (name === 'Write') {
+    op = existsSync(filePath) ? 'modify' : 'add';
+  }
+  return { filePath, op };
+}
+
 function extractBashCommand(input: unknown): string | null {
   if (typeof input !== 'object' || input === null) return null;
   const cmd = (input as { command?: unknown }).command;
@@ -299,7 +365,7 @@ function extractBashCommand(input: unknown): string | null {
  * truncated to 200 chars. Goal: enough to grep an event log post-hoc, not so
  * much that a wedged loop inflates events.jsonl unbounded.
  */
-function summarizeToolInput(name: string, input: unknown): string {
+export function summarizeToolInput(name: string, input: unknown): string {
   if (input === null || input === undefined) return '';
   if (name === 'Bash') {
     const cmd = extractBashCommand(input);

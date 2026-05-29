@@ -30,6 +30,7 @@ import {
   type WorkItem,
 } from '../work-item.ts';
 import { recordBrainGateResult, type CycleInput } from '../cycle-context.ts';
+import { makeToolEventSink, extractLiveToolDetails } from '../tool-event-emit.ts';
 
 /**
  * Injection seam for tests. The live cycle uses `sdkQuery` from the
@@ -265,11 +266,26 @@ async function runOnePmPass(p: PmPassInput): Promise<PmPassOutcome> {
   let durationMs = 0;
   let resultSubtype: string | undefined;
 
+  // Phase A — per-tool live telemetry for the PM (no work-item/feature yet).
+  // The PM drives its own stream loop, so it feeds the sink manually via
+  // `extractLiveToolDetails` rather than `createClaudeAgent`'s `onToolUse`.
+  const pmToolSink = makeToolEventSink(logger, {
+    initiativeId: input.initiativeId,
+    parentEventId,
+    phase: 'project-manager',
+    skill: 'project-manager',
+  });
+  let pmToolSeq = 0;
+
   for await (const msg of queryFn({ prompt, options }) as AsyncIterable<unknown>) {
     if (typeof msg !== 'object' || msg === null) continue;
     const m = msg as { type?: string; message?: { content?: Array<{ type?: string; name?: string; input?: unknown }> }; subtype?: string; total_cost_usd?: number; duration_ms?: number };
     if (m.type === 'assistant') {
       tallyToolUse(m.message, toolUseSummary);
+      for (const detail of extractLiveToolDetails(m.message, pmToolSeq)) {
+        pmToolSink.onToolUse(detail);
+        pmToolSeq = detail.seq;
+      }
       continue;
     }
     if (m.type !== 'result') continue;
@@ -278,6 +294,8 @@ async function runOnePmPass(p: PmPassInput): Promise<PmPassOutcome> {
     resultSubtype = m.subtype ?? 'success';
     break;
   }
+  // PM is single-pass (not iterative); flush the coalesced remainder once.
+  pmToolSink.flushIteration(0);
 
   for (let i = 0; i < toolUseSummary.brainReads; i++) {
     logger.emit({

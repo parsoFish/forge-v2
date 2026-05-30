@@ -1,0 +1,29 @@
+@startuml
+title <size:24>Component View: Forge v2 - Brain (three knowledge graphs)</size>\n<size:24>The three-scope brain: forge-dev, cycles, and the per-project brain that lives inside each managed repo.</size>
+
+set separator none
+left to right direction
+
+<style>
+  root {
+    BackgroundColor: #ffffff
+    FontColor: #444444
+  }
+</style>
+
+!include <C4/C4>
+!include <C4/C4_Context>
+!include <C4/C4_Component>
+
+System_Boundary("Forgev2_boundary", "Forge v2", $tags="") {
+  Container_Boundary("Forgev2.Brainthreeknowledgegraphs_boundary", "Brain (three knowledge graphs)", $tags="") {
+    ComponentDb(Forgev2.Brainthreeknowledgegraphs.Brain1forgedev, "Brain 1 - forge-dev", $techn="brain/forge-dev/", $descr="Forge engineering knowledge: TypeScript source + ADRs + decision/reference themes (~3,375 nodes). Read by forge-dev sessions, not by the cycle.", $tags="", $link="")
+    ComponentDb(Forgev2.Brainthreeknowledgegraphs.Brain2cycles, "Brain 2 - cycles", $techn="brain/cycles/", $descr="Cross-cycle patterns / antipatterns + immutable cycle archives (~519 nodes). Read by planners + reflector.", $tags="", $link="")
+    ComponentDb(Forgev2.Brainthreeknowledgegraphs.Brain3perproject, "Brain 3 - per-project", $techn="projects/<name>/brain/", $descr="Whole-project knowledge (code + themes), living INSIDE each managed project's repo. Read by every cycle phase.", $tags="", $link="")
+  }
+
+}
+
+SHOW_LEGEND(true)
+hide stereotypes
+@enduml

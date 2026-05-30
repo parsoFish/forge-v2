@@ -1,0 +1,73 @@
+@startuml
+title <size:24>Component View: Forge v2 - Phase & Brain Skills</size>\n<size:24>The agent surface: the phase skills + the brain skills, every one of which runs on the Agent SDK and (for planners + reflector) queries the brain first.</size>
+
+set separator none
+left to right direction
+
+<style>
+  root {
+    BackgroundColor: #ffffff
+    FontColor: #444444
+  }
+</style>
+
+!include <C4/C4>
+!include <C4/C4_Context>
+!include <C4/C4_Container>
+!include <C4/C4_Component>
+
+System(ClaudeAgentSDK, "Claude Agent SDK", $descr="Anthropic's agent runtime + harness (model calls, tool use, prompt caching). Every forge agent runs here; forge hosts no model runtime, vector DB, or harness of its own.", $tags="", $link="")
+System(ManagedProjectRepo, "Managed Project Repo", $descr="A side-project git repo forge develops (trafficGame, terraform-provider-betterado, claude-harness...). Has its own quality gate and its own Brain 3. Worktrees branch from it.", $tags="", $link="")
+System(graphifyCLI, "graphify (CLI)", $descr="External tree-sitter knowledge-graph tool. Rebuilds the three brain graphs, triggered by a post-commit hook.", $tags="", $link="")
+
+System_Boundary("Forgev2_boundary", "Forge v2", $tags="") {
+  Container_Boundary("Forgev2.PhaseBrainSkills_boundary", "Phase & Brain Skills", $tags="") {
+    Component(Forgev2.PhaseBrainSkills.projectmanager, "project-manager", $techn="skills/project-manager", $descr="Decompose an initiative into atomic work items with given-when-then ACs and explicit dependencies.", $tags="", $link="")
+    Component(Forgev2.PhaseBrainSkills.developerralph, "developer-ralph", $techn="skills/developer-ralph", $descr="Drive a single work item to green via the Ralph loop.", $tags="", $link="")
+    Component(Forgev2.PhaseBrainSkills.developerunifier, "developer-unifier", $techn="skills/developer-unifier", $descr="Prove cross-WI acceptance, author the structured demo + PR body.", $tags="", $link="")
+    Component(Forgev2.PhaseBrainSkills.reflector, "reflector", $techn="skills/reflector", $descr="Post-merge retrospective: read the event log + merged tree, write brain themes + cycle archive.", $tags="", $link="")
+    Component(Forgev2.PhaseBrainSkills.architectllmcouncil, "architect (+ llm-council)", $techn="skills/architect, skills/architect-llm-council", $descr="Turn ideas + roadmap + brain into an initiative via a CEO/eng/design/DX council that escalates only taste decisions.", $tags="", $link="")
+    Component(Forgev2.PhaseBrainSkills.demodemocapture, "demo / demo-capture", $techn="skills/demo, skills/demo-capture", $descr="Author a Playwright before/after behavioural demo; backfill screenshots when the change is visual.", $tags="", $link="")
+    Component(Forgev2.PhaseBrainSkills.brainquery, "brain-query", $techn="skills/brain-query", $descr="Read the brain (graph-first, then keyword). Mandated first action of every planner + the reflector; logs gaps.", $tags="", $link="")
+    Component(Forgev2.PhaseBrainSkills.brainingest, "brain-ingest", $techn="skills/brain-ingest", $descr="The only writer: append _raw sources, create/update theme pages, sync category indexes.", $tags="", $link="")
+    Component(Forgev2.PhaseBrainSkills.brainlint, "brain-lint", $techn="skills/brain-lint", $descr="Structural integrity checks over the brain (frontmatter, index-sync, staleness, orphans, length).", $tags="", $link="")
+    Component(Forgev2.PhaseBrainSkills.braingraph, "brain-graph", $techn="skills/brain-graph", $descr="Maintain the three structural graphs by wrapping the graphify CLI.", $tags="", $link="")
+  }
+
+  ContainerDb(Forgev2.EventLogArtifacts, "Event Log + Artifacts", $techn="Filesystem (_logs/)", $descr="Append-only per-cycle JSONL event log plus snapshotted work-items / demo / REPORT.md. The replayable source of truth for reflection, the UI, and metrics.", $tags="", $link="")
+  ContainerDb(Forgev2.Brainthreeknowledgegraphs, "Brain (three knowledge graphs)", $techn="Markdown + graphify graphs", $descr="A Karpathy-style LLM wiki rendered as an Obsidian vault, in three scopes. Each scope has _raw/ (immutable), themes/ (~15-60 line pages), category indexes, and a graphify graph.", $tags="", $link="")
+  Container(Forgev2.OrchestratorEngine, "Orchestrator Engine", $techn="TypeScript / Node (forge serve)", $descr="The hot path: a persistent scheduler that claims initiatives and runs them through five in-cycle phases, isolated per git worktree, recoverable by heartbeat. Caps its own surface area by design (ADRs 011-013).", $tags="", $link="")
+}
+
+Rel(Forgev2.OrchestratorEngine, ManagedProjectRepo, "git worktree add / remove", $techn="git", $tags="", $link="")
+Rel(Forgev2.OrchestratorEngine, Forgev2.PhaseBrainSkills.projectmanager, "Invokes (one-shot) via SDK", $techn="", $tags="", $link="")
+Rel(Forgev2.OrchestratorEngine, Forgev2.PhaseBrainSkills.developerralph, "Runs each work-item iteration", $techn="", $tags="", $link="")
+Rel(Forgev2.OrchestratorEngine, Forgev2.PhaseBrainSkills.developerunifier, "Runs the final unify + demo iteration", $techn="", $tags="", $link="")
+Rel(Forgev2.OrchestratorEngine, ClaudeAgentSDK, "Calls query() each iteration (loads the dev/unifier skill)", $techn="", $tags="", $link="")
+Rel(Forgev2.OrchestratorEngine, Forgev2.PhaseBrainSkills.reflector, "Invokes (one-shot, post-merge) via SDK", $techn="", $tags="", $link="")
+Rel(Forgev2.OrchestratorEngine, Forgev2.PhaseBrainSkills.architectllmcouncil, "Advances the council one step via SDK", $techn="", $tags="", $link="")
+Rel(Forgev2.OrchestratorEngine, Forgev2.EventLogArtifacts, "Appends JSONL + snapshots to", $techn="", $tags="", $link="")
+Rel(Forgev2.PhaseBrainSkills.projectmanager, Forgev2.PhaseBrainSkills.brainquery, "Queries the brain first (Brain 2 + 3)", $techn="", $tags="", $link="")
+Rel(Forgev2.PhaseBrainSkills.architectllmcouncil, Forgev2.PhaseBrainSkills.brainquery, "Queries the brain first (Brain 2 + 3)", $techn="", $tags="", $link="")
+Rel(Forgev2.PhaseBrainSkills.reflector, Forgev2.PhaseBrainSkills.brainquery, "Queries the brain (all three)", $techn="", $tags="", $link="")
+Rel(Forgev2.PhaseBrainSkills.developerralph, Forgev2.PhaseBrainSkills.brainquery, "May consult Brain 3 (advisory)", $techn="", $tags="", $link="")
+Rel(Forgev2.PhaseBrainSkills.reflector, Forgev2.PhaseBrainSkills.brainingest, "Writes new themes + cycle archive via", $techn="", $tags="", $link="")
+Rel(Forgev2.PhaseBrainSkills.brainquery, Forgev2.Brainthreeknowledgegraphs, "Reads themes + graphify graphs from", $techn="", $tags="", $link="")
+Rel(Forgev2.PhaseBrainSkills.brainingest, Forgev2.Brainthreeknowledgegraphs, "Appends _raw + themes + indexes to", $techn="", $tags="", $link="")
+Rel(Forgev2.PhaseBrainSkills.brainlint, Forgev2.Brainthreeknowledgegraphs, "Checks structural integrity of", $techn="", $tags="", $link="")
+Rel(Forgev2.PhaseBrainSkills.braingraph, Forgev2.Brainthreeknowledgegraphs, "Rebuilds the knowledge graphs in", $techn="", $tags="", $link="")
+Rel(Forgev2.PhaseBrainSkills.braingraph, graphifyCLI, "Wraps", $techn="", $tags="", $link="")
+Rel(Forgev2.PhaseBrainSkills.projectmanager, ClaudeAgentSDK, "Executes on", $techn="", $tags="", $link="")
+Rel(Forgev2.PhaseBrainSkills.developerralph, ClaudeAgentSDK, "Executes on", $techn="", $tags="", $link="")
+Rel(Forgev2.PhaseBrainSkills.developerunifier, ClaudeAgentSDK, "Executes on", $techn="", $tags="", $link="")
+Rel(Forgev2.PhaseBrainSkills.reflector, ClaudeAgentSDK, "Executes on", $techn="", $tags="", $link="")
+Rel(Forgev2.PhaseBrainSkills.architectllmcouncil, ClaudeAgentSDK, "Executes on", $techn="", $tags="", $link="")
+Rel(Forgev2.PhaseBrainSkills.demodemocapture, ClaudeAgentSDK, "Executes on", $techn="", $tags="", $link="")
+Rel(Forgev2.PhaseBrainSkills.reflector, Forgev2.EventLogArtifacts, "Digests the event log in", $techn="", $tags="", $link="")
+Rel(Forgev2.PhaseBrainSkills.developerunifier, ManagedProjectRepo, "Writes the demo bundle + PR description to the worktree", $techn="", $tags="", $link="")
+Rel(Forgev2.PhaseBrainSkills.demodemocapture, ManagedProjectRepo, "Builds before/after + runs Playwright against", $techn="", $tags="", $link="")
+Rel(graphifyCLI, Forgev2.Brainthreeknowledgegraphs, "Rebuilds the three graphs (post-commit hook)", $techn="", $tags="", $link="")
+
+SHOW_LEGEND(true)
+hide stereotypes
+@enduml

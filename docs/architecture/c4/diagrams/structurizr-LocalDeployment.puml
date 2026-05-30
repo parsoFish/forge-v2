@@ -1,0 +1,80 @@
+@startuml
+title <size:24>Deployment View: Forge v2 - Local (WSL2)</size>\n<size:24>How it actually runs today: one WSL2 workstation hosting the Node process, the Next.js UI, tmux, and the working tree; with Anthropic + GitHub in the cloud.</size>
+
+set separator none
+left to right direction
+
+<style>
+  root {
+    BackgroundColor: #ffffff
+    FontColor: #444444
+  }
+</style>
+
+!include <C4/C4>
+!include <C4/C4_Context>
+!include <C4/C4_Container>
+!include <C4/C4_Deployment>
+
+Deployment_Node(LocalWSL2.OperatorWorkstation, "Operator Workstation", $type="Linux", $descr="WSL2 on Windows", $tags="", $link="") {
+  Deployment_Node(LocalWSL2.OperatorWorkstation.Nodejsruntime, "Node.js runtime", $type="Node 22", $descr="the forge serve process + CLI", $tags="", $link="") {
+    Container(LocalWSL2.OperatorWorkstation.Nodejsruntime.OrchestratorEngine_1, "Orchestrator Engine", $techn="TypeScript / Node (forge serve)", $descr="The hot path: a persistent scheduler that claims initiatives and runs them through five in-cycle phases, isolated per git worktree, recoverable by heartbeat. Caps its own surface area by design (ADRs 011-013).", $tags="", $link="")
+    Container(LocalWSL2.OperatorWorkstation.Nodejsruntime.CLIHumanMomentCommands_1, "CLI + Human-Moment Commands", $techn="TypeScript (bin/forge.mjs)", $descr="forge subcommands (serve / watch / status / metrics / brain / requeue / send-back) plus the three operator slash-command handoffs.", $tags="", $link="")
+    ContainerQueue(LocalWSL2.OperatorWorkstation.Nodejsruntime.UIBridge_1, "UI Bridge", $techn="TypeScript (ws)", $descr="WebSocket + HTTP server (:4123). Tails the event log and scans the queue, streams snapshots + events to the browser, and accepts verdict/feedback files. Stateless: re-derives everything from the stores.", $tags="", $link="")
+    Container(LocalWSL2.OperatorWorkstation.Nodejsruntime.PhaseBrainSkills_1, "Phase & Brain Skills", $techn="Claude Code skills", $descr="The Claude Code skill catalog - forge's agent surface. Each skill is a system prompt + tool policy the engine loads into an SDK query(). Brain skills are the brain's read/write API.", $tags="", $link="")
+  }
+
+  Deployment_Node(LocalWSL2.OperatorWorkstation.Nextjsdevserver, "Next.js dev server", $type="Next.js :4124", $descr="operator dashboard", $tags="", $link="") {
+    Container(LocalWSL2.OperatorWorkstation.Nextjsdevserver.forgeuiDashboard_1, "forge-ui Dashboard", $techn="Next.js / React", $descr="Next.js operator UI (:4124): the cascading hex pipeline, the grouped initiative pane, and the dedicated architect / review / reflect screens. Every load-bearing state is mirrored to data-* attributes (DOM-as-metrics).", $tags="", $link="")
+  }
+
+  Deployment_Node(LocalWSL2.OperatorWorkstation.tmux, "tmux", $type="tmux", $descr="live operator view", $tags="", $link="") {
+    Container(LocalWSL2.OperatorWorkstation.tmux.Monitor_1, "Monitor", $techn="Shell / tmux", $descr="tmux 3-pane layout (serve stdout / live event tail / forge status --watch) plus an Obsidian vault launcher.", $tags="", $link="")
+  }
+
+  Deployment_Node(LocalWSL2.OperatorWorkstation.Workingtree, "Working tree", $type="ext4", $descr="the forge repo + projects/", $tags="", $link="") {
+    ContainerDb(LocalWSL2.OperatorWorkstation.Workingtree.InitiativeQueue_1, "Initiative Queue", $techn="Filesystem (_queue/)", $descr="Filesystem state machine of initiative manifests: pending -> in-flight -> ready-for-review -> done | failed. Atomic rename transitions; heartbeat files enable crash recovery. done/ implies MERGED.", $tags="", $link="")
+    ContainerDb(LocalWSL2.OperatorWorkstation.Workingtree.EventLogArtifacts_1, "Event Log + Artifacts", $techn="Filesystem (_logs/)", $descr="Append-only per-cycle JSONL event log plus snapshotted work-items / demo / REPORT.md. The replayable source of truth for reflection, the UI, and metrics.", $tags="", $link="")
+    ContainerDb(LocalWSL2.OperatorWorkstation.Workingtree.Brainthreeknowledgegraphs_1, "Brain (three knowledge graphs)", $techn="Markdown + graphify graphs", $descr="A Karpathy-style LLM wiki rendered as an Obsidian vault, in three scopes. Each scope has _raw/ (immutable), themes/ (~15-60 line pages), category indexes, and a graphify graph.", $tags="", $link="")
+    System(LocalWSL2.OperatorWorkstation.Workingtree.ManagedProjectRepo_1, "Managed Project Repo", $descr="A side-project git repo forge develops (trafficGame, terraform-provider-betterado, claude-harness...). Has its own quality gate and its own Brain 3. Worktrees branch from it.", $tags="", $link="")
+  }
+
+}
+
+Deployment_Node(LocalWSL2.Anthropic, "Anthropic", $type="Cloud", $descr="api.anthropic.com", $tags="", $link="") {
+  System(LocalWSL2.Anthropic.ClaudeAgentSDK_1, "Claude Agent SDK", $descr="Anthropic's agent runtime + harness (model calls, tool use, prompt caching). Every forge agent runs here; forge hosts no model runtime, vector DB, or harness of its own.", $tags="", $link="")
+}
+
+Deployment_Node(LocalWSL2.GitHub, "GitHub", $type="Cloud", $descr="github.com", $tags="", $link="") {
+  System(LocalWSL2.GitHub.GitHub_1, "GitHub", $descr="Hosts the managed-project repos. The PR is the operator's sole review + merge surface; merge state is the single terminal signal.", $tags="", $link="")
+}
+
+Rel(LocalWSL2.OperatorWorkstation.Nodejsruntime.CLIHumanMomentCommands_1, LocalWSL2.OperatorWorkstation.Nodejsruntime.OrchestratorEngine_1, "Starts the scheduler (forge serve)", $techn="", $tags="", $link="")
+Rel(LocalWSL2.OperatorWorkstation.Nodejsruntime.UIBridge_1, LocalWSL2.OperatorWorkstation.Nodejsruntime.OrchestratorEngine_1, "Drives the in-UI architect runner + scheduler controls", $techn="", $tags="", $link="")
+Rel(LocalWSL2.OperatorWorkstation.Nodejsruntime.CLIHumanMomentCommands_1, LocalWSL2.OperatorWorkstation.Nodejsruntime.UIBridge_1, "Launches", $techn="", $tags="", $link="")
+Rel(LocalWSL2.OperatorWorkstation.Nodejsruntime.OrchestratorEngine_1, LocalWSL2.OperatorWorkstation.Nodejsruntime.PhaseBrainSkills_1, "Invokes (one-shot) via SDK", $techn="", $tags="", $link="")
+Rel(LocalWSL2.OperatorWorkstation.Nodejsruntime.CLIHumanMomentCommands_1, LocalWSL2.OperatorWorkstation.Nextjsdevserver.forgeuiDashboard_1, "Launches (Next.js dev server)", $techn="", $tags="", $link="")
+Rel(LocalWSL2.OperatorWorkstation.Nextjsdevserver.forgeuiDashboard_1, LocalWSL2.OperatorWorkstation.Nodejsruntime.UIBridge_1, "Subscribes to snapshots + events; posts verdicts", $techn="WebSocket/HTTP :4123", $tags="", $link="")
+Rel(LocalWSL2.OperatorWorkstation.tmux.Monitor_1, LocalWSL2.OperatorWorkstation.Nodejsruntime.OrchestratorEngine_1, "Runs forge serve / status against", $techn="", $tags="", $link="")
+Rel(LocalWSL2.OperatorWorkstation.Nodejsruntime.OrchestratorEngine_1, LocalWSL2.OperatorWorkstation.Workingtree.InitiativeQueue_1, "Claims + recovers manifests (atomic rename) + heartbeats", $techn="", $tags="", $link="")
+Rel(LocalWSL2.OperatorWorkstation.Nodejsruntime.CLIHumanMomentCommands_1, LocalWSL2.OperatorWorkstation.Workingtree.InitiativeQueue_1, "Requeue / send-back / promote manifests", $techn="", $tags="", $link="")
+Rel(LocalWSL2.OperatorWorkstation.Nodejsruntime.UIBridge_1, LocalWSL2.OperatorWorkstation.Workingtree.InitiativeQueue_1, "Scans manifests; writes verdict files", $techn="", $tags="", $link="")
+Rel(LocalWSL2.OperatorWorkstation.tmux.Monitor_1, LocalWSL2.OperatorWorkstation.Workingtree.InitiativeQueue_1, "Shows queue status from", $techn="", $tags="", $link="")
+Rel(LocalWSL2.OperatorWorkstation.Nodejsruntime.OrchestratorEngine_1, LocalWSL2.OperatorWorkstation.Workingtree.EventLogArtifacts_1, "Appends JSONL + snapshots to", $techn="", $tags="", $link="")
+Rel(LocalWSL2.OperatorWorkstation.Nodejsruntime.CLIHumanMomentCommands_1, LocalWSL2.OperatorWorkstation.Workingtree.EventLogArtifacts_1, "Reads for metrics / status / recap", $techn="", $tags="", $link="")
+Rel(LocalWSL2.OperatorWorkstation.Nodejsruntime.UIBridge_1, LocalWSL2.OperatorWorkstation.Workingtree.EventLogArtifacts_1, "Tails the event log (200ms)", $techn="", $tags="", $link="")
+Rel(LocalWSL2.OperatorWorkstation.Nodejsruntime.PhaseBrainSkills_1, LocalWSL2.OperatorWorkstation.Workingtree.EventLogArtifacts_1, "Digests the event log in", $techn="", $tags="", $link="")
+Rel(LocalWSL2.OperatorWorkstation.tmux.Monitor_1, LocalWSL2.OperatorWorkstation.Workingtree.EventLogArtifacts_1, "Tails the event log in", $techn="", $tags="", $link="")
+Rel(LocalWSL2.OperatorWorkstation.Nodejsruntime.CLIHumanMomentCommands_1, LocalWSL2.OperatorWorkstation.Workingtree.Brainthreeknowledgegraphs_1, "brain index / lint", $techn="", $tags="", $link="")
+Rel(LocalWSL2.OperatorWorkstation.Nodejsruntime.PhaseBrainSkills_1, LocalWSL2.OperatorWorkstation.Workingtree.Brainthreeknowledgegraphs_1, "Reads themes + graphify graphs from", $techn="", $tags="", $link="")
+Rel(LocalWSL2.OperatorWorkstation.Nodejsruntime.OrchestratorEngine_1, LocalWSL2.OperatorWorkstation.Workingtree.ManagedProjectRepo_1, "git worktree add / remove", $techn="git", $tags="", $link="")
+Rel(LocalWSL2.OperatorWorkstation.Nodejsruntime.CLIHumanMomentCommands_1, LocalWSL2.OperatorWorkstation.Workingtree.ManagedProjectRepo_1, "Builds before/after worktrees + runs Playwright", $techn="", $tags="", $link="")
+Rel(LocalWSL2.OperatorWorkstation.Nodejsruntime.PhaseBrainSkills_1, LocalWSL2.OperatorWorkstation.Workingtree.ManagedProjectRepo_1, "Writes the demo bundle + PR description to the worktree", $techn="", $tags="", $link="")
+Rel(LocalWSL2.OperatorWorkstation.Nodejsruntime.OrchestratorEngine_1, LocalWSL2.Anthropic.ClaudeAgentSDK_1, "Calls query() each iteration (loads the dev/unifier skill)", $techn="", $tags="", $link="")
+Rel(LocalWSL2.OperatorWorkstation.Nodejsruntime.PhaseBrainSkills_1, LocalWSL2.Anthropic.ClaudeAgentSDK_1, "Executes on", $techn="", $tags="", $link="")
+Rel(LocalWSL2.OperatorWorkstation.Nodejsruntime.OrchestratorEngine_1, LocalWSL2.GitHub.GitHub_1, "gh pr create / view; git push / fetch / ff", $techn="gh / git", $tags="", $link="")
+Rel(LocalWSL2.OperatorWorkstation.Workingtree.ManagedProjectRepo_1, LocalWSL2.GitHub.GitHub_1, "Has its remote on / PRs opened against", $techn="", $tags="", $link="")
+
+SHOW_LEGEND(true)
+hide stereotypes
+@enduml

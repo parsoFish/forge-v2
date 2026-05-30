@@ -1,0 +1,44 @@
+@startuml
+title <size:24>System Context View: Forge v2</size>\n<size:24>Forge in its world: one operator, the Agent SDK that runs every agent, GitHub as the merge surface, the managed repos it builds, and the tools that render/index the brain.</size>
+
+set separator none
+left to right direction
+
+<style>
+  root {
+    BackgroundColor: #ffffff
+    FontColor: #444444
+  }
+</style>
+
+!include <C4/C4>
+!include <C4/C4_Context>
+
+Person(Operator, "Operator", $descr="The single human running forge across side projects. Touches the system at exactly three points: architect (idea -> initiative), review (engage the PR), reflection (feedback).", $tags="", $link="")
+System(ClaudeAgentSDK, "Claude Agent SDK", $descr="Anthropic's agent runtime + harness (model calls, tool use, prompt caching). Every forge agent runs here; forge hosts no model runtime, vector DB, or harness of its own.", $tags="", $link="")
+System(GitHub, "GitHub", $descr="Hosts the managed-project repos. The PR is the operator's sole review + merge surface; merge state is the single terminal signal.", $tags="", $link="")
+System(ManagedProjectRepo, "Managed Project Repo", $descr="A side-project git repo forge develops (trafficGame, terraform-provider-betterado, claude-harness...). Has its own quality gate and its own Brain 3. Worktrees branch from it.", $tags="", $link="")
+System(graphifyCLI, "graphify (CLI)", $descr="External tree-sitter knowledge-graph tool. Rebuilds the three brain graphs, triggered by a post-commit hook.", $tags="", $link="")
+System(Obsidian, "Obsidian", $descr="Renders the brain as a navigable vault so the human reads the same graph the agents query.", $tags="", $link="")
+System(OperatorsClaudeSession, "Operator's Claude Session", $descr="The operator's OWN Claude Code session. The three human moments run here as slash commands (/forge-architect, /forge-review, /forge-reflect) - never forge-spawned agents - and hand off to forge via files.", $tags="", $link="")
+System(Forgev2, "Forge v2", $descr="Six phases backed by a brain; designed to run primarily unattended between three human interaction points.", $tags="", $link="")
+
+Rel(Forgev2, ClaudeAgentSDK, "Calls query() each iteration (loads the dev/unifier skill)", $techn="", $tags="", $link="")
+Rel(Forgev2, GitHub, "gh pr create / view; git push / fetch / ff", $techn="gh / git", $tags="", $link="")
+Rel(Forgev2, Operator, "Notifies (desktop / webhook)", $techn="", $tags="", $link="")
+Rel(Forgev2, graphifyCLI, "Wraps", $techn="", $tags="", $link="")
+Rel(graphifyCLI, Forgev2, "Rebuilds the three graphs (post-commit hook)", $techn="", $tags="", $link="")
+Rel(Obsidian, Forgev2, "Renders as a vault", $techn="", $tags="", $link="")
+Rel(ManagedProjectRepo, GitHub, "Has its remote on / PRs opened against", $techn="", $tags="", $link="")
+Rel(Operator, Forgev2, "Runs forge serve / watch / status / metrics in", $techn="terminal", $tags="", $link="")
+Rel(Operator, OperatorsClaudeSession, "Runs /forge-architect, /forge-review, /forge-reflect in", $techn="", $tags="", $link="")
+Rel(Operator, GitHub, "Reviews + merges the PR in", $techn="browser", $tags="", $link="")
+Rel(Operator, Obsidian, "Browses the brain via", $techn="", $tags="", $link="")
+Rel(OperatorsClaudeSession, Forgev2, "Writes the initiative manifest (architect) + verdict/feedback files", $techn="", $tags="", $link="")
+Rel(OperatorsClaudeSession, ClaudeAgentSDK, "Runs on", $techn="", $tags="", $link="")
+Rel(OperatorsClaudeSession, GitHub, "Merges the PR (review)", $techn="", $tags="", $link="")
+Rel(Forgev2, ManagedProjectRepo, "Builds before/after worktrees + runs Playwright", $techn="", $tags="", $link="")
+
+SHOW_LEGEND(true)
+hide stereotypes
+@enduml

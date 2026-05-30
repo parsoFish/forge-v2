@@ -1,0 +1,81 @@
+@startuml
+title <size:24>Container View: Forge v2</size>\n<size:24>Inside forge: the orchestrator engine (hot path), the skill catalog it runs on the SDK, the CLI + UI + monitor surfaces, and the three filesystem stores (queue, event log, brain).</size>
+
+set separator none
+left to right direction
+
+<style>
+  root {
+    BackgroundColor: #ffffff
+    FontColor: #444444
+  }
+</style>
+
+!include <C4/C4>
+!include <C4/C4_Context>
+!include <C4/C4_Container>
+
+Person(Operator, "Operator", $descr="The single human running forge across side projects. Touches the system at exactly three points: architect (idea -> initiative), review (engage the PR), reflection (feedback).", $tags="", $link="")
+System(ClaudeAgentSDK, "Claude Agent SDK", $descr="Anthropic's agent runtime + harness (model calls, tool use, prompt caching). Every forge agent runs here; forge hosts no model runtime, vector DB, or harness of its own.", $tags="", $link="")
+System(GitHub, "GitHub", $descr="Hosts the managed-project repos. The PR is the operator's sole review + merge surface; merge state is the single terminal signal.", $tags="", $link="")
+System(ManagedProjectRepo, "Managed Project Repo", $descr="A side-project git repo forge develops (trafficGame, terraform-provider-betterado, claude-harness...). Has its own quality gate and its own Brain 3. Worktrees branch from it.", $tags="", $link="")
+System(graphifyCLI, "graphify (CLI)", $descr="External tree-sitter knowledge-graph tool. Rebuilds the three brain graphs, triggered by a post-commit hook.", $tags="", $link="")
+System(Obsidian, "Obsidian", $descr="Renders the brain as a navigable vault so the human reads the same graph the agents query.", $tags="", $link="")
+System(OperatorsClaudeSession, "Operator's Claude Session", $descr="The operator's OWN Claude Code session. The three human moments run here as slash commands (/forge-architect, /forge-review, /forge-reflect) - never forge-spawned agents - and hand off to forge via files.", $tags="", $link="")
+
+System_Boundary("Forgev2_boundary", "Forge v2", $tags="") {
+  Container(Forgev2.PhaseBrainSkills, "Phase & Brain Skills", $techn="Claude Code skills", $descr="The Claude Code skill catalog - forge's agent surface. Each skill is a system prompt + tool policy the engine loads into an SDK query(). Brain skills are the brain's read/write API.", $tags="", $link="")
+  Container(Forgev2.CLIHumanMomentCommands, "CLI + Human-Moment Commands", $techn="TypeScript (bin/forge.mjs)", $descr="forge subcommands (serve / watch / status / metrics / brain / requeue / send-back) plus the three operator slash-command handoffs.", $tags="", $link="")
+  ContainerQueue(Forgev2.UIBridge, "UI Bridge", $techn="TypeScript (ws)", $descr="WebSocket + HTTP server (:4123). Tails the event log and scans the queue, streams snapshots + events to the browser, and accepts verdict/feedback files. Stateless: re-derives everything from the stores.", $tags="", $link="")
+  Container(Forgev2.forgeuiDashboard, "forge-ui Dashboard", $techn="Next.js / React", $descr="Next.js operator UI (:4124): the cascading hex pipeline, the grouped initiative pane, and the dedicated architect / review / reflect screens. Every load-bearing state is mirrored to data-* attributes (DOM-as-metrics).", $tags="", $link="")
+  Container(Forgev2.Monitor, "Monitor", $techn="Shell / tmux", $descr="tmux 3-pane layout (serve stdout / live event tail / forge status --watch) plus an Obsidian vault launcher.", $tags="", $link="")
+  ContainerDb(Forgev2.InitiativeQueue, "Initiative Queue", $techn="Filesystem (_queue/)", $descr="Filesystem state machine of initiative manifests: pending -> in-flight -> ready-for-review -> done | failed. Atomic rename transitions; heartbeat files enable crash recovery. done/ implies MERGED.", $tags="", $link="")
+  ContainerDb(Forgev2.EventLogArtifacts, "Event Log + Artifacts", $techn="Filesystem (_logs/)", $descr="Append-only per-cycle JSONL event log plus snapshotted work-items / demo / REPORT.md. The replayable source of truth for reflection, the UI, and metrics.", $tags="", $link="")
+  ContainerDb(Forgev2.Brainthreeknowledgegraphs, "Brain (three knowledge graphs)", $techn="Markdown + graphify graphs", $descr="A Karpathy-style LLM wiki rendered as an Obsidian vault, in three scopes. Each scope has _raw/ (immutable), themes/ (~15-60 line pages), category indexes, and a graphify graph.", $tags="", $link="")
+  Container(Forgev2.OrchestratorEngine, "Orchestrator Engine", $techn="TypeScript / Node (forge serve)", $descr="The hot path: a persistent scheduler that claims initiatives and runs them through five in-cycle phases, isolated per git worktree, recoverable by heartbeat. Caps its own surface area by design (ADRs 011-013).", $tags="", $link="")
+}
+
+Rel(Forgev2.OrchestratorEngine, ManagedProjectRepo, "git worktree add / remove", $techn="git", $tags="", $link="")
+Rel(Forgev2.OrchestratorEngine, Forgev2.PhaseBrainSkills, "Invokes (one-shot) via SDK", $techn="", $tags="", $link="")
+Rel(Forgev2.OrchestratorEngine, ClaudeAgentSDK, "Calls query() each iteration (loads the dev/unifier skill)", $techn="", $tags="", $link="")
+Rel(Forgev2.OrchestratorEngine, GitHub, "gh pr create / view; git push / fetch / ff", $techn="gh / git", $tags="", $link="")
+Rel(Forgev2.OrchestratorEngine, Forgev2.EventLogArtifacts, "Appends JSONL + snapshots to", $techn="", $tags="", $link="")
+Rel(Forgev2.OrchestratorEngine, Operator, "Notifies (desktop / webhook)", $techn="", $tags="", $link="")
+Rel(Forgev2.PhaseBrainSkills, Forgev2.Brainthreeknowledgegraphs, "Reads themes + graphify graphs from", $techn="", $tags="", $link="")
+Rel(Forgev2.PhaseBrainSkills, graphifyCLI, "Wraps", $techn="", $tags="", $link="")
+Rel(Forgev2.PhaseBrainSkills, ClaudeAgentSDK, "Executes on", $techn="", $tags="", $link="")
+Rel(Forgev2.PhaseBrainSkills, Forgev2.EventLogArtifacts, "Digests the event log in", $techn="", $tags="", $link="")
+Rel(Forgev2.PhaseBrainSkills, ManagedProjectRepo, "Writes the demo bundle + PR description to the worktree", $techn="", $tags="", $link="")
+Rel(graphifyCLI, Forgev2.Brainthreeknowledgegraphs, "Rebuilds the three graphs (post-commit hook)", $techn="", $tags="", $link="")
+Rel(Obsidian, Forgev2.Brainthreeknowledgegraphs, "Renders as a vault", $techn="", $tags="", $link="")
+Rel(ManagedProjectRepo, GitHub, "Has its remote on / PRs opened against", $techn="", $tags="", $link="")
+Rel(Forgev2.Monitor, Forgev2.EventLogArtifacts, "Tails the event log in", $techn="", $tags="", $link="")
+Rel(Forgev2.Monitor, Forgev2.InitiativeQueue, "Shows queue status from", $techn="", $tags="", $link="")
+Rel(Forgev2.Monitor, Forgev2.OrchestratorEngine, "Runs forge serve / status against", $techn="", $tags="", $link="")
+Rel(Operator, Forgev2.CLIHumanMomentCommands, "Runs forge serve / watch / status / metrics in", $techn="terminal", $tags="", $link="")
+Rel(Operator, Forgev2.forgeuiDashboard, "Watches cycles + acts on the human moments via", $techn="browser", $tags="", $link="")
+Rel(Operator, OperatorsClaudeSession, "Runs /forge-architect, /forge-review, /forge-reflect in", $techn="", $tags="", $link="")
+Rel(Operator, GitHub, "Reviews + merges the PR in", $techn="browser", $tags="", $link="")
+Rel(Operator, Forgev2.Monitor, "Tails live progress via", $techn="tmux", $tags="", $link="")
+Rel(Operator, Obsidian, "Browses the brain via", $techn="", $tags="", $link="")
+Rel(OperatorsClaudeSession, Forgev2.InitiativeQueue, "Writes the initiative manifest (architect) + verdict/feedback files", $techn="", $tags="", $link="")
+Rel(OperatorsClaudeSession, Forgev2.EventLogArtifacts, "Writes user-feedback.md (reflection)", $techn="", $tags="", $link="")
+Rel(OperatorsClaudeSession, Forgev2.Brainthreeknowledgegraphs, "Reads via brain-query (architect / reflection)", $techn="", $tags="", $link="")
+Rel(OperatorsClaudeSession, ClaudeAgentSDK, "Runs on", $techn="", $tags="", $link="")
+Rel(OperatorsClaudeSession, GitHub, "Merges the PR (review)", $techn="", $tags="", $link="")
+Rel(Forgev2.CLIHumanMomentCommands, Forgev2.OrchestratorEngine, "Starts the scheduler (forge serve)", $techn="", $tags="", $link="")
+Rel(Forgev2.CLIHumanMomentCommands, Forgev2.InitiativeQueue, "Requeue / send-back / promote manifests", $techn="", $tags="", $link="")
+Rel(Forgev2.CLIHumanMomentCommands, Forgev2.EventLogArtifacts, "Reads for metrics / status / recap", $techn="", $tags="", $link="")
+Rel(Forgev2.CLIHumanMomentCommands, Forgev2.Brainthreeknowledgegraphs, "brain index / lint", $techn="", $tags="", $link="")
+Rel(Forgev2.CLIHumanMomentCommands, Forgev2.UIBridge, "Launches", $techn="", $tags="", $link="")
+Rel(Forgev2.CLIHumanMomentCommands, Forgev2.forgeuiDashboard, "Launches (Next.js dev server)", $techn="", $tags="", $link="")
+Rel(Forgev2.CLIHumanMomentCommands, ManagedProjectRepo, "Builds before/after worktrees + runs Playwright", $techn="", $tags="", $link="")
+Rel(Forgev2.forgeuiDashboard, Forgev2.UIBridge, "Subscribes to snapshots + events; posts verdicts", $techn="WebSocket/HTTP :4123", $tags="", $link="")
+Rel(Forgev2.UIBridge, Forgev2.EventLogArtifacts, "Tails the event log (200ms)", $techn="", $tags="", $link="")
+Rel(Forgev2.UIBridge, Forgev2.InitiativeQueue, "Scans manifests; writes verdict files", $techn="", $tags="", $link="")
+Rel(Forgev2.UIBridge, Forgev2.OrchestratorEngine, "Drives the in-UI architect runner + scheduler controls", $techn="", $tags="", $link="")
+Rel(Forgev2.OrchestratorEngine, Forgev2.InitiativeQueue, "Claims + recovers manifests (atomic rename) + heartbeats", $techn="", $tags="", $link="")
+
+SHOW_LEGEND(true)
+hide stereotypes
+@enduml

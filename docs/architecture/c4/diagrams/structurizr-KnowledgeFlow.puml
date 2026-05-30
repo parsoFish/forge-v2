@@ -1,0 +1,31 @@
+@startuml
+title <size:24>Dynamic View: Forge v2</size>\n<size:24>How forge learns cycle-over-cycle: reflection -> brain -> graph -> queryable next cycle.</size>
+
+set separator none
+left to right direction
+
+<style>
+  root {
+    BackgroundColor: #ffffff
+    FontColor: #444444
+  }
+</style>
+
+!include <C4/C4>
+!include <C4/C4_Context>
+!include <C4/C4_Container>
+
+System_Boundary("Forgev2_boundary", "Forge v2", $tags="") {
+  Container(Forgev2.PhaseBrainSkills, "Phase & Brain Skills", $techn="Claude Code skills", $descr="The Claude Code skill catalog - forge's agent surface. Each skill is a system prompt + tool policy the engine loads into an SDK query(). Brain skills are the brain's read/write API.", $tags="", $link="")
+  ContainerDb(Forgev2.Brainthreeknowledgegraphs, "Brain (three knowledge graphs)", $techn="Markdown + graphify graphs", $descr="A Karpathy-style LLM wiki rendered as an Obsidian vault, in three scopes. Each scope has _raw/ (immutable), themes/ (~15-60 line pages), category indexes, and a graphify graph.", $tags="", $link="")
+}
+
+System(graphifyCLI, "graphify (CLI)", $descr="External tree-sitter knowledge-graph tool. Rebuilds the three brain graphs, triggered by a post-commit hook.", $tags="", $link="")
+
+Rel(Forgev2.PhaseBrainSkills, Forgev2.Brainthreeknowledgegraphs, "1: 1. Reflector ingests themes + the cycle archive", $techn="", $tags="", $link="")
+Rel(graphifyCLI, Forgev2.Brainthreeknowledgegraphs, "2: 2. Post-commit hook rebuilds the three graphs", $techn="", $tags="", $link="")
+Rel(Forgev2.PhaseBrainSkills, Forgev2.Brainthreeknowledgegraphs, "3: 3. Next cycle: brain-query reads the graph + themes", $techn="", $tags="", $link="")
+
+SHOW_LEGEND(true)
+hide stereotypes
+@enduml

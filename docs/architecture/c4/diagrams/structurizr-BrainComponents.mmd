@@ -1,0 +1,23 @@
+graph LR
+  linkStyle default fill:#ffffff
+
+  subgraph diagram ["Component View: Forge v2 - Brain (three knowledge graphs)"]
+    style diagram fill:#ffffff,stroke:#ffffff
+
+    subgraph 8 ["Forge v2"]
+      style 8 fill:#ffffff,stroke:#0b4884,color:#0b4884
+
+      subgraph 51 ["Brain (three knowledge graphs)"]
+        style 51 fill:#ffffff,stroke:#204d6f,color:#204d6f
+
+        52[("<div style='font-weight: bold'>Brain 1 - forge-dev</div><div style='font-size: 70%; margin-top: 0px'>[Component: brain/forge-dev/]</div><div style='font-size: 80%; margin-top:10px'>Forge engineering knowledge:<br />TypeScript source + ADRs +<br />decision/reference themes<br />(~3,375 nodes). Read by<br />forge-dev sessions, not by<br />the cycle.</div>")]
+        style 52 fill:#2f6f9f,stroke:#204d6f,color:#ffffff
+        53[("<div style='font-weight: bold'>Brain 2 - cycles</div><div style='font-size: 70%; margin-top: 0px'>[Component: brain/cycles/]</div><div style='font-size: 80%; margin-top:10px'>Cross-cycle patterns /<br />antipatterns + immutable<br />cycle archives (~519 nodes).<br />Read by planners + reflector.</div>")]
+        style 53 fill:#2f6f9f,stroke:#204d6f,color:#ffffff
+        54[("<div style='font-weight: bold'>Brain 3 - per-project</div><div style='font-size: 70%; margin-top: 0px'>[Component: projects/<name>/brain/]</div><div style='font-size: 80%; margin-top:10px'>Whole-project knowledge (code<br />+ themes), living INSIDE each<br />managed project's repo. Read<br />by every cycle phase.</div>")]
+        style 54 fill:#2f6f9f,stroke:#204d6f,color:#ffffff
+      end
+
+    end
+
+  end

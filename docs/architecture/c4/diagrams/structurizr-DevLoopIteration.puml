@@ -1,0 +1,41 @@
+@startuml
+title <size:24>Dynamic View: Forge v2 - Orchestrator Engine</size>\n<size:24>One developer-loop iteration: read institutional memory, call the model, commit, gate, repeat - until the gate passes or the budget is hit.</size>
+
+set separator none
+left to right direction
+
+<style>
+  root {
+    BackgroundColor: #ffffff
+    FontColor: #444444
+  }
+</style>
+
+!include <C4/C4>
+!include <C4/C4_Context>
+!include <C4/C4_Component>
+
+System(ClaudeAgentSDK, "Claude Agent SDK", $descr="Anthropic's agent runtime + harness (model calls, tool use, prompt caching). Every forge agent runs here; forge hosts no model runtime, vector DB, or harness of its own.", $tags="", $link="")
+System(ManagedProjectRepo, "Managed Project Repo", $descr="A side-project git repo forge develops (trafficGame, terraform-provider-betterado, claude-harness...). Has its own quality gate and its own Brain 3. Worktrees branch from it.", $tags="", $link="")
+
+System_Boundary("Forgev2_boundary", "Forge v2", $tags="") {
+  Container_Boundary("Forgev2.OrchestratorEngine_boundary", "Orchestrator Engine", $tags="") {
+    Component(Forgev2.OrchestratorEngine.DevLoopPhase, "Dev-Loop Phase", $techn="phases/developer-loop.ts", $descr="Phase 2: walk the WI DAG topologically, run a Ralph loop per work item, then the unifier (final Ralph) for cross-WI proof + demo + PR body.", $tags="", $link="")
+    Component(Forgev2.OrchestratorEngine.RalphLoopRuntime, "Ralph Loop Runtime", $techn="loops/ralph/", $descr="Swappable agentic loop: re-read PROMPT/AGENT/fix_plan -> SDK query() -> commit -> check stop conditions (gate pass | iteration/cost budget). loops/_adapters is the placeholder for alternatives.", $tags="", $link="")
+    Component(Forgev2.OrchestratorEngine.EventLogger, "Event Logger", $techn="logging.ts / tool-event-emit.ts", $descr="Append-only JSONL event log + tool-use telemetry. The single source of truth for a cycle.", $tags="", $link="")
+  }
+
+}
+
+System(ClaudeAgentSDK, "Claude Agent SDK", $descr="Anthropic's agent runtime + harness (model calls, tool use, prompt caching). Every forge agent runs here; forge hosts no model runtime, vector DB, or harness of its own.", $tags="", $link="")
+System(ManagedProjectRepo, "Managed Project Repo", $descr="A side-project git repo forge develops (trafficGame, terraform-provider-betterado, claude-harness...). Has its own quality gate and its own Brain 3. Worktrees branch from it.", $tags="", $link="")
+
+Rel(Forgev2.OrchestratorEngine.DevLoopPhase, Forgev2.OrchestratorEngine.RalphLoopRuntime, "1: 1. Walk the WI DAG; start a Ralph per work item", $techn="", $tags="", $link="")
+Rel(Forgev2.OrchestratorEngine.RalphLoopRuntime, ClaudeAgentSDK, "2: 2. Read PROMPT/AGENT/fix_plan -> query()", $techn="", $tags="", $link="")
+Rel(Forgev2.OrchestratorEngine.RalphLoopRuntime, ManagedProjectRepo, "3: 3. Commit changes + run the quality gate", $techn="git / shell", $tags="", $link="")
+Rel(Forgev2.OrchestratorEngine.RalphLoopRuntime, Forgev2.OrchestratorEngine.EventLogger, "4: 4. Emit iteration cost + tool events", $techn="", $tags="", $link="")
+Rel(Forgev2.OrchestratorEngine.RalphLoopRuntime, ManagedProjectRepo, "5: 5. Repeat until gate passes; then the unifier writes the demo + PR", $techn="git / shell", $tags="", $link="")
+
+SHOW_LEGEND(true)
+hide stereotypes
+@enduml

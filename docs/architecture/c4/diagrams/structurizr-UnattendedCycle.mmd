@@ -1,0 +1,44 @@
+graph LR
+  linkStyle default fill:#ffffff
+
+  subgraph diagram ["Dynamic View: Forge v2"]
+    style diagram fill:#ffffff,stroke:#ffffff
+
+    subgraph 8 ["Forge v2"]
+      style 8 fill:#ffffff,stroke:#0b4884,color:#0b4884
+
+      30["<div style='font-weight: bold'>Phase & Brain Skills</div><div style='font-size: 70%; margin-top: 0px'>[Container: Claude Code skills]</div><div style='font-size: 80%; margin-top:10px'>The Claude Code skill catalog<br />- forge's agent surface. Each<br />skill is a system prompt +<br />tool policy the engine loads<br />into an SDK query(). Brain<br />skills are the brain's<br />read/write API.</div>"]
+      style 30 fill:#438dd5,stroke:#2e6295,color:#ffffff
+      49[("<div style='font-weight: bold'>Initiative Queue</div><div style='font-size: 70%; margin-top: 0px'>[Container: Filesystem (_queue/)]</div><div style='font-size: 80%; margin-top:10px'>Filesystem state machine of<br />initiative manifests: pending<br />-> in-flight -><br />ready-for-review -> done |<br />failed. Atomic rename<br />transitions; heartbeat files<br />enable crash recovery. done/<br />implies MERGED.</div>")]
+      style 49 fill:#2f6f9f,stroke:#204d6f,color:#ffffff
+      51[("<div style='font-weight: bold'>Brain (three knowledge graphs)</div><div style='font-size: 70%; margin-top: 0px'>[Container: Markdown + graphify graphs]</div><div style='font-size: 80%; margin-top:10px'>A Karpathy-style LLM wiki<br />rendered as an Obsidian<br />vault, in three scopes. Each<br />scope has _raw/ (immutable),<br />themes/ (~15-60 line pages),<br />category indexes, and a<br />graphify graph.</div>")]
+      style 51 fill:#2f6f9f,stroke:#204d6f,color:#ffffff
+      9["<div style='font-weight: bold'>Orchestrator Engine</div><div style='font-size: 70%; margin-top: 0px'>[Container: TypeScript / Node (forge serve)]</div><div style='font-size: 80%; margin-top:10px'>The hot path: a persistent<br />scheduler that claims<br />initiatives and runs them<br />through five in-cycle phases,<br />isolated per git worktree,<br />recoverable by heartbeat.<br />Caps its own surface area by<br />design (ADRs 011-013).</div>"]
+      style 9 fill:#438dd5,stroke:#2e6295,color:#ffffff
+    end
+
+    1["<div style='font-weight: bold'>Operator</div><div style='font-size: 70%; margin-top: 0px'>[Person]</div><div style='font-size: 80%; margin-top:10px'>The single human running<br />forge across side projects.<br />Touches the system at exactly<br />three points: architect (idea<br />-> initiative), review<br />(engage the PR), reflection<br />(feedback).</div>"]
+    style 1 fill:#08427b,stroke:#052e56,color:#ffffff
+    2["<div style='font-weight: bold'>Claude Agent SDK</div><div style='font-size: 70%; margin-top: 0px'>[Software System]</div><div style='font-size: 80%; margin-top:10px'>Anthropic's agent runtime +<br />harness (model calls, tool<br />use, prompt caching). Every<br />forge agent runs here; forge<br />hosts no model runtime,<br />vector DB, or harness of its<br />own.</div>"]
+    style 2 fill:#999999,stroke:#6b6b6b,color:#ffffff
+    3["<div style='font-weight: bold'>GitHub</div><div style='font-size: 70%; margin-top: 0px'>[Software System]</div><div style='font-size: 80%; margin-top:10px'>Hosts the managed-project<br />repos. The PR is the<br />operator's sole review +<br />merge surface; merge state is<br />the single terminal signal.</div>"]
+    style 3 fill:#999999,stroke:#6b6b6b,color:#ffffff
+    4["<div style='font-weight: bold'>Managed Project Repo</div><div style='font-size: 70%; margin-top: 0px'>[Software System]</div><div style='font-size: 80%; margin-top:10px'>A side-project git repo forge<br />develops (trafficGame,<br />terraform-provider-betterado,<br />claude-harness...). Has its<br />own quality gate and its own<br />Brain 3. Worktrees branch<br />from it.</div>"]
+    style 4 fill:#999999,stroke:#6b6b6b,color:#ffffff
+    7["<div style='font-weight: bold'>Operator's Claude Session</div><div style='font-size: 70%; margin-top: 0px'>[Software System]</div><div style='font-size: 80%; margin-top:10px'>The operator's OWN Claude<br />Code session. The three human<br />moments run here as slash<br />commands (/forge-architect,<br />/forge-review,<br />/forge-reflect) - never<br />forge-spawned agents - and<br />hand off to forge via files.</div>"]
+    style 7 fill:#999999,stroke:#6b6b6b,color:#ffffff
+
+    7-. "<div>1. 1. Architect writes the<br />initiative manifest to<br />pending/</div><div style='font-size: 70%'></div>" .->49
+    9-. "<div>2. 2. Scheduler claims it<br />(atomic rename to in-flight)</div><div style='font-size: 70%'></div>" .->49
+    9-. "<div>3. 3. Spawns a git worktree<br />from the project repo</div><div style='font-size: 70%'>[git]</div>" .->4
+    9-. "<div>4. 4. PM decomposes into work<br />items</div><div style='font-size: 70%'></div>" .->30
+    30-. "<div>5. 5. Agents run on the SDK</div><div style='font-size: 70%'></div>" .->2
+    9-. "<div>6. 6. Ralph + unifier build,<br />commit, run the quality gate</div><div style='font-size: 70%'>[git]</div>" .->4
+    9-. "<div>7. 7. Review phase opens the<br />demo-embedded PR</div><div style='font-size: 70%'>[gh / git]</div>" .->3
+    1-. "<div>8. 8. Operator reviews +<br />merges the PR</div><div style='font-size: 70%'>[browser]</div>" .->3
+    9-. "<div>9. 9. Closure confirms the<br />merge</div><div style='font-size: 70%'>[gh / git]</div>" .->3
+    9-. "<div>10. 10. Closure moves the<br />manifest to done/</div><div style='font-size: 70%'></div>" .->49
+    9-. "<div>11. 11. Reflection digests<br />the event log</div><div style='font-size: 70%'></div>" .->30
+    30-. "<div>12. 12. brain-ingest writes<br />new themes + the cycle<br />archive</div><div style='font-size: 70%'></div>" .->51
+
+  end

@@ -1,0 +1,46 @@
+@startuml
+title <size:24>Dynamic View: Forge v2</size>\n<size:24>The end-to-end flow from idea to merged PR, with the three human moments called out.</size>
+
+set separator none
+left to right direction
+
+<style>
+  root {
+    BackgroundColor: #ffffff
+    FontColor: #444444
+  }
+</style>
+
+!include <C4/C4>
+!include <C4/C4_Context>
+!include <C4/C4_Container>
+
+System_Boundary("Forgev2_boundary", "Forge v2", $tags="") {
+  Container(Forgev2.PhaseBrainSkills, "Phase & Brain Skills", $techn="Claude Code skills", $descr="The Claude Code skill catalog - forge's agent surface. Each skill is a system prompt + tool policy the engine loads into an SDK query(). Brain skills are the brain's read/write API.", $tags="", $link="")
+  ContainerDb(Forgev2.InitiativeQueue, "Initiative Queue", $techn="Filesystem (_queue/)", $descr="Filesystem state machine of initiative manifests: pending -> in-flight -> ready-for-review -> done | failed. Atomic rename transitions; heartbeat files enable crash recovery. done/ implies MERGED.", $tags="", $link="")
+  ContainerDb(Forgev2.Brainthreeknowledgegraphs, "Brain (three knowledge graphs)", $techn="Markdown + graphify graphs", $descr="A Karpathy-style LLM wiki rendered as an Obsidian vault, in three scopes. Each scope has _raw/ (immutable), themes/ (~15-60 line pages), category indexes, and a graphify graph.", $tags="", $link="")
+  Container(Forgev2.OrchestratorEngine, "Orchestrator Engine", $techn="TypeScript / Node (forge serve)", $descr="The hot path: a persistent scheduler that claims initiatives and runs them through five in-cycle phases, isolated per git worktree, recoverable by heartbeat. Caps its own surface area by design (ADRs 011-013).", $tags="", $link="")
+}
+
+Person(Operator, "Operator", $descr="The single human running forge across side projects. Touches the system at exactly three points: architect (idea -> initiative), review (engage the PR), reflection (feedback).", $tags="", $link="")
+System(ClaudeAgentSDK, "Claude Agent SDK", $descr="Anthropic's agent runtime + harness (model calls, tool use, prompt caching). Every forge agent runs here; forge hosts no model runtime, vector DB, or harness of its own.", $tags="", $link="")
+System(GitHub, "GitHub", $descr="Hosts the managed-project repos. The PR is the operator's sole review + merge surface; merge state is the single terminal signal.", $tags="", $link="")
+System(ManagedProjectRepo, "Managed Project Repo", $descr="A side-project git repo forge develops (trafficGame, terraform-provider-betterado, claude-harness...). Has its own quality gate and its own Brain 3. Worktrees branch from it.", $tags="", $link="")
+System(OperatorsClaudeSession, "Operator's Claude Session", $descr="The operator's OWN Claude Code session. The three human moments run here as slash commands (/forge-architect, /forge-review, /forge-reflect) - never forge-spawned agents - and hand off to forge via files.", $tags="", $link="")
+
+Rel(OperatorsClaudeSession, Forgev2.InitiativeQueue, "1: 1. Architect writes the initiative manifest to pending/", $techn="", $tags="", $link="")
+Rel(Forgev2.OrchestratorEngine, Forgev2.InitiativeQueue, "2: 2. Scheduler claims it (atomic rename to in-flight)", $techn="", $tags="", $link="")
+Rel(Forgev2.OrchestratorEngine, ManagedProjectRepo, "3: 3. Spawns a git worktree from the project repo", $techn="git", $tags="", $link="")
+Rel(Forgev2.OrchestratorEngine, Forgev2.PhaseBrainSkills, "4: 4. PM decomposes into work items", $techn="", $tags="", $link="")
+Rel(Forgev2.PhaseBrainSkills, ClaudeAgentSDK, "5: 5. Agents run on the SDK", $techn="", $tags="", $link="")
+Rel(Forgev2.OrchestratorEngine, ManagedProjectRepo, "6: 6. Ralph + unifier build, commit, run the quality gate", $techn="git", $tags="", $link="")
+Rel(Forgev2.OrchestratorEngine, GitHub, "7: 7. Review phase opens the demo-embedded PR", $techn="gh / git", $tags="", $link="")
+Rel(Operator, GitHub, "8: 8. Operator reviews + merges the PR", $techn="browser", $tags="", $link="")
+Rel(Forgev2.OrchestratorEngine, GitHub, "9: 9. Closure confirms the merge", $techn="gh / git", $tags="", $link="")
+Rel(Forgev2.OrchestratorEngine, Forgev2.InitiativeQueue, "10: 10. Closure moves the manifest to done/", $techn="", $tags="", $link="")
+Rel(Forgev2.OrchestratorEngine, Forgev2.PhaseBrainSkills, "11: 11. Reflection digests the event log", $techn="", $tags="", $link="")
+Rel(Forgev2.PhaseBrainSkills, Forgev2.Brainthreeknowledgegraphs, "12: 12. brain-ingest writes new themes + the cycle archive", $techn="", $tags="", $link="")
+
+SHOW_LEGEND(true)
+hide stereotypes
+@enduml

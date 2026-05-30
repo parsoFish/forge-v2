@@ -1,0 +1,40 @@
+graph LR
+  linkStyle default fill:#ffffff
+
+  subgraph diagram ["System Context View: Forge v2"]
+    style diagram fill:#ffffff,stroke:#ffffff
+
+    1["<div style='font-weight: bold'>Operator</div><div style='font-size: 70%; margin-top: 0px'>[Person]</div><div style='font-size: 80%; margin-top:10px'>The single human running<br />forge across side projects.<br />Touches the system at exactly<br />three points: architect (idea<br />-> initiative), review<br />(engage the PR), reflection<br />(feedback).</div>"]
+    style 1 fill:#08427b,stroke:#052e56,color:#ffffff
+    2["<div style='font-weight: bold'>Claude Agent SDK</div><div style='font-size: 70%; margin-top: 0px'>[Software System]</div><div style='font-size: 80%; margin-top:10px'>Anthropic's agent runtime +<br />harness (model calls, tool<br />use, prompt caching). Every<br />forge agent runs here; forge<br />hosts no model runtime,<br />vector DB, or harness of its<br />own.</div>"]
+    style 2 fill:#999999,stroke:#6b6b6b,color:#ffffff
+    3["<div style='font-weight: bold'>GitHub</div><div style='font-size: 70%; margin-top: 0px'>[Software System]</div><div style='font-size: 80%; margin-top:10px'>Hosts the managed-project<br />repos. The PR is the<br />operator's sole review +<br />merge surface; merge state is<br />the single terminal signal.</div>"]
+    style 3 fill:#999999,stroke:#6b6b6b,color:#ffffff
+    4["<div style='font-weight: bold'>Managed Project Repo</div><div style='font-size: 70%; margin-top: 0px'>[Software System]</div><div style='font-size: 80%; margin-top:10px'>A side-project git repo forge<br />develops (trafficGame,<br />terraform-provider-betterado,<br />claude-harness...). Has its<br />own quality gate and its own<br />Brain 3. Worktrees branch<br />from it.</div>"]
+    style 4 fill:#999999,stroke:#6b6b6b,color:#ffffff
+    5["<div style='font-weight: bold'>graphify (CLI)</div><div style='font-size: 70%; margin-top: 0px'>[Software System]</div><div style='font-size: 80%; margin-top:10px'>External tree-sitter<br />knowledge-graph tool.<br />Rebuilds the three brain<br />graphs, triggered by a<br />post-commit hook.</div>"]
+    style 5 fill:#999999,stroke:#6b6b6b,color:#ffffff
+    6["<div style='font-weight: bold'>Obsidian</div><div style='font-size: 70%; margin-top: 0px'>[Software System]</div><div style='font-size: 80%; margin-top:10px'>Renders the brain as a<br />navigable vault so the human<br />reads the same graph the<br />agents query.</div>"]
+    style 6 fill:#999999,stroke:#6b6b6b,color:#ffffff
+    7["<div style='font-weight: bold'>Operator's Claude Session</div><div style='font-size: 70%; margin-top: 0px'>[Software System]</div><div style='font-size: 80%; margin-top:10px'>The operator's OWN Claude<br />Code session. The three human<br />moments run here as slash<br />commands (/forge-architect,<br />/forge-review,<br />/forge-reflect) - never<br />forge-spawned agents - and<br />hand off to forge via files.</div>"]
+    style 7 fill:#999999,stroke:#6b6b6b,color:#ffffff
+    8["<div style='font-weight: bold'>Forge v2</div><div style='font-size: 70%; margin-top: 0px'>[Software System]</div><div style='font-size: 80%; margin-top:10px'>Six phases backed by a brain;<br />designed to run primarily<br />unattended between three<br />human interaction points.</div>"]
+    style 8 fill:#1168bd,stroke:#0b4884,color:#ffffff
+
+    8-. "<div>Calls query() each iteration<br />(loads the dev/unifier skill)</div><div style='font-size: 70%'></div>" .->2
+    8-. "<div>gh pr create / view; git push<br />/ fetch / ff</div><div style='font-size: 70%'>[gh / git]</div>" .->3
+    8-. "<div>Notifies (desktop / webhook)</div><div style='font-size: 70%'></div>" .->1
+    8-. "<div>Wraps</div><div style='font-size: 70%'></div>" .->5
+    5-. "<div>Rebuilds the three graphs<br />(post-commit hook)</div><div style='font-size: 70%'></div>" .->8
+    6-. "<div>Renders as a vault</div><div style='font-size: 70%'></div>" .->8
+    4-. "<div>Has its remote on / PRs<br />opened against</div><div style='font-size: 70%'></div>" .->3
+    1-. "<div>Runs forge serve / watch /<br />status / metrics in</div><div style='font-size: 70%'>[terminal]</div>" .->8
+    1-. "<div>Runs /forge-architect,<br />/forge-review, /forge-reflect<br />in</div><div style='font-size: 70%'></div>" .->7
+    1-. "<div>Reviews + merges the PR in</div><div style='font-size: 70%'>[browser]</div>" .->3
+    1-. "<div>Browses the brain via</div><div style='font-size: 70%'></div>" .->6
+    7-. "<div>Writes the initiative<br />manifest (architect) +<br />verdict/feedback files</div><div style='font-size: 70%'></div>" .->8
+    7-. "<div>Runs on</div><div style='font-size: 70%'></div>" .->2
+    7-. "<div>Merges the PR (review)</div><div style='font-size: 70%'></div>" .->3
+    8-. "<div>Builds before/after worktrees<br />+ runs Playwright</div><div style='font-size: 70%'></div>" .->4
+
+  end

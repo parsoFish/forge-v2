@@ -162,6 +162,10 @@ and the ADRs before acting.
    git/gh op in `pr.ts` has a no-origin local shim (`gh-shim.ts`). If real managed
    projects all have origins, the shim is carried weight on the most invariant-heavy
    code (the local↔remote sync guards). Candidate: scope the shim to test/dogfood only.
+   *(Decided 2026-05-30 — **KEPT.** A deliberate capability per operator guidance
+   2026-05-24: it lets forge run cycles against no-remote repos, dodging auth/network
+   flakiness. Dormant today (all real projects have origins) but cleanly gated via
+   `hasOriginRemote()` and orthogonal to the operator-surface work. See ADR 023 §4.)*
 
 6. **Brain skills that wrap a CLI.** `brain-lint` and `brain-index` exist as **both**
    a skill (`skills/`) and a CLI (`cli/` + `forge brain …`). The skill layer is a

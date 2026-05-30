@@ -97,8 +97,17 @@ parallel screen/handler/codec stacks into one.
 >   (`architect-runner.ts` reads it), reframed from "two hosts" to the single
 >   in-UI host. `cli/architect-plan.ts` **stays** (the runner renders PLAN via
 >   `writePlanDoc`). `forge architect run` **stays** (the bridge spawns it per turn).
+> **`gh-shim` — KEPT (operator decision 2026-05-30).** The §4 line proposed
+> removing it "all managed projects have remotes." They do today (claude-harness,
+> terraform-provider-betterado, trafficGame all have origins), so the shim is
+> dormant — but it is a *deliberate* capability (operator guidance 2026-05-24:
+> mock the git remote for no-remote repos to dodge auth/network flakiness in dev
+> cycles, e.g. a freshly-scaffolded project before it has an origin). It is also
+> cleanly gated (a `hasOriginRemote()` branch, not entangled with the real-origin
+> path) and orthogonal to the operator-surface consolidation. Retained
+> intentionally; the §4 removal item is closed as "kept."
 > Still deferred: `forge review --approve` (load-bearing — `verify-cycle.mjs`
-> auto-approves through it), `gh-shim` removal, and the HumanMoment generalization.
+> auto-approves through it) and the HumanMoment generalization.
 
 ## Consequences
 

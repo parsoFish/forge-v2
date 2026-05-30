@@ -9,6 +9,10 @@
  * `_pr-metadata.json` the bench's [benchmarks/_lib/gh-shim.ts] uses,
  * then doing the local fast-forward at merge time.
  *
+ * Retained 2026-05-30 (ADR 023 §4 review): all current managed projects have
+ * origins so this is dormant, but it stays as the deliberate no-remote model —
+ * cleanly gated by `hasOriginRemote()` and orthogonal to the UI-surface work.
+ *
  * Wired into [`orchestrator/pr.ts`]'s `openPullRequest`, `prRef`,
  * `confirmPrMerged`, and `mergePullRequest`. Each call site checks
  * `hasOriginRemote(worktreePath)` and dispatches to the shim function

@@ -17,7 +17,7 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, existsSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, readFileSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 
@@ -25,8 +25,6 @@ import {
   renderPlanDoc,
   renderPlanHtml,
   writePlanDoc,
-  parseFeedbackComments,
-  bundleFeedbackAsMarkdown,
   type ArchitectSession,
   type ProposedInitiative,
   type CouncilTranscript,
@@ -206,78 +204,6 @@ test('renderPlanDoc: surfaces project metrics block (C26) when session provides 
 });
 
 // ---------------------------------------------------------------------------
-// 6. parseFeedbackComments — top-of-file verdict
-// ---------------------------------------------------------------------------
-
-test('parseFeedbackComments: <!-- verdict: approve --> ⇒ verdict = "approve"', () => {
-  const dir = fxTempdir('p1');
-  const planPath = join(dir, 'PLAN.md');
-  writeFileSync(planPath, '<!-- verdict: approve -->\n\n# Architect plan\n\nBody.\n');
-  const { verdict, annotations } = parseFeedbackComments(planPath);
-  assert.equal(verdict, 'approve');
-  assert.deepEqual(annotations, []);
-});
-
-test('parseFeedbackComments: <!-- verdict: revise --> + 2 inline review comments', () => {
-  const dir = fxTempdir('p2');
-  const planPath = join(dir, 'PLAN.md');
-  writeFileSync(
-    planPath,
-    [
-      '<!-- verdict: revise -->',
-      '',
-      '# Architect plan',
-      '',
-      '## Proposed initiatives',
-      '',
-      '- INIT-A',
-      '<!-- review: split this — too broad -->',
-      '- INIT-B',
-      '<!-- review: defer to phase 2 -->',
-      '',
-      'End.',
-      '',
-    ].join('\n'),
-  );
-  const { verdict, annotations } = parseFeedbackComments(planPath);
-  assert.equal(verdict, 'revise');
-  assert.equal(annotations.length, 2);
-  assert.deepEqual(annotations.map((a) => a.text), [
-    'split this — too broad',
-    'defer to phase 2',
-  ]);
-  // Line numbers are 1-based
-  assert.ok(annotations[0].line >= 1);
-  assert.ok(annotations[1].line > annotations[0].line);
-});
-
-test('parseFeedbackComments: <!-- verdict: reject --> ⇒ verdict = "reject"', () => {
-  const dir = fxTempdir('p3');
-  const planPath = join(dir, 'PLAN.md');
-  writeFileSync(planPath, '<!-- verdict: reject -->\n\n# Plan\n\n(operator changed their mind)\n');
-  const { verdict } = parseFeedbackComments(planPath);
-  assert.equal(verdict, 'reject');
-});
-
-test('parseFeedbackComments: missing verdict ⇒ verdict = null', () => {
-  const dir = fxTempdir('p4');
-  const planPath = join(dir, 'PLAN.md');
-  writeFileSync(planPath, '# Plan\n\nNo verdict here yet.\n');
-  const { verdict, annotations } = parseFeedbackComments(planPath);
-  assert.equal(verdict, null);
-  assert.deepEqual(annotations, []);
-});
-
-test('parseFeedbackComments: empty annotations are an empty array (not null)', () => {
-  const dir = fxTempdir('p5');
-  const planPath = join(dir, 'PLAN.md');
-  writeFileSync(planPath, '<!-- verdict: approve -->\n# Plan\n\nLooks good.\n');
-  const { annotations } = parseFeedbackComments(planPath);
-  assert.ok(Array.isArray(annotations));
-  assert.equal(annotations.length, 0);
-});
-
-// ---------------------------------------------------------------------------
 // 7. writePlanDoc — C12 location
 // ---------------------------------------------------------------------------
 
@@ -291,63 +217,6 @@ test('writePlanDoc: writes to <projectRoot>/_architect/<session-id>/PLAN.md per 
   assert.ok(existsSync(path), 'PLAN.md was written');
   const body = readFileSync(path, 'utf8');
   assert.match(body, /# Architect plan — 2026-05-23T11-22-33/);
-});
-
-// ---------------------------------------------------------------------------
-// 8. Round-trip: render → annotate → parse → re-render preserves manifest body
-// ---------------------------------------------------------------------------
-
-test('renderPlanDoc round-trip: rendered → annotated → parsed → re-rendered preserves manifest body', () => {
-  const session = fxSession();
-  const initial = renderPlanDoc(session);
-
-  // Simulate the operator annotating + setting a revise verdict.
-  const annotated = initial.replace(
-    '<!-- verdict: approve | revise | reject -->',
-    '<!-- verdict: revise -->',
-  ).replace(
-    '## Proposed initiatives',
-    '## Proposed initiatives\n<!-- review: rename Sample initiative to Foo -->',
-  );
-
-  // Write to disk and parse.
-  const dir = fxTempdir('rt');
-  const planPath = join(dir, 'PLAN.md');
-  writeFileSync(planPath, annotated);
-  const { verdict, annotations } = parseFeedbackComments(planPath);
-
-  assert.equal(verdict, 'revise');
-  assert.equal(annotations.length, 1);
-  assert.equal(annotations[0].text, 'rename Sample initiative to Foo');
-
-  // Re-render the same session (parity: the manifest body is byte-stable).
-  const reRendered = renderPlanDoc(session);
-  // The manifest body marker should appear identically in both renders.
-  const bodyMarker = 'This is the manifest body.';
-  assert.ok(initial.includes(bodyMarker), 'initial render contains manifest body');
-  assert.ok(reRendered.includes(bodyMarker), 're-render preserves manifest body');
-});
-
-// ---------------------------------------------------------------------------
-// 9. bundleFeedbackAsMarkdown — produces a readable feedback.md body
-// ---------------------------------------------------------------------------
-
-test('bundleFeedbackAsMarkdown: produces a markdown list the council can read', () => {
-  const md = bundleFeedbackAsMarkdown([
-    { line: 12, text: 'split this — only queue INIT-01 + INIT-03 today' },
-    { line: 27, text: 'defer the rest to phase 2' },
-  ]);
-  assert.match(md, /^# Operator feedback/m);
-  assert.match(md, /line 12/);
-  assert.match(md, /split this — only queue INIT-01 \+ INIT-03 today/);
-  assert.match(md, /line 27/);
-  assert.match(md, /defer the rest to phase 2/);
-});
-
-test('bundleFeedbackAsMarkdown: empty annotations ⇒ short notice', () => {
-  const md = bundleFeedbackAsMarkdown([]);
-  assert.match(md, /^# Operator feedback/m);
-  assert.match(md, /no inline annotations/i);
 });
 
 // ---------------------------------------------------------------------------
@@ -403,34 +272,17 @@ test('renderPlanDoc: brain-context section lists every brain path + summary', ()
 });
 
 // ---------------------------------------------------------------------------
-// 12. Synthetic round-trip fixture — write a PLAN.md, parse it, confirm
-//     manifest content is preserved across the pipe (AC5)
+// 12. writePlanDoc → re-read preserves the manifest body verbatim
 // ---------------------------------------------------------------------------
 
-test('synthetic round-trip: writePlanDoc → parseFeedbackComments preserves manifest body', () => {
+test('writePlanDoc: the written PLAN.md preserves the manifest body verbatim', () => {
   const dir = fxTempdir('rt2');
   const projectRoot = join(dir, 'proj');
   mkdirSync(projectRoot, { recursive: true });
   const session = fxSession({ session_id: '2026-05-23T20-00-00' });
   const planPath = writePlanDoc(session, projectRoot);
-
-  // Read the file back, set verdict + an annotation, write it back.
-  const original = readFileSync(planPath, 'utf8');
-  const annotated = original
-    .replace('<!-- verdict: approve | revise | reject -->', '<!-- verdict: approve -->')
-    .replace(
-      'This is the manifest body.',
-      'This is the manifest body.\n<!-- review: looks great -->',
-    );
-  writeFileSync(planPath, annotated);
-
-  const { verdict, annotations } = parseFeedbackComments(planPath);
-  assert.equal(verdict, 'approve');
-  assert.equal(annotations.length, 1);
-  assert.match(annotations[0].text, /looks great/);
-  // Manifest body still present
-  const after = readFileSync(planPath, 'utf8');
-  assert.match(after, /This is the manifest body\./);
+  const written = readFileSync(planPath, 'utf8');
+  assert.match(written, /This is the manifest body\./);
 });
 
 // ---------------------------------------------------------------------------

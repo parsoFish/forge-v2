@@ -1202,11 +1202,13 @@ function cmdBrainLint(rest: string[]): void {
 // real tool lives in `skills/brain-graph/SKILL.md`. Use `graphify` directly.
 
 // ---------------------------------------------------------------------------
-// forge architect commit <session-id>
+// forge architect run <session-id>
 //
-// S2A: the architect's terminal step is now writing PLAN.md to the project's
-// `_architect/<sid>/` dir, NOT manifests to `_queue/pending/`. This
-// subcommand ingests the operator's annotations + verdict and dispatches.
+// ADR 020/023: the architect runs in the forge UI. The bridge spawns
+// `forge architect run` per operator turn (interview → draft → finalize);
+// the runner's finalize promotes manifests to the queue. The legacy
+// out-of-cycle `forge architect commit` CLI + `/forge-architect` slash were
+// retired (UI is the sole operator surface).
 // ---------------------------------------------------------------------------
 
 async function cmdArchitect(rest: string[]): Promise<void> {
@@ -1214,7 +1216,7 @@ async function cmdArchitect(rest: string[]): Promise<void> {
   if (sub === 'run') return await cmdArchitectRun(rest.slice(1));
   console.error('forge architect: subcommands: run <session-id>');
   console.error('  forge architect run <session-id> [--project <name>]');
-  console.error('  (the architect now runs in the forge UI — see ADR 020; the bridge spawns this per turn)');
+  console.error('  (the architect runs in the forge UI — see ADR 020/023; the bridge spawns this per turn)');
   process.exit(2);
 }
 

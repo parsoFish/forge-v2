@@ -88,9 +88,17 @@ parallel screen/handler/codec stacks into one.
 >   superset of `runSendBack` (validates ≥1 AC, writes the same
 >   `verdict-response.md` atomically, **plus** manifest locking); both re-enter
 >   via the reviewer consuming the verdict file.
+> - **architect (canonical = the in-UI runner):** deleted the dead
+>   `orchestrator/architect-commit.ts` (+test — `doApprove` already lives in
+>   `promote-manifests.ts`, which the runner's finalize calls) and the
+>   stale/broken `/forge-architect` slash (`.claude/commands/forge-architect.md`,
+>   which still told the operator to run the already-removed `forge architect
+>   commit`). `skills/architect/SKILL.md` **stays** — it is the runner's prompt
+>   (`architect-runner.ts` reads it), reframed from "two hosts" to the single
+>   in-UI host. `cli/architect-plan.ts` **stays** (the runner renders PLAN via
+>   `writePlanDoc`). `forge architect run` **stays** (the bridge spawns it per turn).
 > Still deferred: `forge review --approve` (load-bearing — `verify-cycle.mjs`
-> auto-approves through it), the architect-canonical decision (`/forge-architect`
-> + out-of-cycle skill), `gh-shim` removal, and the HumanMoment generalization.
+> auto-approves through it), `gh-shim` removal, and the HumanMoment generalization.
 
 ## Consequences
 

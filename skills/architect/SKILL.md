@@ -12,22 +12,19 @@ model: claude-opus-4-7
 
 Collaborate with the user during ideation. Update the project's roadmap. Emit
 **one `PLAN.md` operator artefact** that the operator reviews before any
-manifest hits `_queue/pending/`. The dedicated CLI subcommand `forge architect
-commit <session-id>` ingests the operator's annotations + verdict and either
-writes the manifests (`approve`), re-runs with feedback (`revise`), or archives
-the session (`reject`).
+manifest hits `_queue/pending/`. The in-UI runner's **finalize** step (triggered
+when the operator approves on the `/architect` screen) promotes the manifests
+(`approve`), re-runs with feedback (`revise`), or archives the session
+(`reject`).
 
-## Surfaces — interactive (terminal) vs in-UI runner (ADR 020)
+## Surface — the in-UI runner (ADR 020 / ADR 023)
 
-This skill has two hosts that share this same content:
-
-- **Interactive (terminal):** the operator runs you in their own Claude session;
-  you drive the interview with **`AskUserQuestion`** as described in the Process
-  section below.
-- **In-UI runner (ADR 020, the primary surface):** a server-side,
-  file-checkpointed runner (`orchestrator/architect-runner.ts`) hosts you one
-  bounded turn at a time, driven by the forge UI. **You do NOT call
-  `AskUserQuestion`.** Instead the interview is **file-based handoff** (the same
+The forge UI is the **sole** operator surface (ADR 023); the old terminal/slash
+host (`/forge-architect` + `forge architect commit`) was retired. Your host is
+the **in-UI runner** — a server-side, file-checkpointed runner
+(`orchestrator/architect-runner.ts`) that hosts you one bounded turn at a time,
+driven by the forge UI. **You do NOT call `AskUserQuestion`.** Instead the
+interview is **file-based handoff** (the same
   shape the reflector uses):
   - When the runner asks you for the *interview step*, return structured JSON
     `{ done, questions? }` — `questions` is an `AskUserQuestion`-shaped array
@@ -86,10 +83,10 @@ does NOT depend on the graph being present.
   operator artefact. Use `orchestrator/architect-plan.ts:writePlanDoc`
   (renders + writes PLAN.md + sibling `council-transcript.md`).
 - **`<projectRepoPath>/_architect/<session-id>/manifests/INIT-*.md`** — draft
-  manifests, NOT yet queued. The CLI's `architect commit --approve` promotes
-  them to `_queue/pending/`.
-- **No direct writes to `_queue/pending/`.** That happens only on `architect
-  commit --approve`.
+  manifests, NOT yet queued. The runner's finalize step (on operator approve)
+  promotes them to `_queue/pending/`.
+- **No direct writes to `_queue/pending/`.** That happens only on the runner's
+  finalize (operator approve in the UI).
 
 ## Initiative type discriminator (C27)
 
@@ -115,13 +112,13 @@ Classify based on the operator's brief. When in doubt, default to
 - `architect.end` — session complete.
 
 (The `architect.plan-approved` / `plan-revised` / `plan-rejected` events are
-emitted by the `forge architect commit` CLI, not by this skill.)
+emitted by the runner's finalize step, not by this skill.)
 
 ## Benchmark suite
 
 > Note (2026-05-25): the `benchmarks/` harnesses were removed; this section is historical. Phase quality is now judged on real merged cycles.
 
-Was `benchmarks/architect/` — `prompts.json` fixtures + `score.ts`. (The since-moot S2B note about migrating the bench surface to consume PLAN.md directly is dropped — live runs go through PLAN.md → `forge architect commit`.)
+Was `benchmarks/architect/` — `prompts.json` fixtures + `score.ts`. (The since-moot S2B note about migrating the bench surface to consume PLAN.md directly is dropped — live runs go through PLAN.md → the runner's finalize.)
 
 ## Process
 
@@ -177,25 +174,14 @@ Was `benchmarks/architect/` — `prompts.json` fixtures + `score.ts`. (The since
    (the operator sees the plan via roadmap + PLAN.md both); the approve flow
    doesn't re-touch them.
 9. **Log `architect.plan-emitted`** to the event log.
-10. **Tell the user** what's queued for review and how to proceed:
+10. **Hand off to the operator.** The runner writes `PLAN.md` + `PLAN.html` to
+   `<projectRepoPath>/_architect/<session-id>/` and the UI surfaces them on the
+   `/architect/<sid>` plan gate. The operator reviews PLAN.html, resolves the
+   council's design decisions, and clicks **approve / revise / reject** there —
+   the runner's finalize step ingests that verdict (promoting the manifests to
+   `_queue/pending/` only on approve).
 
-   ```
-   PLAN is ready in <projectRepoPath>/_architect/<session-id>/:
-
-     - PLAN.md   (annotation target — edit in your editor)
-     - PLAN.html (read-only rich viewer — open in browser)
-
-   Review the plan, leave `<!-- review: ... -->` HTML-comment annotations
-   inline in PLAN.md, set the top-of-file verdict to `approve`, `revise`,
-   or `reject`, then run:
-
-     forge architect commit <session-id>
-
-   Pass `--via-pr` to open the plan as a draft PR on the project repo for
-   richer comment threading.
-   ```
-
-   Stop. The scheduler picks up nothing until the operator commits.
+   Stop. The scheduler picks up nothing until the operator approves in the UI.
 
 ## Constraints
 

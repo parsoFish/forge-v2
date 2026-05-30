@@ -8,7 +8,7 @@ workspace "Forge v2" "Bottom-up C4 model of forge — an idea machine that runs 
         // ---------------------------------------------------------------
         // People
         // ---------------------------------------------------------------
-        operator = person "Operator" "The single human running forge across side projects. Touches the system at exactly three points: architect (idea -> initiative), review (engage the PR), reflection (feedback)."
+        operator = person "Operator" "The single human running forge across side projects. Touches the system at exactly three points, all on the forge UI (ADR 023): architect (idea -> initiative), review (approve the cycle), reflection (feedback)."
 
         // ---------------------------------------------------------------
         // External systems
@@ -18,7 +18,6 @@ workspace "Forge v2" "Bottom-up C4 model of forge — an idea machine that runs 
         projectRepo  = softwareSystem "Managed Project Repo" "A side-project git repo forge develops (trafficGame, terraform-provider-betterado, claude-harness...). Has its own quality gate and its own Brain 3. Worktrees branch from it." "External"
         graphify     = softwareSystem "graphify (CLI)" "External tree-sitter knowledge-graph tool. Rebuilds the three brain graphs, triggered by a post-commit hook." "External"
         obsidian     = softwareSystem "Obsidian" "Renders the brain as a navigable vault so the human reads the same graph the agents query." "External"
-        operatorAI   = softwareSystem "Operator's Claude Session" "The operator's OWN Claude Code session. The three human moments run here as slash commands (/forge-architect, /forge-review, /forge-reflect) - never forge-spawned agents - and hand off to forge via files." "External"
 
         // ---------------------------------------------------------------
         // The system under design
@@ -47,7 +46,7 @@ workspace "Forge v2" "Bottom-up C4 model of forge — an idea machine that runs 
                 queueApi       = component "Queue State Machine" "Atomic manifest transitions via rename(); manifest + work-item parse/validate/topo-sort." "queue.ts / manifest.ts / work-item.ts"
                 worktreeMgr    = component "Worktree Manager" "Thin wrapper over git worktree add/remove/prune; self-heals stale registry state." "worktree.ts"
                 prAdapter      = component "PR / Git Adapter" "The only place forge shells git push / gh pr; enforces the local<->remote sync invariant; shims gh locally for no-origin projects." "pr.ts (+ gh-shim.ts)"
-                verdictProvider = component "Verdict Provider" "Resolves the operator's review verdict from file/PR-comment handoffs." "file-verdict.ts / pr-verdict.ts"
+                verdictProvider = component "Verdict Parser" "Resolves the operator's review verdict from the verdict file the UI bridge writes (ADR 023 — the PR-comment provider + getVerdict seam were retired)." "file-verdict.ts"
                 eventLogger    = component "Event Logger" "Append-only JSONL event log + tool-use telemetry. The single source of truth for a cycle." "logging.ts / tool-event-emit.ts"
                 failClassifier = component "Failure Classifier" "Reads the event log post-mortem; infers failure mode + recoverability; writes the human-facing REPORT.md." "failure-classifier.ts / cycle-report.ts"
                 notifier       = component "Notifier" "Best-effort desktop + webhook notifications on terminal events." "notify.ts"
@@ -69,11 +68,11 @@ workspace "Forge v2" "Bottom-up C4 model of forge — an idea machine that runs 
                 skBrainGraph = component "brain-graph" "Maintain the three structural graphs by wrapping the graphify CLI." "skills/brain-graph" "Skill"
             }
 
-            // === Container: operator CLI + human-moment commands ===
-            cli = container "CLI + Human-Moment Commands" "forge subcommands (serve / watch / status / metrics / brain / requeue / send-back) plus the three operator slash-command handoffs." "TypeScript (bin/forge.mjs)" {
-                cliCore     = component "forge subcommands" "serve, status, metrics, requeue, send-back, preflight, brain index/lint." "orchestrator/cli.ts, cli/*.ts"
+            // === Container: operator CLI utilities ===
+            cli = container "CLI Utilities" "forge subcommands (serve / watch / status / metrics / brain / requeue). The human moments are NOT here — they run on the UI (ADR 023)." "TypeScript (bin/forge.mjs)" {
+                cliCore     = component "forge subcommands" "serve, status, metrics, requeue, preflight, brain index/lint." "orchestrator/cli.ts, cli/*.ts"
                 cliWatch    = component "forge watch" "Launches the UI bridge + the Next.js dev server on fixed ports and opens the browser." "cli/forge-watch.ts"
-                cliArchPlan = component "architect plan render" "Renders session state -> PLAN.md + zero-dep PLAN.html; parses operator verdict annotations." "cli/architect-plan.ts"
+                cliArchPlan = component "architect plan render" "Renders the in-UI architect session state -> PLAN.md + zero-dep PLAN.html (read on the /architect plan gate)." "cli/architect-plan.ts"
                 cliDemo     = component "demo bundle builder" "Materialises before/after worktrees, runs the demo spec, composes the self-contained comparison bundle." "cli/demo*.ts"
             }
 
@@ -101,26 +100,16 @@ workspace "Forge v2" "Bottom-up C4 model of forge — an idea machine that runs 
         // Relationships - Operator
         // ---------------------------------------------------------------
         operator -> cli "Runs forge serve / watch / status / metrics in" "terminal"
-        operator -> forgeUi "Watches cycles + acts on the human moments via" "browser"
-        operator -> operatorAI "Runs /forge-architect, /forge-review, /forge-reflect in"
+        operator -> forgeUi "Drives all three human moments + watches cycles on" "browser"
         operator -> github "Reviews + merges the PR in" "browser"
         operator -> monitor "Tails live progress via" "tmux"
         operator -> obsidian "Browses the brain via"
 
         // ---------------------------------------------------------------
-        // Relationships - Operator's Claude session (the three human moments)
-        // ---------------------------------------------------------------
-        operatorAI -> queueStore "Writes the initiative manifest (architect) + verdict/feedback files"
-        operatorAI -> eventStore "Writes user-feedback.md (reflection)"
-        operatorAI -> brainStore "Reads via brain-query (architect / reflection)"
-        operatorAI -> claudeSdk "Runs on"
-        operatorAI -> github "Merges the PR (review)"
-
-        // ---------------------------------------------------------------
         // Relationships - CLI
         // ---------------------------------------------------------------
         cliCore -> sched "Starts the scheduler (forge serve)"
-        cliCore -> queueStore "Requeue / send-back / promote manifests"
+        cliCore -> queueStore "Requeue / promote manifests"
         cliCore -> eventStore "Reads for metrics / status / recap"
         cliCore -> brainStore "brain index / lint"
         cliWatch -> uiBridge "Launches"
@@ -186,7 +175,7 @@ workspace "Forge v2" "Bottom-up C4 model of forge — an idea machine that runs 
         // ---------------------------------------------------------------
         prAdapter -> github "gh pr create / view; git push / fetch / ff" "gh / git"
         prAdapter -> projectRepo "Pushes the initiative branch to" "git"
-        verdictProvider -> queueStore "Polls verdict / pr-feedback files in"
+        verdictProvider -> queueStore "Reads the UI-bridge-written verdict file in"
         eventLogger -> eventStore "Appends JSONL + snapshots to"
         failClassifier -> eventStore "Reads the event log; writes REPORT.md to"
         notifier -> operator "Notifies (desktop / webhook)"
@@ -301,15 +290,15 @@ workspace "Forge v2" "Bottom-up C4 model of forge — an idea machine that runs 
             autoLayout
         }
 
-        dynamic forge "UnattendedCycle" "The end-to-end flow from idea to merged PR, with the three human moments called out." {
-            operatorAI -> queueStore "1. Architect writes the initiative manifest to pending/"
+        dynamic forge "UnattendedCycle" "The end-to-end flow from idea to merged PR, with the three human moments called out (all on the forge UI, ADR 023)." {
+            operator -> forgeUi "1. Operator drives the in-UI architect; on approve its finalize writes the manifest to pending/"
             engine -> queueStore "2. Scheduler claims it (atomic rename to in-flight)"
             engine -> projectRepo "3. Spawns a git worktree from the project repo"
             engine -> skills "4. PM decomposes into work items"
             skills -> claudeSdk "5. Agents run on the SDK"
             engine -> projectRepo "6. Ralph + unifier build, commit, run the quality gate"
             engine -> github "7. Review phase opens the demo-embedded PR"
-            operator -> github "8. Operator reviews + merges the PR"
+            operator -> forgeUi "8. Operator approves the cycle on the /review screen (the PR is still the merge boundary)"
             engine -> github "9. Closure confirms the merge"
             engine -> queueStore "10. Closure moves the manifest to done/"
             engine -> skills "11. Reflection digests the event log"

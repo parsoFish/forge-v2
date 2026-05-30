@@ -4,20 +4,20 @@ graph LR
   subgraph diagram ["Dynamic View: Forge v2"]
     style diagram fill:#ffffff,stroke:#ffffff
 
-    subgraph 8 ["Forge v2"]
-      style 8 fill:#ffffff,stroke:#0b4884,color:#0b4884
+    subgraph 7 ["Forge v2"]
+      style 7 fill:#ffffff,stroke:#0b4884,color:#0b4884
 
-      30["<div style='font-weight: bold'>Phase & Brain Skills</div><div style='font-size: 70%; margin-top: 0px'>[Container: Claude Code skills]</div><div style='font-size: 80%; margin-top:10px'>The Claude Code skill catalog<br />- forge's agent surface. Each<br />skill is a system prompt +<br />tool policy the engine loads<br />into an SDK query(). Brain<br />skills are the brain's<br />read/write API.</div>"]
-      style 30 fill:#438dd5,stroke:#2e6295,color:#ffffff
-      51[("<div style='font-weight: bold'>Brain (three knowledge graphs)</div><div style='font-size: 70%; margin-top: 0px'>[Container: Markdown + graphify graphs]</div><div style='font-size: 80%; margin-top:10px'>A Karpathy-style LLM wiki<br />rendered as an Obsidian<br />vault, in three scopes. Each<br />scope has _raw/ (immutable),<br />themes/ (~15-60 line pages),<br />category indexes, and a<br />graphify graph.</div>")]
-      style 51 fill:#2f6f9f,stroke:#204d6f,color:#ffffff
+      29["<div style='font-weight: bold'>Phase & Brain Skills</div><div style='font-size: 70%; margin-top: 0px'>[Container: Claude Code skills]</div><div style='font-size: 80%; margin-top:10px'>The Claude Code skill catalog<br />- forge's agent surface. Each<br />skill is a system prompt +<br />tool policy the engine loads<br />into an SDK query(). Brain<br />skills are the brain's<br />read/write API.</div>"]
+      style 29 fill:#438dd5,stroke:#2e6295,color:#ffffff
+      50[("<div style='font-weight: bold'>Brain (three knowledge graphs)</div><div style='font-size: 70%; margin-top: 0px'>[Container: Markdown + graphify graphs]</div><div style='font-size: 80%; margin-top:10px'>A Karpathy-style LLM wiki<br />rendered as an Obsidian<br />vault, in three scopes. Each<br />scope has _raw/ (immutable),<br />themes/ (~15-60 line pages),<br />category indexes, and a<br />graphify graph.</div>")]
+      style 50 fill:#2f6f9f,stroke:#204d6f,color:#ffffff
     end
 
     5["<div style='font-weight: bold'>graphify (CLI)</div><div style='font-size: 70%; margin-top: 0px'>[Software System]</div><div style='font-size: 80%; margin-top:10px'>External tree-sitter<br />knowledge-graph tool.<br />Rebuilds the three brain<br />graphs, triggered by a<br />post-commit hook.</div>"]
     style 5 fill:#999999,stroke:#6b6b6b,color:#ffffff
 
-    30-. "<div>1. 1. Reflector ingests<br />themes + the cycle archive</div><div style='font-size: 70%'></div>" .->51
-    5-. "<div>2. 2. Post-commit hook<br />rebuilds the three graphs</div><div style='font-size: 70%'></div>" .->51
-    30-. "<div>3. 3. Next cycle: brain-query<br />reads the graph + themes</div><div style='font-size: 70%'></div>" .->51
+    29-. "<div>1. 1. Reflector ingests<br />themes + the cycle archive</div><div style='font-size: 70%'></div>" .->50
+    5-. "<div>2. 2. Post-commit hook<br />rebuilds the three graphs</div><div style='font-size: 70%'></div>" .->50
+    29-. "<div>3. 3. Next cycle: brain-query<br />reads the graph + themes</div><div style='font-size: 70%'></div>" .->50
 
   end

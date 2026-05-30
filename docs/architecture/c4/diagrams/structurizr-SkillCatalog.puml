@@ -39,7 +39,6 @@ System_Boundary("Forgev2_boundary", "Forge v2", $tags="") {
   Container(Forgev2.OrchestratorEngine, "Orchestrator Engine", $techn="TypeScript / Node (forge serve)", $descr="The hot path: a persistent scheduler that claims initiatives and runs them through five in-cycle phases, isolated per git worktree, recoverable by heartbeat. Caps its own surface area by design (ADRs 011-013).", $tags="", $link="")
 }
 
-Rel(Forgev2.OrchestratorEngine, ManagedProjectRepo, "git worktree add / remove", $techn="git", $tags="", $link="")
 Rel(Forgev2.OrchestratorEngine, Forgev2.PhaseBrainSkills.projectmanager, "Invokes (one-shot) via SDK", $techn="", $tags="", $link="")
 Rel(Forgev2.OrchestratorEngine, Forgev2.PhaseBrainSkills.developerralph, "Runs each work-item iteration", $techn="", $tags="", $link="")
 Rel(Forgev2.OrchestratorEngine, Forgev2.PhaseBrainSkills.developerunifier, "Runs the final unify + demo iteration", $techn="", $tags="", $link="")
@@ -67,6 +66,7 @@ Rel(Forgev2.PhaseBrainSkills.reflector, Forgev2.EventLogArtifacts, "Digests the 
 Rel(Forgev2.PhaseBrainSkills.developerunifier, ManagedProjectRepo, "Writes the demo bundle + PR description to the worktree", $techn="", $tags="", $link="")
 Rel(Forgev2.PhaseBrainSkills.demodemocapture, ManagedProjectRepo, "Builds before/after + runs Playwright against", $techn="", $tags="", $link="")
 Rel(graphifyCLI, Forgev2.Brainthreeknowledgegraphs, "Rebuilds the three graphs (post-commit hook)", $techn="", $tags="", $link="")
+Rel(Forgev2.OrchestratorEngine, ManagedProjectRepo, "git worktree add / remove", $techn="git", $tags="", $link="")
 
 SHOW_LEGEND(true)
 hide stereotypes

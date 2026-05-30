@@ -44,8 +44,8 @@ for f in diagrams/structurizr-*.mmd; do n="${f#diagrams/structurizr-}"; n="${n%.
 
 One operator; the Agent SDK that runs **every** agent; GitHub as the sole merge
 surface; the managed repos forge builds; and the tools that render/index the brain.
-The three human moments run in the operator's **own** Claude session (not
-forge-spawned) and hand off via files.
+The three human moments all run **on the forge UI** (ADR 023 — the UI is the sole
+operator interaction surface); the bridge writes the handoff files the phases consume.
 
 ![System Context](./diagrams/c4-Context.svg)
 
@@ -157,6 +157,10 @@ and the ADRs before acting.
    (`orchestrator/architect-runner.ts`, [ADR 020](../../decisions/020-architect-in-ui.md)) — two
    code paths + state machines for the same human moment. Confirm both are still
    warranted, or designate one as canonical.
+   *(Decided 2026-05-30 — **the in-UI runner is canonical.** The out-of-cycle path
+   was retired: deleted the dead `architect-commit.ts` + the broken `/forge-architect`
+   slash + the now-unused PLAN.md annotation parser. `skills/architect/SKILL.md`
+   stays as the runner's prompt. See ADR 023 §4.)*
 
 5. **`gh-shim` is a parallel path through the safety-critical adapter.** Every
    git/gh op in `pr.ts` has a no-origin local shim (`gh-shim.ts`). If real managed

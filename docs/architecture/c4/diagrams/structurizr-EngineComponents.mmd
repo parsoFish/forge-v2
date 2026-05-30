@@ -4,7 +4,7 @@ graph LR
   subgraph diagram ["Component View: Forge v2 - Orchestrator Engine"]
     style diagram fill:#ffffff,stroke:#ffffff
 
-    1["<div style='font-weight: bold'>Operator</div><div style='font-size: 70%; margin-top: 0px'>[Person]</div><div style='font-size: 80%; margin-top:10px'>The single human running<br />forge across side projects.<br />Touches the system at exactly<br />three points: architect (idea<br />-> initiative), review<br />(engage the PR), reflection<br />(feedback).</div>"]
+    1["<div style='font-weight: bold'>Operator</div><div style='font-size: 70%; margin-top: 0px'>[Person]</div><div style='font-size: 80%; margin-top:10px'>The single human running<br />forge across side projects.<br />Touches the system at exactly<br />three points, all on the<br />forge UI (ADR 023): architect<br />(idea -> initiative), review<br />(approve the cycle),<br />reflection (feedback).</div>"]
     style 1 fill:#08427b,stroke:#052e56,color:#ffffff
 
     2["<div style='font-weight: bold'>Claude Agent SDK</div><div style='font-size: 70%; margin-top: 0px'>[Software System]</div><div style='font-size: 80%; margin-top:10px'>Anthropic's agent runtime +<br />harness (model calls, tool<br />use, prompt caching). Every<br />forge agent runs here; forge<br />hosts no model runtime,<br />vector DB, or harness of its<br />own.</div>"]
@@ -14,123 +14,123 @@ graph LR
     4["<div style='font-weight: bold'>Managed Project Repo</div><div style='font-size: 70%; margin-top: 0px'>[Software System]</div><div style='font-size: 80%; margin-top:10px'>A side-project git repo forge<br />develops (trafficGame,<br />terraform-provider-betterado,<br />claude-harness...). Has its<br />own quality gate and its own<br />Brain 3. Worktrees branch<br />from it.</div>"]
     style 4 fill:#999999,stroke:#6b6b6b,color:#ffffff
 
-    subgraph 8 ["Forge v2"]
-      style 8 fill:#ffffff,stroke:#0b4884,color:#0b4884
+    subgraph 7 ["Forge v2"]
+      style 7 fill:#ffffff,stroke:#0b4884,color:#0b4884
 
-      subgraph 9 ["Orchestrator Engine"]
-        style 9 fill:#ffffff,stroke:#2e6295,color:#2e6295
+      subgraph 8 ["Orchestrator Engine"]
+        style 8 fill:#ffffff,stroke:#2e6295,color:#2e6295
 
-        10["<div style='font-weight: bold'>Scheduler</div><div style='font-size: 70%; margin-top: 0px'>[Component: scheduler.ts]</div><div style='font-size: 80%; margin-top:10px'>~150-line forever loop:<br />claims pending initiatives,<br />spawns each in a worktree,<br />heartbeats, recovers orphans,<br />notifies.</div>"]
+        10["<div style='font-weight: bold'>Scheduler Dispatch</div><div style='font-size: 70%; margin-top: 0px'>[Component: scheduler-dispatch.ts]</div><div style='font-size: 80%; margin-top:10px'>Routes a finished cycle's<br />terminal status: done /<br />failed / bounded auto-retry<br />back to pending.</div>"]
         style 10 fill:#5fa45f,stroke:#427242,color:#ffffff
-        11["<div style='font-weight: bold'>Scheduler Dispatch</div><div style='font-size: 70%; margin-top: 0px'>[Component: scheduler-dispatch.ts]</div><div style='font-size: 80%; margin-top:10px'>Routes a finished cycle's<br />terminal status: done /<br />failed / bounded auto-retry<br />back to pending.</div>"]
+        11["<div style='font-weight: bold'>Daemon Control</div><div style='font-size: 70%; margin-top: 0px'>[Component: daemon.ts]</div><div style='font-size: 80%; margin-top:10px'>Detached `forge serve`<br />process state: pid,<br />pause/resume flag, serve.log.</div>"]
         style 11 fill:#5fa45f,stroke:#427242,color:#ffffff
-        12["<div style='font-weight: bold'>Daemon Control</div><div style='font-size: 70%; margin-top: 0px'>[Component: daemon.ts]</div><div style='font-size: 80%; margin-top:10px'>Detached `forge serve`<br />process state: pid,<br />pause/resume flag, serve.log.</div>"]
-        style 12 fill:#5fa45f,stroke:#427242,color:#ffffff
-        13["<div style='font-weight: bold'>Cycle Runner (spine)</div><div style='font-size: 70%; margin-top: 0px'>[Component: cycle.ts]</div><div style='font-size: 80%; margin-top:10px'>Thin orchestration: threads<br />phase outputs into the next<br />phase, emits start/end<br />events, classifies failures,<br />snapshots artifacts.<br />Resumable from the unifier<br />(ADR 019).</div>"]
-        style 13 fill:#85bbf0,stroke:#5d82a8,color:#000000
-        14["<div style='font-weight: bold'>PM Phase</div><div style='font-size: 70%; margin-top: 0px'>[Component: phases/project-manager.ts]</div><div style='font-size: 80%; margin-top:10px'>Phase 1: invoke<br />project-manager to decompose<br />the initiative into atomic,<br />dependency-ordered work<br />items.</div>"]
+        12["<div style='font-weight: bold'>Cycle Runner (spine)</div><div style='font-size: 70%; margin-top: 0px'>[Component: cycle.ts]</div><div style='font-size: 80%; margin-top:10px'>Thin orchestration: threads<br />phase outputs into the next<br />phase, emits start/end<br />events, classifies failures,<br />snapshots artifacts.<br />Resumable from the unifier<br />(ADR 019).</div>"]
+        style 12 fill:#85bbf0,stroke:#5d82a8,color:#000000
+        13["<div style='font-weight: bold'>PM Phase</div><div style='font-size: 70%; margin-top: 0px'>[Component: phases/project-manager.ts]</div><div style='font-size: 80%; margin-top:10px'>Phase 1: invoke<br />project-manager to decompose<br />the initiative into atomic,<br />dependency-ordered work<br />items.</div>"]
+        style 13 fill:#f29b30,stroke:#a96c21,color:#000000
+        14["<div style='font-weight: bold'>Dev-Loop Phase</div><div style='font-size: 70%; margin-top: 0px'>[Component: phases/developer-loop.ts]</div><div style='font-size: 80%; margin-top:10px'>Phase 2: walk the WI DAG<br />topologically, run a Ralph<br />loop per work item, then the<br />unifier (final Ralph) for<br />cross-WI proof + demo + PR<br />body.</div>"]
         style 14 fill:#f29b30,stroke:#a96c21,color:#000000
-        15["<div style='font-weight: bold'>Dev-Loop Phase</div><div style='font-size: 70%; margin-top: 0px'>[Component: phases/developer-loop.ts]</div><div style='font-size: 80%; margin-top:10px'>Phase 2: walk the WI DAG<br />topologically, run a Ralph<br />loop per work item, then the<br />unifier (final Ralph) for<br />cross-WI proof + demo + PR<br />body.</div>"]
+        15["<div style='font-weight: bold'>Review Phase</div><div style='font-size: 70%; margin-top: 0px'>[Component: phases/reviewer.ts]</div><div style='font-size: 80%; margin-top:10px'>Phase 3: open the<br />demo-embedded PR (thin,<br />non-LLM); the PR is the<br />operator's surface. Never<br />merges.</div>"]
         style 15 fill:#f29b30,stroke:#a96c21,color:#000000
-        16["<div style='font-weight: bold'>Review Phase</div><div style='font-size: 70%; margin-top: 0px'>[Component: phases/reviewer.ts]</div><div style='font-size: 80%; margin-top:10px'>Phase 3: open the<br />demo-embedded PR (thin,<br />non-LLM); the PR is the<br />operator's surface. Never<br />merges.</div>"]
+        16["<div style='font-weight: bold'>Closure Phase</div><div style='font-size: 70%; margin-top: 0px'>[Component: phases/closure.ts]</div><div style='font-size: 80%; margin-top:10px'>Phase 4: the single<br />terminal-move authority.<br />Confirms the merge (gh pr<br />view), aligns local->remote,<br />moves the manifest to done/.</div>"]
         style 16 fill:#f29b30,stroke:#a96c21,color:#000000
-        17["<div style='font-weight: bold'>Closure Phase</div><div style='font-size: 70%; margin-top: 0px'>[Component: phases/closure.ts]</div><div style='font-size: 80%; margin-top:10px'>Phase 4: the single<br />terminal-move authority.<br />Confirms the merge (gh pr<br />view), aligns local->remote,<br />moves the manifest to done/.</div>"]
+        17["<div style='font-weight: bold'>Reflection Phase</div><div style='font-size: 70%; margin-top: 0px'>[Component: phases/reflector.ts]</div><div style='font-size: 80%; margin-top:10px'>Phase 5 (post-merge only):<br />one-shot reflector that<br />digests the event log and<br />writes brain themes.</div>"]
         style 17 fill:#f29b30,stroke:#a96c21,color:#000000
-        18["<div style='font-weight: bold'>Reflection Phase</div><div style='font-size: 70%; margin-top: 0px'>[Component: phases/reflector.ts]</div><div style='font-size: 80%; margin-top:10px'>Phase 5 (post-merge only):<br />one-shot reflector that<br />digests the event log and<br />writes brain themes.</div>"]
-        style 18 fill:#f29b30,stroke:#a96c21,color:#000000
-        19["<div style='font-weight: bold'>Ralph Loop Runtime</div><div style='font-size: 70%; margin-top: 0px'>[Component: loops/ralph/]</div><div style='font-size: 80%; margin-top:10px'>Swappable agentic loop:<br />re-read PROMPT/AGENT/fix_plan<br />-> SDK query() -> commit -><br />check stop conditions (gate<br />pass | iteration/cost<br />budget). loops/_adapters is<br />the placeholder for<br />alternatives.</div>"]
+        18["<div style='font-weight: bold'>Ralph Loop Runtime</div><div style='font-size: 70%; margin-top: 0px'>[Component: loops/ralph/]</div><div style='font-size: 80%; margin-top:10px'>Swappable agentic loop:<br />re-read PROMPT/AGENT/fix_plan<br />-> SDK query() -> commit -><br />check stop conditions (gate<br />pass | iteration/cost<br />budget). loops/_adapters is<br />the placeholder for<br />alternatives.</div>"]
+        style 18 fill:#85bbf0,stroke:#5d82a8,color:#000000
+        19["<div style='font-weight: bold'>Invocation Contracts</div><div style='font-size: 70%; margin-top: 0px'>[Component: *-invocation.ts]</div><div style='font-size: 80%; margin-top:10px'>Single source of truth for<br />each phase's system+user<br />prompt, model, and<br />allowed/disallowed tools.</div>"]
         style 19 fill:#85bbf0,stroke:#5d82a8,color:#000000
-        20["<div style='font-weight: bold'>Invocation Contracts</div><div style='font-size: 70%; margin-top: 0px'>[Component: *-invocation.ts]</div><div style='font-size: 80%; margin-top:10px'>Single source of truth for<br />each phase's system+user<br />prompt, model, and<br />allowed/disallowed tools.</div>"]
+        20["<div style='font-weight: bold'>Queue State Machine</div><div style='font-size: 70%; margin-top: 0px'>[Component: queue.ts / manifest.ts / work-item.ts]</div><div style='font-size: 80%; margin-top:10px'>Atomic manifest transitions<br />via rename(); manifest +<br />work-item<br />parse/validate/topo-sort.</div>"]
         style 20 fill:#85bbf0,stroke:#5d82a8,color:#000000
-        21["<div style='font-weight: bold'>Queue State Machine</div><div style='font-size: 70%; margin-top: 0px'>[Component: queue.ts / manifest.ts / work-item.ts]</div><div style='font-size: 80%; margin-top:10px'>Atomic manifest transitions<br />via rename(); manifest +<br />work-item<br />parse/validate/topo-sort.</div>"]
+        21["<div style='font-weight: bold'>Worktree Manager</div><div style='font-size: 70%; margin-top: 0px'>[Component: worktree.ts]</div><div style='font-size: 80%; margin-top:10px'>Thin wrapper over git<br />worktree add/remove/prune;<br />self-heals stale registry<br />state.</div>"]
         style 21 fill:#85bbf0,stroke:#5d82a8,color:#000000
-        22["<div style='font-weight: bold'>Worktree Manager</div><div style='font-size: 70%; margin-top: 0px'>[Component: worktree.ts]</div><div style='font-size: 80%; margin-top:10px'>Thin wrapper over git<br />worktree add/remove/prune;<br />self-heals stale registry<br />state.</div>"]
+        22["<div style='font-weight: bold'>PR / Git Adapter</div><div style='font-size: 70%; margin-top: 0px'>[Component: pr.ts (+ gh-shim.ts)]</div><div style='font-size: 80%; margin-top:10px'>The only place forge shells<br />git push / gh pr; enforces<br />the local<->remote sync<br />invariant; shims gh locally<br />for no-origin projects.</div>"]
         style 22 fill:#85bbf0,stroke:#5d82a8,color:#000000
-        23["<div style='font-weight: bold'>PR / Git Adapter</div><div style='font-size: 70%; margin-top: 0px'>[Component: pr.ts (+ gh-shim.ts)]</div><div style='font-size: 80%; margin-top:10px'>The only place forge shells<br />git push / gh pr; enforces<br />the local<->remote sync<br />invariant; shims gh locally<br />for no-origin projects.</div>"]
+        23["<div style='font-weight: bold'>Verdict Parser</div><div style='font-size: 70%; margin-top: 0px'>[Component: file-verdict.ts]</div><div style='font-size: 80%; margin-top:10px'>Resolves the operator's<br />review verdict from the<br />verdict file the UI bridge<br />writes (ADR 023 — the<br />PR-comment provider +<br />getVerdict seam were<br />retired).</div>"]
         style 23 fill:#85bbf0,stroke:#5d82a8,color:#000000
-        24["<div style='font-weight: bold'>Verdict Provider</div><div style='font-size: 70%; margin-top: 0px'>[Component: file-verdict.ts / pr-verdict.ts]</div><div style='font-size: 80%; margin-top:10px'>Resolves the operator's<br />review verdict from<br />file/PR-comment handoffs.</div>"]
+        24["<div style='font-weight: bold'>Event Logger</div><div style='font-size: 70%; margin-top: 0px'>[Component: logging.ts / tool-event-emit.ts]</div><div style='font-size: 80%; margin-top:10px'>Append-only JSONL event log +<br />tool-use telemetry. The<br />single source of truth for a<br />cycle.</div>"]
         style 24 fill:#85bbf0,stroke:#5d82a8,color:#000000
-        25["<div style='font-weight: bold'>Event Logger</div><div style='font-size: 70%; margin-top: 0px'>[Component: logging.ts / tool-event-emit.ts]</div><div style='font-size: 80%; margin-top:10px'>Append-only JSONL event log +<br />tool-use telemetry. The<br />single source of truth for a<br />cycle.</div>"]
+        25["<div style='font-weight: bold'>Failure Classifier</div><div style='font-size: 70%; margin-top: 0px'>[Component: failure-classifier.ts / cycle-report.ts]</div><div style='font-size: 80%; margin-top:10px'>Reads the event log<br />post-mortem; infers failure<br />mode + recoverability; writes<br />the human-facing REPORT.md.</div>"]
         style 25 fill:#85bbf0,stroke:#5d82a8,color:#000000
-        26["<div style='font-weight: bold'>Failure Classifier</div><div style='font-size: 70%; margin-top: 0px'>[Component: failure-classifier.ts / cycle-report.ts]</div><div style='font-size: 80%; margin-top:10px'>Reads the event log<br />post-mortem; infers failure<br />mode + recoverability; writes<br />the human-facing REPORT.md.</div>"]
+        26["<div style='font-weight: bold'>Notifier</div><div style='font-size: 70%; margin-top: 0px'>[Component: notify.ts]</div><div style='font-size: 80%; margin-top:10px'>Best-effort desktop + webhook<br />notifications on terminal<br />events.</div>"]
         style 26 fill:#85bbf0,stroke:#5d82a8,color:#000000
-        27["<div style='font-weight: bold'>Notifier</div><div style='font-size: 70%; margin-top: 0px'>[Component: notify.ts]</div><div style='font-size: 80%; margin-top:10px'>Best-effort desktop + webhook<br />notifications on terminal<br />events.</div>"]
+        27["<div style='font-weight: bold'>Architect Runner (in-UI)</div><div style='font-size: 70%; margin-top: 0px'>[Component: architect-runner.ts]</div><div style='font-size: 80%; margin-top:10px'>Turn-based, file-checkpointed<br />architect driven from the UI<br />bridge (ADR 020); advances<br />one step per call via the LLM<br />council.</div>"]
         style 27 fill:#85bbf0,stroke:#5d82a8,color:#000000
-        28["<div style='font-weight: bold'>Architect Runner (in-UI)</div><div style='font-size: 70%; margin-top: 0px'>[Component: architect-runner.ts]</div><div style='font-size: 80%; margin-top:10px'>Turn-based, file-checkpointed<br />architect driven from the UI<br />bridge (ADR 020); advances<br />one step per call via the LLM<br />council.</div>"]
+        28["<div style='font-weight: bold'>Config</div><div style='font-size: 70%; margin-top: 0px'>[Component: config.ts / project-config.ts]</div><div style='font-size: 80%; margin-top:10px'>Per-machine forge.config.json<br />+ per-project<br />.forge/project.json (quality<br />gate, demo shape, heartbeat).</div>"]
         style 28 fill:#85bbf0,stroke:#5d82a8,color:#000000
-        29["<div style='font-weight: bold'>Config</div><div style='font-size: 70%; margin-top: 0px'>[Component: config.ts / project-config.ts]</div><div style='font-size: 80%; margin-top:10px'>Per-machine forge.config.json<br />+ per-project<br />.forge/project.json (quality<br />gate, demo shape, heartbeat).</div>"]
-        style 29 fill:#85bbf0,stroke:#5d82a8,color:#000000
+        9["<div style='font-weight: bold'>Scheduler</div><div style='font-size: 70%; margin-top: 0px'>[Component: scheduler.ts]</div><div style='font-size: 80%; margin-top:10px'>~150-line forever loop:<br />claims pending initiatives,<br />spawns each in a worktree,<br />heartbeats, recovers orphans,<br />notifies.</div>"]
+        style 9 fill:#5fa45f,stroke:#427242,color:#ffffff
       end
 
-      30["<div style='font-weight: bold'>Phase & Brain Skills</div><div style='font-size: 70%; margin-top: 0px'>[Container: Claude Code skills]</div><div style='font-size: 80%; margin-top:10px'>The Claude Code skill catalog<br />- forge's agent surface. Each<br />skill is a system prompt +<br />tool policy the engine loads<br />into an SDK query(). Brain<br />skills are the brain's<br />read/write API.</div>"]
-      style 30 fill:#438dd5,stroke:#2e6295,color:#ffffff
-      41["<div style='font-weight: bold'>CLI + Human-Moment Commands</div><div style='font-size: 70%; margin-top: 0px'>[Container: TypeScript (bin/forge.mjs)]</div><div style='font-size: 80%; margin-top:10px'>forge subcommands (serve /<br />watch / status / metrics /<br />brain / requeue / send-back)<br />plus the three operator<br />slash-command handoffs.</div>"]
-      style 41 fill:#438dd5,stroke:#2e6295,color:#ffffff
-      46["<div style='font-weight: bold'>UI Bridge</div><div style='font-size: 70%; margin-top: 0px'>[Container: TypeScript (ws)]</div><div style='font-size: 80%; margin-top:10px'>WebSocket + HTTP server<br />(:4123). Tails the event log<br />and scans the queue, streams<br />snapshots + events to the<br />browser, and accepts<br />verdict/feedback files.<br />Stateless: re-derives<br />everything from the stores.</div>"]
-      style 46 fill:#438dd5,stroke:#2e6295,color:#ffffff
-      48["<div style='font-weight: bold'>Monitor</div><div style='font-size: 70%; margin-top: 0px'>[Container: Shell / tmux]</div><div style='font-size: 80%; margin-top:10px'>tmux 3-pane layout (serve<br />stdout / live event tail /<br />forge status --watch) plus an<br />Obsidian vault launcher.</div>"]
-      style 48 fill:#438dd5,stroke:#2e6295,color:#ffffff
-      49[("<div style='font-weight: bold'>Initiative Queue</div><div style='font-size: 70%; margin-top: 0px'>[Container: Filesystem (_queue/)]</div><div style='font-size: 80%; margin-top:10px'>Filesystem state machine of<br />initiative manifests: pending<br />-> in-flight -><br />ready-for-review -> done |<br />failed. Atomic rename<br />transitions; heartbeat files<br />enable crash recovery. done/<br />implies MERGED.</div>")]
+      29["<div style='font-weight: bold'>Phase & Brain Skills</div><div style='font-size: 70%; margin-top: 0px'>[Container: Claude Code skills]</div><div style='font-size: 80%; margin-top:10px'>The Claude Code skill catalog<br />- forge's agent surface. Each<br />skill is a system prompt +<br />tool policy the engine loads<br />into an SDK query(). Brain<br />skills are the brain's<br />read/write API.</div>"]
+      style 29 fill:#438dd5,stroke:#2e6295,color:#ffffff
+      40["<div style='font-weight: bold'>CLI Utilities</div><div style='font-size: 70%; margin-top: 0px'>[Container: TypeScript (bin/forge.mjs)]</div><div style='font-size: 80%; margin-top:10px'>forge subcommands (serve /<br />watch / status / metrics /<br />brain / requeue). The human<br />moments are NOT here — they<br />run on the UI (ADR 023).</div>"]
+      style 40 fill:#438dd5,stroke:#2e6295,color:#ffffff
+      45["<div style='font-weight: bold'>UI Bridge</div><div style='font-size: 70%; margin-top: 0px'>[Container: TypeScript (ws)]</div><div style='font-size: 80%; margin-top:10px'>WebSocket + HTTP server<br />(:4123). Tails the event log<br />and scans the queue, streams<br />snapshots + events to the<br />browser, and accepts<br />verdict/feedback files.<br />Stateless: re-derives<br />everything from the stores.</div>"]
+      style 45 fill:#438dd5,stroke:#2e6295,color:#ffffff
+      47["<div style='font-weight: bold'>Monitor</div><div style='font-size: 70%; margin-top: 0px'>[Container: Shell / tmux]</div><div style='font-size: 80%; margin-top:10px'>tmux 3-pane layout (serve<br />stdout / live event tail /<br />forge status --watch) plus an<br />Obsidian vault launcher.</div>"]
+      style 47 fill:#438dd5,stroke:#2e6295,color:#ffffff
+      48[("<div style='font-weight: bold'>Initiative Queue</div><div style='font-size: 70%; margin-top: 0px'>[Container: Filesystem (_queue/)]</div><div style='font-size: 80%; margin-top:10px'>Filesystem state machine of<br />initiative manifests: pending<br />-> in-flight -><br />ready-for-review -> done |<br />failed. Atomic rename<br />transitions; heartbeat files<br />enable crash recovery. done/<br />implies MERGED.</div>")]
+      style 48 fill:#2f6f9f,stroke:#204d6f,color:#ffffff
+      49[("<div style='font-weight: bold'>Event Log + Artifacts</div><div style='font-size: 70%; margin-top: 0px'>[Container: Filesystem (_logs/)]</div><div style='font-size: 80%; margin-top:10px'>Append-only per-cycle JSONL<br />event log plus snapshotted<br />work-items / demo /<br />REPORT.md. The replayable<br />source of truth for<br />reflection, the UI, and<br />metrics.</div>")]
       style 49 fill:#2f6f9f,stroke:#204d6f,color:#ffffff
-      50[("<div style='font-weight: bold'>Event Log + Artifacts</div><div style='font-size: 70%; margin-top: 0px'>[Container: Filesystem (_logs/)]</div><div style='font-size: 80%; margin-top:10px'>Append-only per-cycle JSONL<br />event log plus snapshotted<br />work-items / demo /<br />REPORT.md. The replayable<br />source of truth for<br />reflection, the UI, and<br />metrics.</div>")]
-      style 50 fill:#2f6f9f,stroke:#204d6f,color:#ffffff
     end
 
-    13-. "<div>1. decompose</div><div style='font-size: 70%'></div>" .->14
-    13-. "<div>2. build</div><div style='font-size: 70%'></div>" .->15
-    13-. "<div>3. open PR</div><div style='font-size: 70%'></div>" .->16
-    13-. "<div>4. confirm merge + align</div><div style='font-size: 70%'></div>" .->17
-    13-. "<div>5. reflect (only if merged)</div><div style='font-size: 70%'></div>" .->18
-    13-. "<div>Emits start/end + phase<br />events to</div><div style='font-size: 70%'></div>" .->25
-    13-. "<div>Classifies failures + writes<br />the report via</div><div style='font-size: 70%'></div>" .->26
-    13-. "<div>Reads forge.config /<br />project.json via</div><div style='font-size: 70%'></div>" .->29
-    14-. "<div>Builds the PM prompt via</div><div style='font-size: 70%'></div>" .->20
-    14-. "<div>Invokes (one-shot) via SDK</div><div style='font-size: 70%'></div>" .->30
-    15-. "<div>Builds the dev/unifier<br />prompts via</div><div style='font-size: 70%'></div>" .->20
-    15-. "<div>Drives per-WI loops + the<br />unifier via</div><div style='font-size: 70%'></div>" .->19
-    19-. "<div>Runs each work-item iteration</div><div style='font-size: 70%'></div>" .->30
-    19-. "<div>Calls query() each iteration<br />(loads the dev/unifier skill)</div><div style='font-size: 70%'></div>" .->2
-    19-. "<div>Commits worktree changes +<br />runs the project quality gate</div><div style='font-size: 70%'>[git / shell]</div>" .->4
-    19-. "<div>Emits per-iteration cost +<br />tool events to</div><div style='font-size: 70%'></div>" .->25
-    16-. "<div>Opens the demo-embedded PR<br />via</div><div style='font-size: 70%'></div>" .->23
-    16-. "<div>Reads the operator verdict<br />via</div><div style='font-size: 70%'></div>" .->24
-    17-. "<div>Confirms merge + aligns<br />local->remote via</div><div style='font-size: 70%'></div>" .->23
-    17-. "<div>Moves the manifest to done /<br />ready-for-review</div><div style='font-size: 70%'></div>" .->49
-    18-. "<div>Builds the reflector prompt<br />via</div><div style='font-size: 70%'></div>" .->20
-    18-. "<div>Invokes (one-shot,<br />post-merge) via SDK</div><div style='font-size: 70%'></div>" .->30
-    28-. "<div>Advances the council one step<br />via SDK</div><div style='font-size: 70%'></div>" .->30
-    28-. "<div>Writes the draft initiative +<br />PLAN to the session</div><div style='font-size: 70%'></div>" .->49
-    23-. "<div>gh pr create / view; git push<br />/ fetch / ff</div><div style='font-size: 70%'>[gh / git]</div>" .->3
-    23-. "<div>Pushes the initiative branch<br />to</div><div style='font-size: 70%'>[git]</div>" .->4
-    24-. "<div>Polls verdict / pr-feedback<br />files in</div><div style='font-size: 70%'></div>" .->49
-    25-. "<div>Appends JSONL + snapshots to</div><div style='font-size: 70%'></div>" .->50
-    26-. "<div>Reads the event log; writes<br />REPORT.md to</div><div style='font-size: 70%'></div>" .->50
-    27-. "<div>Notifies (desktop / webhook)</div><div style='font-size: 70%'></div>" .->1
-    30-. "<div>Executes on</div><div style='font-size: 70%'></div>" .->2
-    30-. "<div>Digests the event log in</div><div style='font-size: 70%'></div>" .->50
-    30-. "<div>Writes the demo bundle + PR<br />description to the worktree</div><div style='font-size: 70%'></div>" .->4
+    12-. "<div>Reads forge.config /<br />project.json via</div><div style='font-size: 70%'></div>" .->28
+    13-. "<div>Builds the PM prompt via</div><div style='font-size: 70%'></div>" .->19
+    13-. "<div>Invokes (one-shot) via SDK</div><div style='font-size: 70%'></div>" .->29
+    14-. "<div>Builds the dev/unifier<br />prompts via</div><div style='font-size: 70%'></div>" .->19
+    14-. "<div>Drives per-WI loops + the<br />unifier via</div><div style='font-size: 70%'></div>" .->18
+    18-. "<div>Runs each work-item iteration</div><div style='font-size: 70%'></div>" .->29
+    18-. "<div>Calls query() each iteration<br />(loads the dev/unifier skill)</div><div style='font-size: 70%'></div>" .->2
+    18-. "<div>Commits worktree changes +<br />runs the project quality gate</div><div style='font-size: 70%'>[git / shell]</div>" .->4
+    18-. "<div>Emits per-iteration cost +<br />tool events to</div><div style='font-size: 70%'></div>" .->24
+    15-. "<div>Opens the demo-embedded PR<br />via</div><div style='font-size: 70%'></div>" .->22
+    15-. "<div>Reads the operator verdict<br />via</div><div style='font-size: 70%'></div>" .->23
+    16-. "<div>Confirms merge + aligns<br />local->remote via</div><div style='font-size: 70%'></div>" .->22
+    16-. "<div>Moves the manifest to done /<br />ready-for-review</div><div style='font-size: 70%'></div>" .->48
+    17-. "<div>Builds the reflector prompt<br />via</div><div style='font-size: 70%'></div>" .->19
+    17-. "<div>Invokes (one-shot,<br />post-merge) via SDK</div><div style='font-size: 70%'></div>" .->29
+    27-. "<div>Advances the council one step<br />via SDK</div><div style='font-size: 70%'></div>" .->29
+    27-. "<div>Writes the draft initiative +<br />PLAN to the session</div><div style='font-size: 70%'></div>" .->48
+    22-. "<div>gh pr create / view; git push<br />/ fetch / ff</div><div style='font-size: 70%'>[gh / git]</div>" .->3
+    22-. "<div>Pushes the initiative branch<br />to</div><div style='font-size: 70%'>[git]</div>" .->4
+    23-. "<div>Reads the UI-bridge-written<br />verdict file in</div><div style='font-size: 70%'></div>" .->48
+    24-. "<div>Appends JSONL + snapshots to</div><div style='font-size: 70%'></div>" .->49
+    25-. "<div>Reads the event log; writes<br />REPORT.md to</div><div style='font-size: 70%'></div>" .->49
+    26-. "<div>Notifies (desktop / webhook)</div><div style='font-size: 70%'></div>" .->1
+    29-. "<div>Executes on</div><div style='font-size: 70%'></div>" .->2
+    29-. "<div>Digests the event log in</div><div style='font-size: 70%'></div>" .->49
+    29-. "<div>Writes the demo bundle + PR<br />description to the worktree</div><div style='font-size: 70%'></div>" .->4
     4-. "<div>Has its remote on / PRs<br />opened against</div><div style='font-size: 70%'></div>" .->3
-    48-. "<div>Tails the event log in</div><div style='font-size: 70%'></div>" .->50
-    48-. "<div>Shows queue status from</div><div style='font-size: 70%'></div>" .->49
-    48-. "<div>Runs forge serve / status<br />against</div><div style='font-size: 70%'></div>" .->10
-    1-. "<div>Runs forge serve / watch /<br />status / metrics in</div><div style='font-size: 70%'>[terminal]</div>" .->41
+    47-. "<div>Tails the event log in</div><div style='font-size: 70%'></div>" .->49
+    47-. "<div>Shows queue status from</div><div style='font-size: 70%'></div>" .->48
+    47-. "<div>Runs forge serve / status<br />against</div><div style='font-size: 70%'></div>" .->9
+    1-. "<div>Runs forge serve / watch /<br />status / metrics in</div><div style='font-size: 70%'>[terminal]</div>" .->40
     1-. "<div>Reviews + merges the PR in</div><div style='font-size: 70%'>[browser]</div>" .->3
-    1-. "<div>Tails live progress via</div><div style='font-size: 70%'>[tmux]</div>" .->48
-    41-. "<div>Starts the scheduler (forge<br />serve)</div><div style='font-size: 70%'></div>" .->10
-    41-. "<div>Requeue / send-back / promote<br />manifests</div><div style='font-size: 70%'></div>" .->49
-    41-. "<div>Reads for metrics / status /<br />recap</div><div style='font-size: 70%'></div>" .->50
-    41-. "<div>Launches</div><div style='font-size: 70%'></div>" .->46
-    41-. "<div>Builds before/after worktrees<br />+ runs Playwright</div><div style='font-size: 70%'></div>" .->4
-    46-. "<div>Tails the event log (200ms)</div><div style='font-size: 70%'></div>" .->50
-    46-. "<div>Scans manifests; writes<br />verdict files</div><div style='font-size: 70%'></div>" .->49
-    46-. "<div>Drives the in-UI architect<br />runner + scheduler controls</div><div style='font-size: 70%'></div>" .->28
-    10-. "<div>Claims + recovers manifests<br />(atomic rename) + heartbeats</div><div style='font-size: 70%'></div>" .->49
-    10-. "<div>Adds a worktree per claimed<br />initiative</div><div style='font-size: 70%'></div>" .->22
-    10-. "<div>Runs a cycle per claimed<br />initiative</div><div style='font-size: 70%'></div>" .->13
-    10-. "<div>Routes terminal status via</div><div style='font-size: 70%'></div>" .->11
-    10-. "<div>Surfaces completion via</div><div style='font-size: 70%'></div>" .->27
-    10-. "<div>Honors pause/resume + pid via</div><div style='font-size: 70%'></div>" .->12
-    11-. "<div>Moves the manifest (done /<br />failed / pending)</div><div style='font-size: 70%'></div>" .->49
-    22-. "<div>git worktree add / remove</div><div style='font-size: 70%'>[git]</div>" .->4
+    1-. "<div>Tails live progress via</div><div style='font-size: 70%'>[tmux]</div>" .->47
+    40-. "<div>Starts the scheduler (forge<br />serve)</div><div style='font-size: 70%'></div>" .->9
+    40-. "<div>Requeue / promote manifests</div><div style='font-size: 70%'></div>" .->48
+    40-. "<div>Reads for metrics / status /<br />recap</div><div style='font-size: 70%'></div>" .->49
+    40-. "<div>Launches</div><div style='font-size: 70%'></div>" .->45
+    40-. "<div>Builds before/after worktrees<br />+ runs Playwright</div><div style='font-size: 70%'></div>" .->4
+    45-. "<div>Tails the event log (200ms)</div><div style='font-size: 70%'></div>" .->49
+    45-. "<div>Scans manifests; writes<br />verdict files</div><div style='font-size: 70%'></div>" .->48
+    45-. "<div>Drives the in-UI architect<br />runner + scheduler controls</div><div style='font-size: 70%'></div>" .->27
+    9-. "<div>Claims + recovers manifests<br />(atomic rename) + heartbeats</div><div style='font-size: 70%'></div>" .->48
+    9-. "<div>Adds a worktree per claimed<br />initiative</div><div style='font-size: 70%'></div>" .->21
+    9-. "<div>Runs a cycle per claimed<br />initiative</div><div style='font-size: 70%'></div>" .->12
+    9-. "<div>Routes terminal status via</div><div style='font-size: 70%'></div>" .->10
+    9-. "<div>Surfaces completion via</div><div style='font-size: 70%'></div>" .->26
+    9-. "<div>Honors pause/resume + pid via</div><div style='font-size: 70%'></div>" .->11
+    10-. "<div>Moves the manifest (done /<br />failed / pending)</div><div style='font-size: 70%'></div>" .->48
+    21-. "<div>git worktree add / remove</div><div style='font-size: 70%'>[git]</div>" .->4
+    12-. "<div>1. decompose</div><div style='font-size: 70%'></div>" .->13
+    12-. "<div>2. build</div><div style='font-size: 70%'></div>" .->14
+    12-. "<div>3. open PR</div><div style='font-size: 70%'></div>" .->15
+    12-. "<div>4. confirm merge + align</div><div style='font-size: 70%'></div>" .->16
+    12-. "<div>5. reflect (only if merged)</div><div style='font-size: 70%'></div>" .->17
+    12-. "<div>Emits start/end + phase<br />events to</div><div style='font-size: 70%'></div>" .->24
+    12-. "<div>Classifies failures + writes<br />the report via</div><div style='font-size: 70%'></div>" .->25
 
   end

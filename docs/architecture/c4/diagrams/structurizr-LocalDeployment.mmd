@@ -4,89 +4,89 @@ graph LR
   subgraph diagram ["Deployment View: Forge v2 - Local (WSL2)"]
     style diagram fill:#ffffff,stroke:#ffffff
 
-    subgraph 183 ["Operator Workstation"]
-      style 183 fill:#ffffff,stroke:#444444,color:#444444
+    subgraph 175 ["Operator Workstation"]
+      style 175 fill:#ffffff,stroke:#444444,color:#444444
 
-      subgraph 184 ["Node.js runtime"]
-        style 184 fill:#ffffff,stroke:#444444,color:#444444
+      subgraph 176 ["Node.js runtime"]
+        style 176 fill:#ffffff,stroke:#444444,color:#444444
 
-        185["<div style='font-weight: bold'>Orchestrator Engine</div><div style='font-size: 70%; margin-top: 0px'>[Container: TypeScript / Node (forge serve)]</div><div style='font-size: 80%; margin-top:10px'>The hot path: a persistent<br />scheduler that claims<br />initiatives and runs them<br />through five in-cycle phases,<br />isolated per git worktree,<br />recoverable by heartbeat.<br />Caps its own surface area by<br />design (ADRs 011-013).</div>"]
-        style 185 fill:#438dd5,stroke:#2e6295,color:#ffffff
-        186["<div style='font-weight: bold'>CLI + Human-Moment Commands</div><div style='font-size: 70%; margin-top: 0px'>[Container: TypeScript (bin/forge.mjs)]</div><div style='font-size: 80%; margin-top:10px'>forge subcommands (serve /<br />watch / status / metrics /<br />brain / requeue / send-back)<br />plus the three operator<br />slash-command handoffs.</div>"]
+        177["<div style='font-weight: bold'>Orchestrator Engine</div><div style='font-size: 70%; margin-top: 0px'>[Container: TypeScript / Node (forge serve)]</div><div style='font-size: 80%; margin-top:10px'>The hot path: a persistent<br />scheduler that claims<br />initiatives and runs them<br />through five in-cycle phases,<br />isolated per git worktree,<br />recoverable by heartbeat.<br />Caps its own surface area by<br />design (ADRs 011-013).</div>"]
+        style 177 fill:#438dd5,stroke:#2e6295,color:#ffffff
+        178["<div style='font-weight: bold'>CLI Utilities</div><div style='font-size: 70%; margin-top: 0px'>[Container: TypeScript (bin/forge.mjs)]</div><div style='font-size: 80%; margin-top:10px'>forge subcommands (serve /<br />watch / status / metrics /<br />brain / requeue). The human<br />moments are NOT here — they<br />run on the UI (ADR 023).</div>"]
+        style 178 fill:#438dd5,stroke:#2e6295,color:#ffffff
+        180["<div style='font-weight: bold'>UI Bridge</div><div style='font-size: 70%; margin-top: 0px'>[Container: TypeScript (ws)]</div><div style='font-size: 80%; margin-top:10px'>WebSocket + HTTP server<br />(:4123). Tails the event log<br />and scans the queue, streams<br />snapshots + events to the<br />browser, and accepts<br />verdict/feedback files.<br />Stateless: re-derives<br />everything from the stores.</div>"]
+        style 180 fill:#438dd5,stroke:#2e6295,color:#ffffff
+        183["<div style='font-weight: bold'>Phase & Brain Skills</div><div style='font-size: 70%; margin-top: 0px'>[Container: Claude Code skills]</div><div style='font-size: 80%; margin-top:10px'>The Claude Code skill catalog<br />- forge's agent surface. Each<br />skill is a system prompt +<br />tool policy the engine loads<br />into an SDK query(). Brain<br />skills are the brain's<br />read/write API.</div>"]
+        style 183 fill:#438dd5,stroke:#2e6295,color:#ffffff
+      end
+
+      subgraph 185 ["Next.js dev server"]
+        style 185 fill:#ffffff,stroke:#444444,color:#444444
+
+        186["<div style='font-weight: bold'>forge-ui Dashboard</div><div style='font-size: 70%; margin-top: 0px'>[Container: Next.js / React]</div><div style='font-size: 80%; margin-top:10px'>Next.js operator UI (:4124):<br />the cascading hex pipeline,<br />the grouped initiative pane,<br />and the dedicated architect /<br />review / reflect screens.<br />Every load-bearing state is<br />mirrored to data-* attributes<br />(DOM-as-metrics).</div>"]
         style 186 fill:#438dd5,stroke:#2e6295,color:#ffffff
-        188["<div style='font-weight: bold'>UI Bridge</div><div style='font-size: 70%; margin-top: 0px'>[Container: TypeScript (ws)]</div><div style='font-size: 80%; margin-top:10px'>WebSocket + HTTP server<br />(:4123). Tails the event log<br />and scans the queue, streams<br />snapshots + events to the<br />browser, and accepts<br />verdict/feedback files.<br />Stateless: re-derives<br />everything from the stores.</div>"]
-        style 188 fill:#438dd5,stroke:#2e6295,color:#ffffff
-        191["<div style='font-weight: bold'>Phase & Brain Skills</div><div style='font-size: 70%; margin-top: 0px'>[Container: Claude Code skills]</div><div style='font-size: 80%; margin-top:10px'>The Claude Code skill catalog<br />- forge's agent surface. Each<br />skill is a system prompt +<br />tool policy the engine loads<br />into an SDK query(). Brain<br />skills are the brain's<br />read/write API.</div>"]
-        style 191 fill:#438dd5,stroke:#2e6295,color:#ffffff
       end
 
-      subgraph 193 ["Next.js dev server"]
-        style 193 fill:#ffffff,stroke:#444444,color:#444444
+      subgraph 189 ["tmux"]
+        style 189 fill:#ffffff,stroke:#444444,color:#444444
 
-        194["<div style='font-weight: bold'>forge-ui Dashboard</div><div style='font-size: 70%; margin-top: 0px'>[Container: Next.js / React]</div><div style='font-size: 80%; margin-top:10px'>Next.js operator UI (:4124):<br />the cascading hex pipeline,<br />the grouped initiative pane,<br />and the dedicated architect /<br />review / reflect screens.<br />Every load-bearing state is<br />mirrored to data-* attributes<br />(DOM-as-metrics).</div>"]
-        style 194 fill:#438dd5,stroke:#2e6295,color:#ffffff
+        190["<div style='font-weight: bold'>Monitor</div><div style='font-size: 70%; margin-top: 0px'>[Container: Shell / tmux]</div><div style='font-size: 80%; margin-top:10px'>tmux 3-pane layout (serve<br />stdout / live event tail /<br />forge status --watch) plus an<br />Obsidian vault launcher.</div>"]
+        style 190 fill:#438dd5,stroke:#2e6295,color:#ffffff
       end
 
-      subgraph 197 ["tmux"]
-        style 197 fill:#ffffff,stroke:#444444,color:#444444
+      subgraph 192 ["Working tree"]
+        style 192 fill:#ffffff,stroke:#444444,color:#444444
 
-        198["<div style='font-weight: bold'>Monitor</div><div style='font-size: 70%; margin-top: 0px'>[Container: Shell / tmux]</div><div style='font-size: 80%; margin-top:10px'>tmux 3-pane layout (serve<br />stdout / live event tail /<br />forge status --watch) plus an<br />Obsidian vault launcher.</div>"]
-        style 198 fill:#438dd5,stroke:#2e6295,color:#ffffff
-      end
-
-      subgraph 200 ["Working tree"]
-        style 200 fill:#ffffff,stroke:#444444,color:#444444
-
-        201[("<div style='font-weight: bold'>Initiative Queue</div><div style='font-size: 70%; margin-top: 0px'>[Container: Filesystem (_queue/)]</div><div style='font-size: 80%; margin-top:10px'>Filesystem state machine of<br />initiative manifests: pending<br />-> in-flight -><br />ready-for-review -> done |<br />failed. Atomic rename<br />transitions; heartbeat files<br />enable crash recovery. done/<br />implies MERGED.</div>")]
-        style 201 fill:#2f6f9f,stroke:#204d6f,color:#ffffff
-        206[("<div style='font-weight: bold'>Event Log + Artifacts</div><div style='font-size: 70%; margin-top: 0px'>[Container: Filesystem (_logs/)]</div><div style='font-size: 80%; margin-top:10px'>Append-only per-cycle JSONL<br />event log plus snapshotted<br />work-items / demo /<br />REPORT.md. The replayable<br />source of truth for<br />reflection, the UI, and<br />metrics.</div>")]
-        style 206 fill:#2f6f9f,stroke:#204d6f,color:#ffffff
-        212[("<div style='font-weight: bold'>Brain (three knowledge graphs)</div><div style='font-size: 70%; margin-top: 0px'>[Container: Markdown + graphify graphs]</div><div style='font-size: 80%; margin-top:10px'>A Karpathy-style LLM wiki<br />rendered as an Obsidian<br />vault, in three scopes. Each<br />scope has _raw/ (immutable),<br />themes/ (~15-60 line pages),<br />category indexes, and a<br />graphify graph.</div>")]
-        style 212 fill:#2f6f9f,stroke:#204d6f,color:#ffffff
-        215["<div style='font-weight: bold'>Managed Project Repo</div><div style='font-size: 70%; margin-top: 0px'>[Software System]</div><div style='font-size: 80%; margin-top:10px'>A side-project git repo forge<br />develops (trafficGame,<br />terraform-provider-betterado,<br />claude-harness...). Has its<br />own quality gate and its own<br />Brain 3. Worktrees branch<br />from it.</div>"]
-        style 215 fill:#999999,stroke:#6b6b6b,color:#ffffff
+        193[("<div style='font-weight: bold'>Initiative Queue</div><div style='font-size: 70%; margin-top: 0px'>[Container: Filesystem (_queue/)]</div><div style='font-size: 80%; margin-top:10px'>Filesystem state machine of<br />initiative manifests: pending<br />-> in-flight -><br />ready-for-review -> done |<br />failed. Atomic rename<br />transitions; heartbeat files<br />enable crash recovery. done/<br />implies MERGED.</div>")]
+        style 193 fill:#2f6f9f,stroke:#204d6f,color:#ffffff
+        198[("<div style='font-weight: bold'>Event Log + Artifacts</div><div style='font-size: 70%; margin-top: 0px'>[Container: Filesystem (_logs/)]</div><div style='font-size: 80%; margin-top:10px'>Append-only per-cycle JSONL<br />event log plus snapshotted<br />work-items / demo /<br />REPORT.md. The replayable<br />source of truth for<br />reflection, the UI, and<br />metrics.</div>")]
+        style 198 fill:#2f6f9f,stroke:#204d6f,color:#ffffff
+        204[("<div style='font-weight: bold'>Brain (three knowledge graphs)</div><div style='font-size: 70%; margin-top: 0px'>[Container: Markdown + graphify graphs]</div><div style='font-size: 80%; margin-top:10px'>A Karpathy-style LLM wiki<br />rendered as an Obsidian<br />vault, in three scopes. Each<br />scope has _raw/ (immutable),<br />themes/ (~15-60 line pages),<br />category indexes, and a<br />graphify graph.</div>")]
+        style 204 fill:#2f6f9f,stroke:#204d6f,color:#ffffff
+        207["<div style='font-weight: bold'>Managed Project Repo</div><div style='font-size: 70%; margin-top: 0px'>[Software System]</div><div style='font-size: 80%; margin-top:10px'>A side-project git repo forge<br />develops (trafficGame,<br />terraform-provider-betterado,<br />claude-harness...). Has its<br />own quality gate and its own<br />Brain 3. Worktrees branch<br />from it.</div>"]
+        style 207 fill:#999999,stroke:#6b6b6b,color:#ffffff
       end
 
     end
 
-    subgraph 219 ["Anthropic"]
-      style 219 fill:#ffffff,stroke:#444444,color:#444444
+    subgraph 211 ["Anthropic"]
+      style 211 fill:#ffffff,stroke:#444444,color:#444444
 
-      220["<div style='font-weight: bold'>Claude Agent SDK</div><div style='font-size: 70%; margin-top: 0px'>[Software System]</div><div style='font-size: 80%; margin-top:10px'>Anthropic's agent runtime +<br />harness (model calls, tool<br />use, prompt caching). Every<br />forge agent runs here; forge<br />hosts no model runtime,<br />vector DB, or harness of its<br />own.</div>"]
-      style 220 fill:#999999,stroke:#6b6b6b,color:#ffffff
+      212["<div style='font-weight: bold'>Claude Agent SDK</div><div style='font-size: 70%; margin-top: 0px'>[Software System]</div><div style='font-size: 80%; margin-top:10px'>Anthropic's agent runtime +<br />harness (model calls, tool<br />use, prompt caching). Every<br />forge agent runs here; forge<br />hosts no model runtime,<br />vector DB, or harness of its<br />own.</div>"]
+      style 212 fill:#999999,stroke:#6b6b6b,color:#ffffff
     end
 
-    subgraph 223 ["GitHub"]
-      style 223 fill:#ffffff,stroke:#444444,color:#444444
+    subgraph 215 ["GitHub"]
+      style 215 fill:#ffffff,stroke:#444444,color:#444444
 
-      224["<div style='font-weight: bold'>GitHub</div><div style='font-size: 70%; margin-top: 0px'>[Software System]</div><div style='font-size: 80%; margin-top:10px'>Hosts the managed-project<br />repos. The PR is the<br />operator's sole review +<br />merge surface; merge state is<br />the single terminal signal.</div>"]
-      style 224 fill:#999999,stroke:#6b6b6b,color:#ffffff
+      216["<div style='font-weight: bold'>GitHub</div><div style='font-size: 70%; margin-top: 0px'>[Software System]</div><div style='font-size: 80%; margin-top:10px'>Hosts the managed-project<br />repos. The PR is the<br />operator's sole review +<br />merge surface; merge state is<br />the single terminal signal.</div>"]
+      style 216 fill:#999999,stroke:#6b6b6b,color:#ffffff
     end
 
-    186-. "<div>Starts the scheduler (forge<br />serve)</div><div style='font-size: 70%'></div>" .->185
-    188-. "<div>Drives the in-UI architect<br />runner + scheduler controls</div><div style='font-size: 70%'></div>" .->185
-    186-. "<div>Launches</div><div style='font-size: 70%'></div>" .->188
-    185-. "<div>Invokes (one-shot) via SDK</div><div style='font-size: 70%'></div>" .->191
-    186-. "<div>Launches (Next.js dev server)</div><div style='font-size: 70%'></div>" .->194
-    194-. "<div>Subscribes to snapshots +<br />events; posts verdicts</div><div style='font-size: 70%'>[WebSocket/HTTP :4123]</div>" .->188
-    198-. "<div>Runs forge serve / status<br />against</div><div style='font-size: 70%'></div>" .->185
-    185-. "<div>Claims + recovers manifests<br />(atomic rename) + heartbeats</div><div style='font-size: 70%'></div>" .->201
-    186-. "<div>Requeue / send-back / promote<br />manifests</div><div style='font-size: 70%'></div>" .->201
-    188-. "<div>Scans manifests; writes<br />verdict files</div><div style='font-size: 70%'></div>" .->201
-    198-. "<div>Shows queue status from</div><div style='font-size: 70%'></div>" .->201
-    185-. "<div>Appends JSONL + snapshots to</div><div style='font-size: 70%'></div>" .->206
-    186-. "<div>Reads for metrics / status /<br />recap</div><div style='font-size: 70%'></div>" .->206
-    188-. "<div>Tails the event log (200ms)</div><div style='font-size: 70%'></div>" .->206
-    191-. "<div>Digests the event log in</div><div style='font-size: 70%'></div>" .->206
-    198-. "<div>Tails the event log in</div><div style='font-size: 70%'></div>" .->206
-    186-. "<div>brain index / lint</div><div style='font-size: 70%'></div>" .->212
-    191-. "<div>Reads themes + graphify<br />graphs from</div><div style='font-size: 70%'></div>" .->212
-    185-. "<div>git worktree add / remove</div><div style='font-size: 70%'>[git]</div>" .->215
-    186-. "<div>Builds before/after worktrees<br />+ runs Playwright</div><div style='font-size: 70%'></div>" .->215
-    191-. "<div>Writes the demo bundle + PR<br />description to the worktree</div><div style='font-size: 70%'></div>" .->215
-    185-. "<div>Calls query() each iteration<br />(loads the dev/unifier skill)</div><div style='font-size: 70%'></div>" .->220
-    191-. "<div>Executes on</div><div style='font-size: 70%'></div>" .->220
-    185-. "<div>gh pr create / view; git push<br />/ fetch / ff</div><div style='font-size: 70%'>[gh / git]</div>" .->224
-    215-. "<div>Has its remote on / PRs<br />opened against</div><div style='font-size: 70%'></div>" .->224
+    178-. "<div>Starts the scheduler (forge<br />serve)</div><div style='font-size: 70%'></div>" .->177
+    180-. "<div>Drives the in-UI architect<br />runner + scheduler controls</div><div style='font-size: 70%'></div>" .->177
+    178-. "<div>Launches</div><div style='font-size: 70%'></div>" .->180
+    177-. "<div>Invokes (one-shot) via SDK</div><div style='font-size: 70%'></div>" .->183
+    178-. "<div>Launches (Next.js dev server)</div><div style='font-size: 70%'></div>" .->186
+    186-. "<div>Subscribes to snapshots +<br />events; posts verdicts</div><div style='font-size: 70%'>[WebSocket/HTTP :4123]</div>" .->180
+    190-. "<div>Runs forge serve / status<br />against</div><div style='font-size: 70%'></div>" .->177
+    177-. "<div>Claims + recovers manifests<br />(atomic rename) + heartbeats</div><div style='font-size: 70%'></div>" .->193
+    178-. "<div>Requeue / promote manifests</div><div style='font-size: 70%'></div>" .->193
+    180-. "<div>Scans manifests; writes<br />verdict files</div><div style='font-size: 70%'></div>" .->193
+    190-. "<div>Shows queue status from</div><div style='font-size: 70%'></div>" .->193
+    177-. "<div>Appends JSONL + snapshots to</div><div style='font-size: 70%'></div>" .->198
+    178-. "<div>Reads for metrics / status /<br />recap</div><div style='font-size: 70%'></div>" .->198
+    180-. "<div>Tails the event log (200ms)</div><div style='font-size: 70%'></div>" .->198
+    183-. "<div>Digests the event log in</div><div style='font-size: 70%'></div>" .->198
+    190-. "<div>Tails the event log in</div><div style='font-size: 70%'></div>" .->198
+    178-. "<div>brain index / lint</div><div style='font-size: 70%'></div>" .->204
+    183-. "<div>Reads themes + graphify<br />graphs from</div><div style='font-size: 70%'></div>" .->204
+    177-. "<div>git worktree add / remove</div><div style='font-size: 70%'>[git]</div>" .->207
+    178-. "<div>Builds before/after worktrees<br />+ runs Playwright</div><div style='font-size: 70%'></div>" .->207
+    183-. "<div>Writes the demo bundle + PR<br />description to the worktree</div><div style='font-size: 70%'></div>" .->207
+    177-. "<div>Calls query() each iteration<br />(loads the dev/unifier skill)</div><div style='font-size: 70%'></div>" .->212
+    183-. "<div>Executes on</div><div style='font-size: 70%'></div>" .->212
+    177-. "<div>gh pr create / view; git push<br />/ fetch / ff</div><div style='font-size: 70%'>[gh / git]</div>" .->216
+    207-. "<div>Has its remote on / PRs<br />opened against</div><div style='font-size: 70%'></div>" .->216
 
   end

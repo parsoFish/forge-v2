@@ -616,12 +616,22 @@ async function runStructured<T>(args: {
   onToolUse?: (d: ToolUseLiveDetail) => void;
 }): Promise<T | null> {
   const options: Record<string, unknown> = {
-    // `plan` mode keeps the agent read-only (it consults the brain + project
-    // but never mutates the repo — the runner writes artifacts itself). The
-    // read toolset is what produces the tool_use stream the architect hex shows.
-    permissionMode: 'plan',
+    // Read-only is enforced by the allowedTools whitelist (no Write/Edit/etc.) —
+    // NOT by plan mode. F-W5-1 (2026-05-30, surfaced by the claude-harness UI
+    // validation run) had TWO root causes:
+    //  1. `outputFormat` was passed the BARE JSON schema. The SDK expects
+    //     `{ type: 'json_schema', schema }` (entrypoints/sdk/coreTypes — OutputFormat),
+    //     so the malformed value silently disabled structured output: the result
+    //     never carried `structured_output`, runStructured returned null, the
+    //     interview fell through with empty questions, and the draft threw
+    //     "draft step returned no initiatives".
+    //  2. `permissionMode: 'plan'` made the agent end the turn via `ExitPlanMode`
+    //     (presenting a prose plan) instead of emitting structured output — a
+    //     direct contradiction with wanting a structured result.
+    // Both are fixed here: wrap the schema correctly and drop plan mode. The read
+    // toolset still produces the tool_use stream the architect hex shows.
     allowedTools: ['Read', 'Grep', 'Glob', 'Bash'],
-    outputFormat: args.schema,
+    outputFormat: { type: 'json_schema', schema: args.schema },
     maxTurns: 30,
   };
   let structured: T | null = null;

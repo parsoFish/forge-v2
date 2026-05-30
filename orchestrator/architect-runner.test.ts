@@ -203,6 +203,72 @@ test('interviewing → done flows straight through to drafting → awaiting-verd
   assert.equal(readStatus(sessionDir)?.phase, 'awaiting-verdict');
 });
 
+test('F-W5-1: structured interview/draft steps must NOT run the SDK in plan mode', async () => {
+  // Regression for F-W5-1 (2026-05-30, surfaced by the claude-harness UI
+  // validation run): `permissionMode: 'plan'` made the real draft agent end its
+  // turn by calling `ExitPlanMode` (presenting a prose plan) instead of emitting
+  // the `outputFormat` structured result, so `structured_output` came back empty
+  // and `runDraftStep` threw "draft step returned no initiatives". Read-only must
+  // be enforced by the allowedTools whitelist alone, never plan mode.
+  const { projectRoot, logsRoot, queueRoot, sessionId, sessionDir } = setupSession();
+  writeFileSync(
+    join(sessionDir, 'answers.json'),
+    JSON.stringify([{ round: 1, answers: [{ question: 'Follow OS?', answer: 'Follow OS' }] }]),
+  );
+  const capturedOptions: Array<Record<string, unknown>> = [];
+  const queryFn: CouncilQueryFn = ({ prompt, options }) => {
+    capturedOptions.push((options ?? {}) as Record<string, unknown>);
+    let structured: unknown = null;
+    if (prompt.includes('the interview step')) structured = { done: true };
+    else if (prompt.includes('draft the initiative')) {
+      structured = {
+        vision: 'A one-glance compact view of a cycle trail.',
+        initiatives: [
+          {
+            slug: 'compact-flag',
+            title: 'Compact flag',
+            iteration_budget: 3,
+            cost_budget_usd: 2,
+            features: [{ title: 'compact renderer' }],
+            body: '## Compact\n\nGIVEN a cycle WHEN --compact THEN title+summary+verdict only.',
+          },
+        ],
+      };
+    }
+    async function* gen(): AsyncGenerator<unknown> {
+      yield { type: 'result', subtype: 'success', total_cost_usd: 0, structured_output: structured };
+    }
+    return gen();
+  };
+  const councilQueryFn = makeCouncilFn({ flags: [], escalations: [] });
+
+  const result = await runArchitectTurn({
+    sessionId,
+    projectRoot,
+    logsRoot,
+    queueRoot,
+    queryFn,
+    councilQueryFn,
+    logger: logger(logsRoot, sessionId),
+  });
+
+  // The turn must reach a PLAN — proving the structured draft was consumed.
+  assert.equal(result.phase, 'awaiting-verdict');
+  // Both structured steps (interview + draft) flow through runStructured and
+  // carry `outputFormat`; none may run in plan mode.
+  const structuredCalls = capturedOptions.filter((o) => 'outputFormat' in o);
+  assert.ok(structuredCalls.length >= 1, 'expected runStructured to pass outputFormat options');
+  for (const o of structuredCalls) {
+    // Cause 2: plan mode makes the agent ExitPlanMode instead of emitting output.
+    assert.notEqual(o.permissionMode, 'plan', 'structured step must not run in plan mode (F-W5-1)');
+    // Cause 1: the SDK's outputFormat must be wrapped as { type:'json_schema', schema } —
+    // passing the bare schema silently disables structured output.
+    const of = o.outputFormat as { type?: string; schema?: unknown } | undefined;
+    assert.equal(of?.type, 'json_schema', 'outputFormat must be { type: "json_schema", schema } (F-W5-1)');
+    assert.ok(of?.schema && typeof of.schema === 'object', 'outputFormat.schema must carry the JSON schema (F-W5-1)');
+  }
+});
+
 // ---------------------------------------------------------------------------
 // Finalize phase
 // ---------------------------------------------------------------------------

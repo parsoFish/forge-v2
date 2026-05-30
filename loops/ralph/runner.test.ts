@@ -46,6 +46,11 @@ test('Ralph runner: stamps templates and exits on iteration budget', async () =>
     const prompt = readFileSync(join(dir, 'PROMPT.md'), 'utf8');
     assert.ok(prompt.includes('WI-1'), 'WI id substituted');
     assert.ok(prompt.includes('INIT-test'), 'initiative id substituted');
+    // F-W5-6 (cwd-hallucination): the absolute worktree path must be stated in
+    // the prompt so the agent uses relative paths instead of guessing
+    // /workspaces//repo/ container prefixes.
+    assert.ok(prompt.includes(dir), 'worktree path stated in prompt');
+    assert.ok(!prompt.includes('{{WORKTREE_PATH}}'), 'WORKTREE_PATH placeholder substituted');
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

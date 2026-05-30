@@ -2,6 +2,14 @@
 
 > Initiative: **{{INITIATIVE_ID}}** · Feature: **{{FEATURE_ID}}** · Iteration **{{ITERATION}}** of **{{ITERATION_BUDGET}}**
 
+## ⚠️ Your working directory
+
+Your current working directory is **already** `{{WORKTREE_PATH}}` — your shell starts there and every tool runs there.
+
+- Reference all files **relative to it**: `AGENT.md`, `fix_plan.md`, `src/…`, `tests/…`, `.forge/work-items/…`. Do **not** prepend an absolute prefix.
+- This is a git worktree on a real machine. It is **NOT** `/workspaces/…`, `/repo/…`, `/workspace/…`, or `/` — do not guess those paths (they do not exist here). If you are ever unsure, run `pwd` once, then keep using relative paths.
+- A `Read` of `AGENT.md` (relative) works; a `Read` of `/workspaces/<anything>` will fail and waste the iteration.
+
 ## Spec
 
 {{WORK_ITEM_SPEC_BODY}}

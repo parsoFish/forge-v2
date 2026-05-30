@@ -254,6 +254,7 @@ function ensureScaffolded(
         .replace(/{{INITIATIVE_ID}}/g, input.initiativeId)
         .replace(/{{ITERATION}}/g, '0')
         .replace(/{{ITERATION_BUDGET}}/g, String(input.initiativeBudget.iterations))
+        .replace(/{{WORKTREE_PATH}}/g, input.worktreePath)
         .replace(/{{WORK_ITEM_SPEC_BODY}}/g, readFileSync(input.workItemSpecPath, 'utf8')),
     );
   }

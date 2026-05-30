@@ -62,11 +62,14 @@ related_themes:
 > invariant). The verified-dead parts are removed: the PR-comment poller
 > (`review-router`), the PR-comment verdict provider (`pr-verdict`), the
 > never-invoked `getVerdict` provider seam, and the `/forge-review` command. The
-> remaining live CLI/slash fallbacks (`/forge-architect`, `/forge-reflect`,
-> `forge send-back`, `forge review --approve`, `forge architect commit`) are
-> sequenced for retirement behind a UI-parity check. **Load-bearing property is
-> unchanged and easier to guarantee**: one write-path per moment satisfies its
-> gate (no auto-approve, no simulator in production).
+> parity-covered fallbacks `/forge-reflect` (+ `forge-reflect-cli`) and `forge
+> send-back` were then retired (2026-05-30 follow-up — the in-UI reflect/review
+> screens + bridge are the single write-path). The remaining live fallbacks
+> (`/forge-architect`, `forge review --approve`, `forge architect commit`) stay
+> sequenced for retirement behind a UI-parity check (`forge review --approve` is
+> load-bearing — `verify-cycle.mjs` auto-approves through it). **Load-bearing
+> property is unchanged and easier to guarantee**: one write-path per moment
+> satisfies its gate (no auto-approve, no simulator in production).
 
 Forge has exactly **three deliberate human interaction moments**. The
 operator's direction: each is performed in the operator's **own Claude

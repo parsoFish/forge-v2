@@ -75,6 +75,23 @@ deeper **HumanMoment** generalization (one descriptor + endpoint pair + one
 `<HumanMomentScreen>` + per-kind renderer slots) that collapses the three
 parallel screen/handler/codec stacks into one.
 
+> **Update 2026-05-30 (follow-up pass — parity confirmed):** the parity-covered
+> §4 fallbacks are now retired. The bridge tail/scan efficiency fix and the
+> reflect auto-rerun parity landed first; then, with parity verified:
+> - **reflect:** deleted `/forge-reflect` (`.claude/commands/forge-reflect.md`) +
+>   `orchestrator/forge-reflect-cli.ts` (the slash-render module). The `/reflect`
+>   screen renders the questions and the bridge writes `user-feedback.md` +
+>   auto-reruns the reflector. `orchestrator/forge-reflect-rerun.ts` **stays** —
+>   the bridge calls it.
+> - **send-back:** deleted `forge send-back` (`cli/forge-send-back.ts`) + its
+>   `cli.ts` dispatch. The bridge's `POST /api/verdict` send-back is a strict
+>   superset of `runSendBack` (validates ≥1 AC, writes the same
+>   `verdict-response.md` atomically, **plus** manifest locking); both re-enter
+>   via the reviewer consuming the verdict file.
+> Still deferred: `forge review --approve` (load-bearing — `verify-cycle.mjs`
+> auto-approves through it), the architect-canonical decision (`/forge-architect`
+> + out-of-cycle skill), `gh-shim` removal, and the HumanMoment generalization.
+
 ## Consequences
 
 - **One surface to reason about + secure.** The "impossible to auto-satisfy"

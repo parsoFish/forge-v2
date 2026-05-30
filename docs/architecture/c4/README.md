@@ -124,11 +124,15 @@ verdicts — each needs to be weighed against the [five principles](../../../PRI
 and the ADRs before acting.
 
 > **Update 2026-05-30 — UI-as-sole-surface pass ([ADR 023](../../decisions/023-ui-sole-operator-surface.md)).**
-> Candidate #3 (verdict paths) is partly actioned: the two **dead** PR-comment verdict
-> mechanisms (`review-router`, `pr-verdict`) and the never-invoked `getVerdict` provider
-> seam were deleted, and the stale/wrong `/forge-review` command removed (~840 lines).
-> Candidates #3/#4 (live CLI/slash fallbacks), #5 (`gh-shim`), and the deeper
-> **HumanMoment** generalization remain — sequenced in ADR 023 §4.
+> Candidate #3 (verdict paths) is now largely actioned: the two **dead** PR-comment
+> verdict mechanisms (`review-router`, `pr-verdict`) and the never-invoked `getVerdict`
+> provider seam were deleted, the stale/wrong `/forge-review` command removed (~840
+> lines), and in a follow-up the parity-covered live fallbacks `cli/forge-send-back.ts`
+> + the `/forge-reflect` slash / `forge-reflect-cli.ts` were retired (the UI-bridge
+> verdict + reflect handlers are the single seam; `file-verdict.ts` is now just the
+> parser). Remaining: `forge review --approve` (load-bearing for `verify-cycle.mjs`),
+> the architect-canonical decision (#4), #5 (`gh-shim`), and the deeper **HumanMoment**
+> generalization — per ADR 023 §4.
 
 1. **Three layers per cycle phase.** Each phase exists as a `SKILL.md` (`skills/`),
    an `*-invocation.ts` prompt/tool contract (`orchestrator/`), **and** a

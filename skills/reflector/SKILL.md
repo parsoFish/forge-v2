@@ -16,14 +16,18 @@ and write the findings into the brain by **direct file writes** — theme
 markdown files under `projects/<project>/brain/themes/` plus a cycle
 archive under `brain/cycles/_raw/<cycle-id>.md`.
 
-## Operator handoff (the `/forge-reflect` human moment — single source of truth)
+## Operator handoff (the reflection human moment — single source of truth)
 
-This section is authoritative for the operator side of stage 2/3; the
-`/forge-reflect <id>` slash command is a thin invoker of it.
+This section is authoritative for the operator side of stage 2/3. Since ADR 023
+the **in-UI `/reflect` screen** (driven by the UI bridge) is the operator
+surface: it renders the `user-questions.json` this skill emits, writes
+`user-feedback.md`, and the bridge auto-reruns the reflector. (The
+`/forge-reflect` slash command + `forge-reflect-cli` were retired 2026-05-30 —
+the UI is the sole operator surface.)
 
-> Human moment — run in YOUR OWN Claude session. Forge never simulates
-> this feedback — it is always supplied by a human in production. (A bench
-> simulator pre-populated it historically; benchmarks were removed 2026-05-25.)
+> Human moment — performed by the operator on the forge UI. Forge never
+> simulates this feedback — it is always supplied by a human in production. (A
+> bench simulator pre-populated it historically; benchmarks were removed 2026-05-25.)
 
 **Reads:** `_logs/<id>/user-questions.md` (the reflector's stage-2
 questions — ≤4 numbered; may be absent if none were non-brain-resolvable);
@@ -76,7 +80,7 @@ consulted before writes. Useful queries:
   question is warranted).
 - `_logs/<cycle-id>/user-questions.json` (stage 2; cwc Amendment —
   AskUserQuestion-shaped sibling of `user-questions.md`. Same skip rule:
-  omit both when no question is warranted. Consumed by `/forge-reflect`).
+  omit both when no question is warranted. Consumed by the in-UI `/reflect` screen).
 - `_logs/<cycle-id>/brain-bench-candidates.jsonl` (S5 / plan 01b #6;
   written by the orchestrator AFTER the agent exits, not by the agent
   itself). One row per gap whose corresponding theme this cycle wrote.
@@ -133,8 +137,8 @@ summing to 1.0 with pass threshold 0.7.
    - `_logs/<cycle-id>/user-questions.md` — numbered headings (human-readable
      audit; pre-cwc-amendment format retained).
    - `_logs/<cycle-id>/user-questions.json` — `AskUserQuestion`-shaped array
-     so the `/forge-reflect` slash command can drive the operator handoff
-     via the native tool (cwc Amendment, parity with `/forge-architect`).
+     so the in-UI `/reflect` screen can render the operator handoff as
+     selectable options (cwc Amendment; the bridge writes `user-feedback.md`).
      Schema:
      ```json
      [

@@ -761,7 +761,25 @@ export default {
           'section': 'architect-plan',
           'architect-phase': 'committed',
           'gate-armed': 'false',
-          'plan-mode': 'gate',
+          // AMENDED 2026-09-11 (amend-10) — was `'gate'`, which this beat can
+          // never see. `SessionArchitectPanel.tsx:147` builds the plan href as
+          // `phase === 'awaiting-verdict' ? 'gate' : 'view'`, so APPROVING IS
+          // WHAT ENDS GATE MODE — and this beat's last `do` step is
+          // `{ press: 'approve-plan' }`. It was asserting the gate it had just
+          // closed, beside `architect-phase: 'committed'`, which only exists
+          // BECAUSE the gate closed. The two keys could not both hold.
+          //
+          // S1 run 3 proved the product right and the beat wrong, and said so
+          // in the shape of the red: it named ONE token, `plan-mode`, which
+          // means `architect-phase: 'committed'` and `gate-armed: 'false'`
+          // both HELD. The approval worked. A red that names one of three keys
+          // is reporting that the other two passed.
+          //
+          // Lane C measured the identical token on S10 beat 5 (run 4 red at
+          // 10:55:32 while `status.json` had gone COMMITTED at 10:55:17.386 —
+          // the approval had already landed); their amend-3 declared `'view'`
+          // and beat 5 went green in 3.1 s.
+          'plan-mode': 'view',
         },
       },
       say: 'The plan is approved and committed. An existing repo that forge knew nothing about half an hour ago is now an onboarded project with a contract, a demo, a knowledge profile and an approved roadmap — ready for a Factory to build.',

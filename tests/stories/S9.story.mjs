@@ -536,23 +536,42 @@ export default {
           'ledger-cost-usd': '<authoringCostUsd>',
         },
       },
-      // UNCHANGED by amend-3, deliberately (T1 ruling 562's else-branch), but
-      // its failure MESSAGE misnames the defect and the next reader should not
-      // be misled by it. S9 run 2 reported `data-ledger-agent: expected
-      // "creation-agent", got "onboarding-agent"`, which reads as "the wrong
-      // agent ran". What actually happens: `/monitor` carried BOTH rows (beat
-      // 14 passed with `ledger-count` 2), and `resolveExpectations` SCORES
-      // records rather than selecting one — its together-rule returns a row
-      // only when that row answers EVERY shared key. The creation-agent row
-      // publishes no `data-ledger-cost-usd` (which is precisely what this beat
-      // exists to prove), so no row answers both keys and the best-match
-      // tie-break returns the onboarding row instead. The rows DO carry a name
-      // — `data-ledger-agent` per row — but a beat cannot SELECT on it, so
-      // "name the row you mean" is not expressible here today.
-      // Bead `forge-8vfn.6.11.51` is the standing citation; the tie-break is
-      // the mechanism, and it turns a missing-cost finding into a
-      // wrong-agent one — the same class as a failure that names the wrong
-      // cause anywhere else in this campaign.
+      // AMENDED 2026-09-11 (amend-6, T1 ruling 585 (iii)) — the comment that
+      // stood here named a cause the evidence refutes, and the correction
+      // matters more than the beat.
+      //
+      // It said "the creation-agent row publishes no `data-ledger-cost-usd`,
+      // which is precisely what this beat exists to prove". There is NO
+      // creation-agent row. `/monitor`'s ledger comes from
+      // `GET /api/agents/runs/recent`, which joins FLOW RUNS and STANDALONE
+      // `_agent-*` DISPATCHES. Run 3's two event logs settle it:
+      // `_authoring-<sessionId>/events.jsonl` carries `cost_usd 0.71176675`
+      // under `cycle_id _authoring-<sessionId>` — beat 8 read that 0.71 on the
+      // session's own page — while `_agent-onboarding-agent-<stamp>/` carries
+      // `0.39334640` under an `_agent-` cycle id. Beat 14 saw FOUR rows, all
+      // `onboarding-agent`, matching the four `_agent-onboarding-agent-*` dirs
+      // 1:1 by stamp. The authoring session is simply absent.
+      //
+      // `bridge-studio-kickoff.ts:372` MINTS `_agent-creation-agent-<stamp>`,
+      // stores it on the session and returns it — and no such directory has
+      // ever existed. Onboarding writes its turn's events under its minted
+      // runId; authoring writes them under `_authoring-<sessionId>`. So the
+      // onboarding rows are an accident of one kind's internals, not evidence
+      // that sessions are ledgered: `/monitor` has never shown what a SESSION
+      // cost. Bead `forge-b6af`.
+      //
+      // The citation is corrected too. `forge-8vfn.6.11.51` is a different bug
+      // — `HomeSessionsStrip.tsx:175` renders `open-session` once per card — and
+      // it was standing here as shorthand for "which row does the story
+      // address". This beat's row does not exist, so that shorthand was wrong
+      // on the substance and is removed rather than reworded.
+      //
+      // The failure MESSAGE also misnamed the defect until amend-6's sibling
+      // fix. `beats.mjs` rebound an already-bound placeholder instead of
+      // comparing, so this beat's `<authoringCostUsd>` silently moved 0.71 to
+      // 0.39 and the red fell on `data-ledger-agent` instead — a missing-row
+      // finding wearing a wrong-agent message. With compare-when-already-bound
+      // it reads `expected "0.71" … got "0.39"`, which points where it should.
       say: 'This is where S9 ends, on the one claim that makes the other eight stories affordable to run through an assistant at all: that the operator can see, per session, what they were charged for handing the work over. Until they can, "ask the assistant to do it" is a bill with no itemisation.',
     },
   ],

@@ -23,7 +23,7 @@ import { PLACEHOLDER, resolveExpectations, ERROR_SENTINELS, routeMatches } from 
  * @param {{route: string, data: Record<string,string>, nested?: readonly Record<string,string>[]}} observed
  * @returns {Readonly<{act: string, say: string, status: 'green'|'red', failures: readonly string[], bindings: Readonly<Record<string,string>>}>}
  */
-export function beatVerdict(beat, observed, { boundMs = null } = {}) {
+export function beatVerdict(beat, observed, { boundMs = null, bound = {} } = {}) {
   const failures = [];
   const bindings = {};
 
@@ -67,6 +67,20 @@ export function beatVerdict(beat, observed, { boundMs = null } = {}) {
           boundMs === null
             ? `data-${attr}: expected a value to bind as ${want}, got ""`
             : `data-${attr}: expected a value to bind as ${want}, but the product minted nothing within ${boundMs} ms`,
+        );
+      }
+      // COMPARE WHEN ALREADY BOUND — T1 ruling 585 (i). This was an
+      // unconditional write, so a beat re-declaring a placeholder to RE-ASSERT
+      // the value overwrote it and asserted nothing. A story that binds a value
+      // in one beat and names it again in another is asserting a THIRD thing —
+      // that the two places agree — and that is exactly the assertion that was
+      // being discarded. S9 bought this: beat 8 bound `authoringCostUsd` 0.71
+      // from the authoring session's own page, beat 15 rebound it to 0.39 from
+      // `/monitor`, and the run reported a wrong-agent failure for what was a
+      // missing row (`forge-b6af`).
+      else if (Object.hasOwn(bound, placeholder[1]) && bound[placeholder[1]] !== got) {
+        failures.push(
+          `data-${attr}: expected "${bound[placeholder[1]]}" (bound as ${want} by an earlier beat), got "${got}"`,
         );
       }
       else bindings[placeholder[1]] = got;

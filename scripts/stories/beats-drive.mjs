@@ -397,7 +397,7 @@ export async function driveBeat(page, rawBeat, index, baseUrl, bindings = {}, ti
       /* not ready — the verdict below reports that honestly rather than throwing */
     });
 
-  let verdict = named(beatVerdict(beat, await readObserved(page, beat), { boundMs: bound.ms }));
+  let verdict = named(beatVerdict(beat, await readObserved(page, beat), { boundMs: bound.ms, bound: bindings }));
   verdict = withAgentProc(verdict, agentProcProbe);
   // Bead `forge-8vfn.6.11.19` (T1 ruling 254) — the class, closed rather than
   // patched a fourth time. Fires WHATEVER the verdict would have been: a beat

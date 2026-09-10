@@ -332,6 +332,40 @@ test('a <name> expectation the page does not render at all is red and says absen
   assert.ok(v.failures.some((f) => /onboard-session-id.*absent/.test(f)), v.failures.join(' | '));
 });
 
+test('a <name> an earlier beat already bound is COMPARED, not silently re-bound', () => {
+  // Kills the shipped behaviour: `bindings[name] = got` was unconditional, so a
+  // beat re-declaring a placeholder to RE-ASSERT the value overwrote it instead
+  // and asserted nothing. Measured on S9: beat 8 bound `authoringCostUsd` from
+  // the authoring session's own page (0.71), beat 15 re-declared it against
+  // `/monitor` and rebound it to 0.39 — the beat that exists to prove the
+  // figure is published stopped comparing the figure, then failed on its OTHER
+  // key and reported `data-ledger-agent: expected "creation-agent", got
+  // "onboarding-agent"`, which reads as "the wrong agent ran". The real defect
+  // was that the authoring session has no /monitor row at all
+  // (`forge-b6af`). A story that binds a value and re-declares it is asserting
+  // a THIRD thing — that the two places agree — and that assertion was being
+  // thrown away.
+  const v = beatVerdict(bindBeat, { route: '/projects/gitweave', data: { 'onboard-session-id': 'onb-OTHER' }, nested: [] }, { bound: { sessionId: 'onb-7f3c1a' } });
+  assert.equal(v.status, 'red');
+  assert.ok(
+    v.failures.some((f) => /onb-7f3c1a/.test(f) && /onb-OTHER/.test(f) && /sessionId/.test(f)),
+    `the failure must name the earlier value, the new one and the placeholder — got: ${v.failures.join(' | ')}`,
+  );
+});
+
+test('a <name> already bound to the SAME value the page answers is green', () => {
+  const v = beatVerdict(bindBeat, { route: '/projects/gitweave', data: { 'onboard-session-id': 'onb-7f3c1a' }, nested: [] }, { bound: { sessionId: 'onb-7f3c1a' } });
+  assert.equal(v.status, 'green', v.failures.join(' | '));
+});
+
+test('a <name> NOTHING has bound yet still binds — comparing did not replace binding', () => {
+  // The positive control. Without it, an implementation that compared against
+  // an empty `bound` and never wrote would pass both cases above.
+  const v = beatVerdict(bindBeat, { route: '/projects/gitweave', data: { 'onboard-session-id': 'onb-first' }, nested: [] }, { bound: {} });
+  assert.equal(v.status, 'green', v.failures.join(' | '));
+  assert.equal(v.bindings.sessionId, 'onb-first');
+});
+
 test('resolveBeatRoute substitutes a segment an earlier beat bound', () => {
   const beat5 = { ...bindBeat, expect: { route: '/sessions/onboarding/<sessionId>', data: { page: 'session' } } };
   const r = resolveBeatRoute(beat5, { sessionId: 'onb-7f3c1a' });
